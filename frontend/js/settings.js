@@ -82,8 +82,8 @@ MedHub.settings = {
             </div>
             <div class="form-row-3">
               <div class="form-group">
-                <label class="form-label">GSTIN (15 Digits) <span class="req">*</span></label>
-                <input type="text" id="st-gstin" class="input-field" placeholder="07AAAAA0000A1Z5" value="${s.gstin || ""}" required />
+                <label class="form-label">GSTIN (15 Digits)</label>
+                <input type="text" id="st-gstin" class="input-field" placeholder="07AAAAA0000A1Z5 (Optional)" value="${s.gstin || ""}" />
               </div>
               <div class="form-group">
                 <label class="form-label">Drug License (DL No. 20B) <span class="req">*</span></label>

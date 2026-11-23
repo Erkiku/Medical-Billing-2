@@ -207,15 +207,14 @@ MedHub.login = {
 
           <div class="form-row-3">
             <div class="template-field-wrap">
-              <label class="template-field-label">GSTIN (15 Digits) *</label>
+              <label class="template-field-label">GSTIN (15 Digits)</label>
               <input 
                 type="text" 
                 id="login-gstin" 
                 class="template-field-input" 
                 value="${s.gstin || ""}" 
-                placeholder="27ABCDE1234F1Z5" 
+                placeholder="27ABCDE1234F1Z5 (Optional)" 
                 maxlength="15" 
-                required 
               />
             </div>
             <div class="template-field-wrap">
