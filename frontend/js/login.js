@@ -324,27 +324,29 @@ MedHub.login = {
         // Fetch store settings for THIS specific user email/username
         const existingStore = await MedHub.api.getStoreSettings(self.tempAuth.email);
 
-        if (existingStore && existingStore.store_name && !authResult.isNew) {
-          // EXISTING STORE: Full data will be shown!
-          self.isNewStore = false;
-          self.storeData = existingStore;
-        } else {
-          // NEW USER / NEW STORE: All fields will be blank for fresh setup!
-          self.isNewStore = true;
-          self.storeData = {
-            pharmacist_name: verifiedUser.username === "admin" ? "Dr. Anil Kumar" : (verifiedUser.name || ""),
-            store_name: "",
-            phone: "",
-            address: "",
-            gstin: "",
-            dl_no_20b: "",
-            dl_no_21b: "",
-            fssai_no: "",
-            upi_id: ""
-          };
+        // CHECK IF STORE PROFILE HAS ALREADY BEEN SET UP:
+        // Once a user has completed store details, NEVER ask for Step 2 again!
+        if (existingStore && existingStore.store_name && existingStore.store_name.trim() !== "" && !authResult.isNew) {
+          self.completeLogin(verifiedUser, existingStore);
+          return;
         }
 
-        self.currentStep = 2; // Transition to Step 2
+        // NEW USER / STORE NOT CONFIGURED YET:
+        // Ask for store profile ONLY on the very first setup
+        self.isNewStore = true;
+        self.storeData = {
+          pharmacist_name: verifiedUser.username === "admin" ? "Dr. Anil Kumar" : (verifiedUser.name || ""),
+          store_name: "",
+          phone: "",
+          address: "",
+          gstin: "",
+          dl_no_20b: "",
+          dl_no_21b: "",
+          fssai_no: "",
+          upi_id: ""
+        };
+
+        self.currentStep = 2; // Transition to Step 2 for 1st time setup only
         self.render(container);
       });
 
@@ -401,13 +403,10 @@ MedHub.login = {
           payee_name: document.getElementById("login-store-name")?.value.trim() || "Pharmacy"
         };
 
-        // 1. Update in-memory store state
-        MedHub.state.store = { ...storePayload };
-
-        // 2. Persist to Supabase Database & LocalStorage under this user's email
+        // 1. Persist store settings to Supabase Database & LocalStorage under this user's email
         await MedHub.api.saveStoreSettings(storePayload, email);
 
-        // 2b. Persist authorized user record with name & password
+        // 2. Persist authorized user record with name & password
         if (self.tempAuth && self.tempAuth.password) {
           await MedHub.api.createAuthorizedUser({
             username: self.tempAuth.username,
@@ -418,33 +417,61 @@ MedHub.login = {
           });
         }
 
-        // 3. Update topbar store header in real time
-        MedHub.updateStoreHeader(storePayload);
-
-        // 4. Authenticate user & update user badge in real time
-        MedHub.state.isAuthenticated = true;
-        MedHub.state.user = {
-          username: self.tempAuth.username,
-          email: email,
-          role: self.tempAuth.role || "admin",
-          name: pharmacistName
-        };
-        try {
-          localStorage.setItem("medhub_authenticated", "true");
-          localStorage.setItem("medhub_current_user", email);
-          localStorage.setItem("medhub_user_name", pharmacistName);
-          localStorage.setItem("medhub_user_role", self.tempAuth.role || "admin");
-        } catch (err) { }
-
-        // Real-time update of sidebar avatar & name
-        MedHub.updateUserBadge(pharmacistName, "Pharmacist Admin");
-
-        // Reset step for future logout
-        self.currentStep = 1;
-
-        MedHub.toast(`Welcome! "${storePayload.store_name}" profile updated & loaded successfully.`, "success");
-        MedHub.router.init();
+        // 3. Complete login and launch Dashboard immediately!
+        self.completeLogin(self.tempAuth, storePayload);
       });
     }
+  },
+
+  // --------------------------------------------------------------------------
+  // COMPLETE LOGIN & LAUNCH DASHBOARD
+  // Directly launches dashboard without repeating Step 2 for configured stores
+  // --------------------------------------------------------------------------
+  completeLogin(user, storePayload) {
+    const email = (user.email || user.username || "").toLowerCase().trim();
+    const pharmacistName =
+      storePayload.pharmacist_name ||
+      user.name ||
+      user.full_name ||
+      "Pharmacist Admin";
+
+    // 1. Update in-memory store state
+    MedHub.state.store = { ...storePayload };
+
+    // 2. Update topbar store header in real time
+    if (typeof MedHub.updateStoreHeader === "function") {
+      MedHub.updateStoreHeader(storePayload);
+    }
+
+    // 3. Authenticate user & update application state
+    MedHub.state.isAuthenticated = true;
+    MedHub.state.user = {
+      username: user.username,
+      email: email,
+      role: user.role || "admin",
+      name: pharmacistName
+    };
+
+    try {
+      localStorage.setItem("medhub_authenticated", "true");
+      localStorage.setItem("medhub_current_user", email);
+      localStorage.setItem("medhub_user_name", pharmacistName);
+      localStorage.setItem("medhub_user_role", user.role || "admin");
+    } catch (err) {}
+
+    // 4. Update sidebar avatar & name
+    if (typeof MedHub.updateUserBadge === "function") {
+      MedHub.updateUserBadge(pharmacistName, "Pharmacist Admin");
+    }
+
+    // Reset step for future logout
+    this.currentStep = 1;
+    this.authError = null;
+
+    MedHub.toast(
+      `Welcome, ${pharmacistName}! "${storePayload.store_name}" launched successfully.`,
+      "success"
+    );
+    MedHub.router.init();
   }
 };
