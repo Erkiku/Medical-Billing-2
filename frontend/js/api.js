@@ -183,7 +183,28 @@ MedHub.api = {
     return true;
   },
 
-  // 1.5. AUTHORIZED USERS & AUTHENTICATION (Only admin assigned credentials can log in)
+  // Helper for offline & per-user local storage
+  _getLocalUsers() {
+    try {
+      const ls = localStorage.getItem("medhub_authorized_users");
+      if (ls) {
+        const parsed = JSON.parse(ls);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return [
+      { id: 1, username: "admin", email: "admin@mededuhub.com", password: "admin123", full_name: "Dr. Anil Kumar", role: "admin", status: "active" }
+    ];
+  },
+
+  _saveLocalUsers(users) {
+    try {
+      localStorage.setItem("medhub_authorized_users", JSON.stringify(users));
+    } catch (e) {}
+  },
+
+  // 1.5. AUTHORIZED USERS & AUTHENTICATION
+  // Supports existing accounts (with password verification) & automatic registration for new users!
   async authenticateUser(usernameOrEmail, password) {
     if (!usernameOrEmail || !password) {
       return { success: false, message: "Please provide both username/email and password." };
@@ -191,6 +212,7 @@ MedHub.api = {
 
     const cleanInput = usernameOrEmail.trim().toLowerCase();
     const cleanPass = password.trim();
+    const cleanEmail = cleanInput.includes("@") ? cleanInput : `${cleanInput}@mededuhub.com`;
 
     // 1. Check Supabase Database
     if (MedHub.supabaseClient) {
@@ -199,34 +221,72 @@ MedHub.api = {
           .from("authorized_users")
           .select("*")
           .or(`username.ilike.${cleanInput},email.ilike.${cleanInput}`)
-          .eq("password", cleanPass)
-          .eq("status", "active")
           .maybeSingle();
 
         if (!error && data) {
-          return {
-            success: true,
-            user: {
-              id: data.id,
-              username: data.username,
-              email: data.email || data.username,
-              name: data.full_name || "Pharmacist Admin",
-              role: data.role || "admin"
-            }
-          };
+          // User exists in Supabase! Check password:
+          if (data.password === cleanPass) {
+            return {
+              success: true,
+              isNew: false,
+              user: {
+                id: data.id,
+                username: data.username,
+                email: data.email || cleanEmail,
+                name: data.full_name || data.username,
+                role: data.role || "admin"
+              }
+            };
+          } else {
+            return {
+              success: false,
+              message: `Incorrect password for user "${cleanInput}". Please check your password.`
+            };
+          }
         }
       } catch (e) {
         console.warn("Supabase auth check error:", e);
       }
     }
 
-    // 2. Local fallback if Supabase table is unreachable (Default seeded credentials)
+    // 2. Check local users cache
+    const localUsers = this._getLocalUsers();
+    const existingLocal = localUsers.find(
+      u => u.username?.toLowerCase() === cleanInput || u.email?.toLowerCase() === cleanInput
+    );
+
+    if (existingLocal) {
+      if (
+        existingLocal.password === cleanPass ||
+        (cleanInput === "admin" && (cleanPass === "123456" || cleanPass === "admin123"))
+      ) {
+        return {
+          success: true,
+          isNew: false,
+          user: {
+            id: existingLocal.id,
+            username: existingLocal.username,
+            email: existingLocal.email || cleanEmail,
+            name: existingLocal.full_name || existingLocal.username,
+            role: existingLocal.role || "admin"
+          }
+        };
+      } else {
+        return {
+          success: false,
+          message: `Incorrect password for user "${cleanInput}". Please check your password.`
+        };
+      }
+    }
+
+    // 3. Root admin credentials fallback
     if (
       (cleanInput === "admin" || cleanInput === "admin@mededuhub.com") &&
       (cleanPass === "123456" || cleanPass === "admin123")
     ) {
       return {
         success: true,
+        isNew: false,
         user: {
           username: "admin",
           email: "admin@mededuhub.com",
@@ -236,9 +296,51 @@ MedHub.api = {
       };
     }
 
+    // 4. NEW USER: Auto-register new pharmacist account!
+    const newUser = {
+      id: Date.now(),
+      username: cleanInput,
+      email: cleanEmail,
+      password: cleanPass,
+      full_name: cleanInput.charAt(0).toUpperCase() + cleanInput.slice(1),
+      role: "admin",
+      status: "active",
+      created_at: new Date().toISOString()
+    };
+
+    // Save to local users list
+    localUsers.push(newUser);
+    this._saveLocalUsers(localUsers);
+
+    // Save to Supabase if available
+    if (MedHub.supabaseClient) {
+      try {
+        const { data: dbUser } = await MedHub.supabaseClient
+          .from("authorized_users")
+          .upsert({
+            username: cleanInput,
+            email: cleanEmail,
+            password: cleanPass,
+            full_name: newUser.full_name,
+            role: "admin",
+            status: "active",
+            updated_at: new Date().toISOString()
+          }, { onConflict: "username" })
+          .select()
+          .maybeSingle();
+
+        if (dbUser && dbUser.id) {
+          newUser.id = dbUser.id;
+        }
+      } catch (e) {
+        console.warn("Could not insert new user to Supabase:", e);
+      }
+    }
+
     return {
-      success: false,
-      message: "Access Denied: Invalid credentials! Only usernames & passwords assigned by admin in authorized_users can log in."
+      success: true,
+      isNew: true,
+      user: newUser
     };
   },
 
@@ -249,14 +351,20 @@ MedHub.api = {
           .from("authorized_users")
           .select("id, username, email, full_name, role, status, created_at")
           .order("id", { ascending: true });
-        if (!error && data) return data;
+        if (!error && data && data.length > 0) return data;
       } catch (e) {
         console.warn("Get authorized users error:", e);
       }
     }
-    return [
-      { id: 1, username: "admin", email: "admin@mededuhub.com", full_name: "Dr. Anil Kumar", role: "admin", status: "active" }
-    ];
+    return this._getLocalUsers().map(u => ({
+      id: u.id,
+      username: u.username,
+      email: u.email,
+      full_name: u.full_name,
+      role: u.role,
+      status: u.status,
+      created_at: u.created_at
+    }));
   },
 
   async createAuthorizedUser(user) {
@@ -270,6 +378,16 @@ MedHub.api = {
       status: "active",
       updated_at: new Date().toISOString()
     };
+
+    // Save locally
+    const localUsers = this._getLocalUsers();
+    const idx = localUsers.findIndex(u => u.username === cleanUser.username);
+    if (idx >= 0) {
+      localUsers[idx] = { ...localUsers[idx], ...cleanUser };
+    } else {
+      localUsers.push({ id: Date.now(), ...cleanUser });
+    }
+    this._saveLocalUsers(localUsers);
 
     if (MedHub.supabaseClient) {
       try {

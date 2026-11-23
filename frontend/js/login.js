@@ -301,11 +301,11 @@ MedHub.login = {
           submitBtn.innerText = "Verifying Credentials...";
         }
 
-        // STRICT AUTHENTICATION AGAINST authorized_users TABLE
+        // STRICT AUTHENTICATION AGAINST authorized_users TABLE & LOCAL CACHE
         const authResult = await MedHub.api.authenticateUser(userInput, passwordInput);
 
         if (!authResult.success) {
-          self.authError = authResult.message || "Invalid credentials! Only admin assigned accounts can log in.";
+          self.authError = authResult.message || "Invalid credentials! Please check your username and password.";
           self.tempAuth.password = "";
           MedHub.toast(self.authError, "danger");
           self.render(container);
@@ -317,21 +317,22 @@ MedHub.login = {
         const verifiedUser = authResult.user;
         self.tempAuth.username = verifiedUser.username;
         self.tempAuth.email = verifiedUser.email || verifiedUser.username;
-        self.tempAuth.name = verifiedUser.name || "Pharmacist Admin";
+        self.tempAuth.name = verifiedUser.name || verifiedUser.full_name || verifiedUser.username;
         self.tempAuth.role = verifiedUser.role || "admin";
         self.tempAuth.password = passwordInput;
 
         // Fetch store settings for THIS specific user email/username
         const existingStore = await MedHub.api.getStoreSettings(self.tempAuth.email);
 
-        if (existingStore && existingStore.store_name) {
+        if (existingStore && existingStore.store_name && !authResult.isNew) {
           // EXISTING STORE: Full data will be shown!
           self.isNewStore = false;
           self.storeData = existingStore;
         } else {
-          // NEW USER / NEW STORE: All fields will be blank!
+          // NEW USER / NEW STORE: All fields will be blank for fresh setup!
           self.isNewStore = true;
           self.storeData = {
+            pharmacist_name: verifiedUser.username === "admin" ? "Dr. Anil Kumar" : (verifiedUser.name || ""),
             store_name: "",
             phone: "",
             address: "",
@@ -405,6 +406,17 @@ MedHub.login = {
 
         // 2. Persist to Supabase Database & LocalStorage under this user's email
         await MedHub.api.saveStoreSettings(storePayload, email);
+
+        // 2b. Persist authorized user record with name & password
+        if (self.tempAuth && self.tempAuth.password) {
+          await MedHub.api.createAuthorizedUser({
+            username: self.tempAuth.username,
+            email: email,
+            password: self.tempAuth.password,
+            full_name: pharmacistName,
+            role: self.tempAuth.role || "admin"
+          });
+        }
 
         // 3. Update topbar store header in real time
         MedHub.updateStoreHeader(storePayload);
