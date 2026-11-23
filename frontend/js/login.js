@@ -135,10 +135,6 @@ MedHub.login = {
           <span>Sign In to Pharma OS</span>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </button>
-
-        <button type="button" class="template-quick-btn" id="btn-quick-demo-fill">
-          ⚡ Quick Fill: admin / admin123
-        </button>
       </form>
     `;
   },
@@ -349,15 +345,6 @@ MedHub.login = {
 
         self.currentStep = 2; // Transition to Step 2
         self.render(container);
-      });
-
-      // Quick Demo button
-      container.querySelector("#btn-quick-demo-fill")?.addEventListener("click", () => {
-        const userInput = document.getElementById("login-email");
-        const passInput = document.getElementById("login-password");
-        if (userInput) userInput.value = "admin";
-        if (passInput) passInput.value = "admin123";
-        self.authError = null;
       });
 
       // Toggle Password Visibility (Eye Button)
