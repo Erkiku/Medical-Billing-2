@@ -167,6 +167,21 @@ MedHub.state = {
 
 // REAL-TIME STORE HEADER UPDATE (Screenshot 3 header banner)
 MedHub.updateStoreHeader = function (storeData) {
+  const isSuper = (MedHub.state.user && MedHub.state.user.role === "superadmin") || 
+                  (localStorage.getItem("medhub_user_role") === "superadmin");
+  const storeBadgeEl = document.getElementById("topbar-store-badge");
+
+  if (isSuper) {
+    if (storeBadgeEl) {
+      storeBadgeEl.innerHTML = `
+        <span class="store-badge-icon">${MedHub.icons.shield}</span>
+        <span class="store-badge-name" style="color: #fbbf24; font-weight: 800;">DEVELOPER CONSOLE</span>
+        <span class="store-badge-meta" style="color: #10b981; font-weight: 700;">🟢 Live Supabase Connected</span>
+      `;
+    }
+    return;
+  }
+
   if (storeData) {
     MedHub.state.store = { ...MedHub.state.store, ...storeData };
     try {
@@ -174,7 +189,6 @@ MedHub.updateStoreHeader = function (storeData) {
     } catch (e) {}
   }
   const s = MedHub.state.store;
-  const storeBadgeEl = document.getElementById("topbar-store-badge");
   if (storeBadgeEl) {
     storeBadgeEl.innerHTML = `
       <span class="store-badge-icon">${MedHub.icons.store}</span>

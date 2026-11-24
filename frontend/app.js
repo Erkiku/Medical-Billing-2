@@ -23,12 +23,14 @@ MedHub.menuItems = [
 MedHub.getMenuItems = function() {
   const isSuper = (MedHub.state.user && MedHub.state.user.role === "superadmin") || 
                   (localStorage.getItem("medhub_user_role") === "superadmin");
-  const items = [];
   if (isSuper) {
-    items.push({ id: "admin", label: "Admin Control Center", icon: "shield" });
+    // DEVELOPER / ADMIN MENU ONLY: Retail store billing tabs removed as requested!
+    return [
+      { id: "admin-logins", label: "Stores & Login Monitor", icon: "shield" },
+      { id: "admin-stock", label: "Real-time Stock Monitor", icon: "medicines" }
+    ];
   }
-  items.push(...MedHub.menuItems);
-  return items;
+  return MedHub.menuItems;
 };
 
 MedHub.router = {
@@ -48,8 +50,10 @@ MedHub.router = {
 
     const isSuper = (MedHub.state.user && MedHub.state.user.role === "superadmin") || 
                     (localStorage.getItem("medhub_user_role") === "superadmin");
-    if (isSuper && (!this.currentPage || this.currentPage === "billing")) {
-      this.currentPage = "admin";
+    if (isSuper) {
+      if (!this.currentPage || this.currentPage === "billing" || !["admin", "admin-logins", "admin-stock"].includes(this.currentPage)) {
+        this.currentPage = "admin-logins";
+      }
     }
 
     const currentMenu = MedHub.getMenuItems();
@@ -63,7 +67,7 @@ MedHub.router = {
               <span class="brand-logo-icon">💊</span>
               <div class="brand-text-wrap">
                 <span class="brand-title">MedEduHub</span>
-                <span class="brand-sub">${isSuper ? 'Master Admin Portal' : 'Pharma OS v2.0'}</span>
+                <span class="brand-sub">${isSuper ? 'Developer Console' : 'Pharma OS v2.0'}</span>
               </div>
             `}
           </div>
@@ -79,10 +83,10 @@ MedHub.router = {
 
           <div class="sidebar-footer">
             <div class="user-profile-badge">
-              <div class="user-avatar">${isSuper ? "SA" : (MedHub.getInitials ? MedHub.getInitials(MedHub.state.user?.name) : "DA")}</div>
+              <div class="user-avatar">${isSuper ? "DEV" : (MedHub.getInitials ? MedHub.getInitials(MedHub.state.user?.name) : "DA")}</div>
               <div class="user-meta">
-                <span class="user-name">${MedHub.state.user?.name || (isSuper ? "Master Super Admin" : "Dr. Anil Kumar")}</span>
-                <span class="user-role">${isSuper ? 'Master SuperAdmin' : (MedHub.state.user?.role === 'admin' ? 'Pharmacist Admin' : (MedHub.state.user?.role || 'Pharmacist Admin'))}</span>
+                <span class="user-name">${MedHub.state.user?.name || (isSuper ? "Developer Admin" : "Dr. Anil Kumar")}</span>
+                <span class="user-role">${isSuper ? 'Platform Developer' : (MedHub.state.user?.role === 'admin' ? 'Pharmacist Admin' : (MedHub.state.user?.role || 'Pharmacist Admin'))}</span>
               </div>
             </div>
             <button type="button" class="btn-sidebar-logout" id="btn-logout" title="Sign Out">
@@ -169,8 +173,10 @@ MedHub.router = {
     const currentItem = menu.find(m => m.id === pageId) || MedHub.menuItems.find(m => m.id === pageId);
     const headingEl = document.getElementById("page-heading");
     if (headingEl) {
-      if (pageId === "admin") {
-        headingEl.innerText = "Master Admin Control Center";
+      if (pageId === "admin" || pageId === "admin-logins") {
+        headingEl.innerText = "Stores & Real-time Login Monitor";
+      } else if (pageId === "admin-stock") {
+        headingEl.innerText = "Real-time Stock Details Monitor";
       } else if (currentItem) {
         headingEl.innerText = currentItem.label;
       }
@@ -187,7 +193,17 @@ MedHub.router = {
 
     switch (pageId) {
       case "admin":
-        if (MedHub.admin) MedHub.admin.render(contentContainer);
+      case "admin-logins":
+        if (MedHub.admin) {
+          MedHub.admin.activeView = "logins";
+          MedHub.admin.render(contentContainer);
+        }
+        break;
+      case "admin-stock":
+        if (MedHub.admin) {
+          MedHub.admin.activeView = "stock";
+          MedHub.admin.render(contentContainer);
+        }
         break;
       case "dashboard":
         if (MedHub.dashboard) MedHub.dashboard.render(contentContainer);

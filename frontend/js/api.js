@@ -1414,6 +1414,86 @@ MedHub.api = {
     return true;
   },
 
+  async updateStockBatch(batchId, newQuantity, medicineId) {
+    const qty = Math.max(0, Number(newQuantity) || 0);
+    if (MedHub.supabaseClient && batchId) {
+      try {
+        await MedHub.supabaseClient
+          .from("medicine_batches")
+          .update({ quantity: qty })
+          .eq("id", batchId);
+      } catch (e) {
+        console.warn("updateStockBatch Supabase error:", e);
+      }
+    }
+
+    const localBatches = this._getLocalBatches();
+    const b = localBatches.find(x => String(x.id) === String(batchId));
+    if (b) {
+      b.quantity = qty;
+      this._saveLocalBatches(localBatches);
+    }
+    return true;
+  },
+
+  async getAllStockBatches() {
+    let list = [];
+    if (MedHub.supabaseClient) {
+      try {
+        const { data: batches, error } = await MedHub.supabaseClient
+          .from("medicine_batches")
+          .select("*, medicines(name, generic_name, company, category, pack_size, mrp, salt_composition)")
+          .order("created_at", { ascending: false });
+        if (!error && batches && batches.length) {
+          list = batches.map(b => ({
+            id: b.id,
+            medicine_id: b.medicine_id,
+            batch_no: b.batch_no || "BT-DEFAULT",
+            expiry_date: b.expiry_date,
+            purchase_price: Number(b.purchase_price) || 0,
+            selling_price: Number(b.selling_price) || Number(b.medicines?.mrp) || 0,
+            mrp: Number(b.medicines?.mrp) || Number(b.selling_price) || 0,
+            quantity: Number(b.quantity) || 0,
+            medicine_name: b.medicines?.name || "Medicine",
+            generic_name: b.medicines?.generic_name || "",
+            company: b.medicines?.company || "Pharma",
+            category: b.medicines?.category || "Tablet",
+            pack_size: b.medicines?.pack_size || "1x10",
+            salt_composition: b.medicines?.salt_composition || b.medicines?.generic_name || ""
+          }));
+        }
+      } catch (e) {
+        console.warn("getAllStockBatches Supabase error:", e);
+      }
+    }
+
+    if (!list.length) {
+      const meds = this._getLocalMedicines();
+      const batches = this._getLocalBatches();
+      list = batches.map(b => {
+        const med = meds.find(m => String(m.id) === String(b.medicine_id)) || {};
+        return {
+          id: b.id,
+          medicine_id: b.medicine_id,
+          batch_no: b.batch_no || "BT-01",
+          expiry_date: b.expiry_date,
+          purchase_price: Number(b.purchase_price) || 0,
+          selling_price: Number(b.selling_price) || Number(med.mrp) || 0,
+          mrp: Number(med.mrp) || Number(b.selling_price) || 0,
+          quantity: Number(b.quantity) || 0,
+          medicine_name: med.name || "Medicine",
+          generic_name: med.generic_name || "",
+          company: med.company || "Standard Pharma",
+          category: med.category || "Tablet",
+          pack_size: med.pack_size || "1x10",
+          salt_composition: med.salt_composition || med.generic_name || ""
+        };
+      });
+    }
+
+    return list;
+  },
+
   // 4. BILLS & SALES
   async getBills() {
     if (MedHub.supabaseClient) {
