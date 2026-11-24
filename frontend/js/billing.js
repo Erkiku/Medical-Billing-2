@@ -543,8 +543,11 @@ MedHub.billing = {
               </button>
             </div>
             <div class="modal-header-actions">
-              <button type="button" class="btn-primary" id="btn-do-print">
-                ${MedHub.icons.print} Direct Print
+              <button type="button" class="btn-primary btn-direct-print-enter" id="btn-do-print" autofocus title="1-Click Print (Shortcut: Enter ↵)">
+                ${MedHub.icons.print} Direct Print (Enter ↵)
+              </button>
+              <button type="button" class="btn-enter-print-now" id="btn-enter-print-now" title="Instant Print">
+                ↵ Print Now
               </button>
               <button type="button" class="btn-outline" id="btn-do-pdf">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download PDF
@@ -553,6 +556,14 @@ MedHub.billing = {
                 ${MedHub.icons.close}
               </button>
             </div>
+          </div>
+
+          <!-- DIRECT PRINT 1-CLICK BAR (VISIBLE WHEN NORMAL BILL ACTIVE) -->
+          <div class="instant-print-banner" id="instant-print-banner">
+            <span>⚡ <strong>Direct Print Active:</strong> Press <strong>Enter ↵</strong> on keyboard ya click karein instant 1-click print ke liye.</span>
+            <button type="button" class="btn-enter-print-pill" id="btn-banner-print-now">
+              ↵ Click to Print
+            </button>
           </div>
 
           <div class="modal-body-scroll">
@@ -732,11 +743,15 @@ MedHub.billing = {
     const normalView = document.getElementById("normal-bill-container");
     const digitalView = document.getElementById("digital-bill-container");
 
+    const banner = document.getElementById("instant-print-banner");
+
     tabNormal?.addEventListener("click", () => {
       tabNormal.classList.add("active");
       tabDigital.classList.remove("active");
       normalView.style.display = "block";
       digitalView.style.display = "none";
+      if (banner) banner.style.display = "flex";
+      document.getElementById("btn-do-print")?.focus();
     });
 
     tabDigital?.addEventListener("click", () => {
@@ -744,24 +759,11 @@ MedHub.billing = {
       tabNormal.classList.remove("active");
       digitalView.style.display = "block";
       normalView.style.display = "none";
+      if (banner) banner.style.display = "none";
     });
 
-    // Close Modal helper
-    const closeModal = () => {
-      modalWrap.innerHTML = "";
-      document.body.classList.remove("modal-open");
-    };
-
-    document.getElementById("btn-close-modal")?.addEventListener("click", closeModal);
-    modalWrap.querySelector(".modal-overlay")?.addEventListener("click", (e) => {
-      if (e.target.classList.contains("modal-overlay")) {
-        closeModal();
-      }
-    });
-
-    // Direct Instant Browser Print (Native Print Preview Dialog - ONLY NORMAL BILL)
-    document.getElementById("btn-do-print")?.addEventListener("click", () => {
-      // Ensure normal billing is active before printing
+    // 1-Click Direct Print trigger function (Zero further argument)
+    const triggerDirectPrint = () => {
       if (normalView && digitalView) {
         tabNormal?.classList.add("active");
         tabDigital?.classList.remove("active");
@@ -769,7 +771,42 @@ MedHub.billing = {
         digitalView.style.display = "none";
       }
       window.print();
+    };
+
+    document.getElementById("btn-do-print")?.addEventListener("click", triggerDirectPrint);
+    document.getElementById("btn-enter-print-now")?.addEventListener("click", triggerDirectPrint);
+    document.getElementById("btn-banner-print-now")?.addEventListener("click", triggerDirectPrint);
+
+    // Keyboard shortcut: Pressing Enter triggers Direct Print immediately
+    const printKeyHandler = (e) => {
+      if (e.key === "Enter" && !["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) {
+        e.preventDefault();
+        e.stopPropagation();
+        triggerDirectPrint();
+      } else if (e.key === "Escape") {
+        cleanupModal();
+      }
+    };
+    window.addEventListener("keydown", printKeyHandler);
+
+    // Close Modal helper
+    const cleanupModal = () => {
+      window.removeEventListener("keydown", printKeyHandler);
+      modalWrap.innerHTML = "";
+      document.body.classList.remove("modal-open");
+    };
+
+    document.getElementById("btn-close-modal")?.addEventListener("click", cleanupModal);
+    modalWrap.querySelector(".modal-overlay")?.addEventListener("click", (e) => {
+      if (e.target.classList.contains("modal-overlay")) {
+        cleanupModal();
+      }
     });
+
+    // Auto-focus direct print button for instant Enter key press
+    setTimeout(() => {
+      document.getElementById("btn-do-print")?.focus();
+    }, 60);
 
     // PDF Download via html2pdf (ONLY NORMAL BILLING PRINT)
     document.getElementById("btn-do-pdf")?.addEventListener("click", () => {

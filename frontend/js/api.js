@@ -797,36 +797,200 @@ MedHub.api = {
     return newSup;
   },
 
-  // 6. PURCHASES
+  // 6. PURCHASES & INWARD STOCK (Never erases existing store data)
+  _getLocalPurchases() {
+    try {
+      const ls = localStorage.getItem("medhub_purchases");
+      if (ls) {
+        const parsed = JSON.parse(ls);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return mockPurchases;
+  },
+
+  _saveLocalPurchases(list) {
+    try {
+      localStorage.setItem("medhub_purchases", JSON.stringify(list));
+    } catch (e) {}
+  },
+
+  async inwardStockFromPurchase(items) {
+    if (!Array.isArray(items) || !items.length) return;
+    for (const item of items) {
+      const medName = (item.medicine_name || item.name || "").trim();
+      if (!medName) continue;
+      const qty = Number(item.quantity) || 0;
+      if (qty <= 0) continue;
+      const rate = Number(item.purchase_rate) || 0;
+      const mrp = Number(item.mrp) || rate || 0;
+      const batchNo = (item.batch_no || "BT-" + Date.now().toString().slice(-4)).trim();
+      const expDate = item.expiry_date || "2028-12-31";
+
+      // 1. Check if medicine already exists in memory or state
+      let existingMed = (MedHub.state.medicines || mockMedicines).find(
+        m => m.name && m.name.toLowerCase() === medName.toLowerCase()
+      );
+
+      if (existingMed) {
+        existingMed.available_qty = (Number(existingMed.available_qty) || 0) + qty;
+        existingMed.status = existingMed.available_qty <= 0 ? "out" : (existingMed.available_qty <= (existingMed.reorder_level || 10) ? "low" : "in");
+        if (rate > 0) existingMed.purchase_price = rate;
+        if (mrp > 0) existingMed.mrp = mrp;
+
+        // Add or update batch
+        const existingBatch = mockBatches.find(b => b.medicine_id === existingMed.id && b.batch_no === batchNo);
+        if (existingBatch) {
+          existingBatch.quantity = (Number(existingBatch.quantity) || 0) + qty;
+          if (rate > 0) existingBatch.purchase_price = rate;
+        } else {
+          mockBatches.push({
+            id: "b-" + Date.now() + "-" + Math.floor(Math.random() * 100),
+            medicine_id: existingMed.id,
+            batch_no: batchNo,
+            expiry_date: expDate,
+            purchase_price: rate,
+            selling_price: mrp,
+            quantity: qty
+          });
+        }
+
+        // Supabase sync if connected
+        if (MedHub.supabaseClient) {
+          try {
+            await MedHub.supabaseClient.from("medicine_batches").insert({
+              medicine_id: existingMed.id,
+              batch_no: batchNo,
+              expiry_date: expDate,
+              purchase_price: rate,
+              selling_price: mrp,
+              quantity: qty
+            });
+          } catch (e) {}
+        }
+      } else {
+        // Create new medicine and batch
+        const newMedId = "med-" + Date.now() + "-" + Math.floor(Math.random() * 100);
+        const newMed = {
+          id: newMedId,
+          name: medName,
+          generic_name: medName,
+          company: item.company || "Pharma Distributor",
+          category: "Tablet",
+          pack_size: item.pack_size || "1x10",
+          purchase_price: rate,
+          selling_rate: mrp,
+          mrp: mrp,
+          gst_percent: 12,
+          reorder_level: 10,
+          rack_location: "General",
+          available_qty: qty,
+          nearest_expiry: expDate,
+          status: "in"
+        };
+        mockMedicines.push(newMed);
+        if (MedHub.state.medicines) MedHub.state.medicines.push(newMed);
+
+        mockBatches.push({
+          id: "b-" + Date.now() + "-" + Math.floor(Math.random() * 100),
+          medicine_id: newMedId,
+          batch_no: batchNo,
+          expiry_date: expDate,
+          purchase_price: rate,
+          selling_price: mrp,
+          quantity: qty
+        });
+
+        // Supabase sync if connected
+        if (MedHub.supabaseClient) {
+          try {
+            const { data: dbMed } = await MedHub.supabaseClient
+              .from("medicines")
+              .insert({
+                name: newMed.name,
+                generic_name: newMed.generic_name,
+                company: newMed.company,
+                category: newMed.category,
+                mrp: newMed.mrp,
+                gst_percent: 12
+              })
+              .select()
+              .maybeSingle();
+
+            if (dbMed && dbMed.id) {
+              await MedHub.supabaseClient.from("medicine_batches").insert({
+                medicine_id: dbMed.id,
+                batch_no: batchNo,
+                expiry_date: expDate,
+                purchase_price: rate,
+                selling_price: mrp,
+                quantity: qty
+              });
+            }
+          } catch (e) {}
+        }
+      }
+    }
+  },
+
   async getPurchases() {
+    let cloudData = null;
     if (MedHub.supabaseClient) {
       try {
         const { data, error } = await MedHub.supabaseClient
           .from("purchases")
           .select("*")
           .order("created_at", { ascending: false });
-        if (!error && data && data.length) return data;
+        if (!error && data && data.length) cloudData = data;
       } catch (e) {}
     }
-    return mockPurchases;
+    const local = this._getLocalPurchases();
+    if (cloudData && cloudData.length) {
+      // Merge unique without wiping local purchases
+      const map = new Map();
+      local.forEach(p => map.set(String(p.id || p.invoice_no), p));
+      cloudData.forEach(p => {
+        const k = String(p.id || p.invoice_no);
+        map.set(k, { ...(map.get(k) || {}), ...p });
+      });
+      return Array.from(map.values());
+    }
+    return local;
   },
 
   async createPurchase(purchaseData) {
+    const newPur = {
+      id: "pur-" + Date.now(),
+      created_at: new Date().toISOString(),
+      ...purchaseData
+    };
+
     if (MedHub.supabaseClient) {
       try {
         const { data, error } = await MedHub.supabaseClient
           .from("purchases")
           .insert(purchaseData)
           .select()
-          .single();
+          .maybeSingle();
         if (!error && data) {
-          mockPurchases.unshift(data);
-          return data;
+          newPur.id = data.id || newPur.id;
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn("createPurchase Supabase error, stored locally:", e);
+      }
     }
-    const newPur = { id: "pur-" + Date.now(), ...purchaseData };
-    mockPurchases.unshift(newPur);
+
+    // Save locally without erasing existing purchases!
+    const current = this._getLocalPurchases();
+    current.unshift(newPur);
+    this._saveLocalPurchases(current);
+    mockPurchases = current;
+
+    // Automatically inward purchased medicines into stock batches
+    if (Array.isArray(purchaseData.items) && purchaseData.items.length > 0) {
+      await this.inwardStockFromPurchase(purchaseData.items);
+    }
+
     return newPur;
   }
 };
