@@ -225,7 +225,7 @@ MedHub.purchases = {
                       <th style="min-width: 190px;">Medicine Name *</th>
                       <th style="width: 120px;">Batch No *</th>
                       <th style="width: 120px;">Expiry *</th>
-                      <th style="width: 85px;">Pack</th>
+                      <th style="width: 115px;">Pack</th>
                       <th style="width: 80px;">Qty *</th>
                       <th style="width: 100px;">Pur. Rate (₹) *</th>
                       <th style="width: 90px;">MRP (₹)</th>
@@ -292,6 +292,18 @@ MedHub.purchases = {
       const randomBatch = "BT-" + Date.now().toString().slice(-4);
       const defaultExp = new Date(Date.now() + 365 * 24 * 3600 * 1000 * 2).toISOString().slice(0, 10);
 
+      let packA = "1";
+      let packB = "10";
+      if (prefill?.pack_size) {
+        const parts = String(prefill.pack_size).split(/[xX×]/);
+        if (parts.length >= 2) {
+          packA = parts[0].trim() || "1";
+          packB = parts[1].trim() || "10";
+        } else if (parts.length === 1 && parts[0].trim()) {
+          packB = parts[0].trim();
+        }
+      }
+
       tr.innerHTML = `
         <td style="text-align: center; font-weight: 600; color: #64748b;">${rowCount}</td>
         <td>
@@ -322,12 +334,23 @@ MedHub.purchases = {
           />
         </td>
         <td>
-          <input 
-            type="text" 
-            class="pur-item-pack" 
-            placeholder="1x10" 
-            value="${prefill?.pack_size || "1x10"}" 
-          />
+          <div class="pur-pack-duo-wrap">
+            <input 
+              type="text" 
+              class="pur-item-pack-a" 
+              placeholder="1" 
+              value="${packA}" 
+              title="Strips / Outer Pack"
+            />
+            <span class="pur-pack-x">x</span>
+            <input 
+              type="text" 
+              class="pur-item-pack-b" 
+              placeholder="10" 
+              value="${packB}" 
+              title="Units / Tablets per pack"
+            />
+          </div>
         </td>
         <td>
           <input 
@@ -383,7 +406,8 @@ MedHub.purchases = {
       const qtyInput = tr.querySelector(".pur-item-qty");
       const rateInput = tr.querySelector(".pur-item-rate");
       const mrpInput = tr.querySelector(".pur-item-mrp");
-      const packInput = tr.querySelector(".pur-item-pack");
+      const packAInput = tr.querySelector(".pur-item-pack-a");
+      const packBInput = tr.querySelector(".pur-item-pack-b");
       const totalInput = tr.querySelector(".pur-item-total");
       const delBtn = tr.querySelector(".pur-del-btn");
 
@@ -394,7 +418,15 @@ MedHub.purchases = {
         if (matched) {
           if (!mrpInput.value && matched.mrp) mrpInput.value = matched.mrp;
           if (!rateInput.value && matched.purchase_price) rateInput.value = matched.purchase_price;
-          if (matched.pack_size) packInput.value = matched.pack_size;
+          if (matched.pack_size) {
+            const parts = String(matched.pack_size).split(/[xX×]/);
+            if (parts.length >= 2) {
+              if (packAInput) packAInput.value = parts[0].trim() || "1";
+              if (packBInput) packBInput.value = parts[1].trim() || "10";
+            } else if (packBInput) {
+              packBInput.value = matched.pack_size.trim();
+            }
+          }
           calcRow();
         }
       });
@@ -486,7 +518,9 @@ MedHub.purchases = {
         const name = tr.querySelector(".pur-item-name")?.value.trim();
         const batchNo = tr.querySelector(".pur-item-batch")?.value.trim();
         const expDate = tr.querySelector(".pur-item-exp")?.value;
-        const packSize = tr.querySelector(".pur-item-pack")?.value.trim() || "1x10";
+        const packA = tr.querySelector(".pur-item-pack-a")?.value.trim() || "1";
+        const packB = tr.querySelector(".pur-item-pack-b")?.value.trim() || "10";
+        const packSize = `${packA}x${packB}`;
         const qty = Number(tr.querySelector(".pur-item-qty")?.value) || 0;
         const purchaseRate = Number(tr.querySelector(".pur-item-rate")?.value) || 0;
         const mrp = Number(tr.querySelector(".pur-item-mrp")?.value) || purchaseRate;
