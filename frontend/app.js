@@ -20,6 +20,17 @@ MedHub.menuItems = [
   { id: "settings", label: "Store Settings", icon: "settings" }
 ];
 
+MedHub.getMenuItems = function() {
+  const isSuper = (MedHub.state.user && MedHub.state.user.role === "superadmin") || 
+                  (localStorage.getItem("medhub_user_role") === "superadmin");
+  const items = [];
+  if (isSuper) {
+    items.push({ id: "admin", label: "Admin Control Center", icon: "shield" });
+  }
+  items.push(...MedHub.menuItems);
+  return items;
+};
+
 MedHub.router = {
   currentPage: "billing",
 
@@ -35,6 +46,14 @@ MedHub.router = {
       return;
     }
 
+    const isSuper = (MedHub.state.user && MedHub.state.user.role === "superadmin") || 
+                    (localStorage.getItem("medhub_user_role") === "superadmin");
+    if (isSuper && (!this.currentPage || this.currentPage === "billing")) {
+      this.currentPage = "admin";
+    }
+
+    const currentMenu = MedHub.getMenuItems();
+
     appEl.innerHTML = `
       <div class="app-layout">
         <!-- SIDEBAR NAVIGATION (SCREENSHOT 3 EXACT LAYOUT) -->
@@ -44,13 +63,13 @@ MedHub.router = {
               <span class="brand-logo-icon">💊</span>
               <div class="brand-text-wrap">
                 <span class="brand-title">MedEduHub</span>
-                <span class="brand-sub">Pharma OS v2.0</span>
+                <span class="brand-sub">${isSuper ? 'Master Admin Portal' : 'Pharma OS v2.0'}</span>
               </div>
             `}
           </div>
 
           <nav class="sidebar-nav" id="sidebar-menu">
-            ${MedHub.menuItems.map(item => `
+            ${currentMenu.map(item => `
               <button type="button" class="nav-item ${item.id === this.currentPage ? 'active' : ''}" data-page="${item.id}">
                 <span class="nav-icon">${MedHub.icons[item.icon] || ""}</span>
                 <span class="nav-label">${item.label}</span>
@@ -60,14 +79,14 @@ MedHub.router = {
 
           <div class="sidebar-footer">
             <div class="user-profile-badge">
-              <div class="user-avatar">${MedHub.getInitials ? MedHub.getInitials(MedHub.state.user.name) : "DA"}</div>
+              <div class="user-avatar">${isSuper ? "SA" : (MedHub.getInitials ? MedHub.getInitials(MedHub.state.user?.name) : "DA")}</div>
               <div class="user-meta">
-                <span class="user-name">${MedHub.state.user.name || "Dr. Anil Kumar"}</span>
-                <span class="user-role">${MedHub.state.user.role === 'admin' ? 'Pharmacist Admin' : (MedHub.state.user.role || 'Pharmacist Admin')}</span>
+                <span class="user-name">${MedHub.state.user?.name || (isSuper ? "Master Super Admin" : "Dr. Anil Kumar")}</span>
+                <span class="user-role">${isSuper ? 'Master SuperAdmin' : (MedHub.state.user?.role === 'admin' ? 'Pharmacist Admin' : (MedHub.state.user?.role || 'Pharmacist Admin'))}</span>
               </div>
             </div>
             <button type="button" class="btn-sidebar-logout" id="btn-logout" title="Sign Out">
-              ${MedHub.icons.logout}
+              ${MedHub.icons.logout || '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>'}
             </button>
           </div>
         </aside>
@@ -146,10 +165,15 @@ MedHub.router = {
     });
 
     // Update topbar heading
-    const currentItem = MedHub.menuItems.find(m => m.id === pageId);
+    const menu = MedHub.getMenuItems ? MedHub.getMenuItems() : MedHub.menuItems;
+    const currentItem = menu.find(m => m.id === pageId) || MedHub.menuItems.find(m => m.id === pageId);
     const headingEl = document.getElementById("page-heading");
-    if (headingEl && currentItem) {
-      headingEl.innerText = currentItem.label;
+    if (headingEl) {
+      if (pageId === "admin") {
+        headingEl.innerText = "Master Admin Control Center";
+      } else if (currentItem) {
+        headingEl.innerText = currentItem.label;
+      }
     }
 
     // Always maintain real-time store header in topbar
@@ -162,6 +186,9 @@ MedHub.router = {
     window.scrollTo({ top: 0, behavior: "smooth" });
 
     switch (pageId) {
+      case "admin":
+        if (MedHub.admin) MedHub.admin.render(contentContainer);
+        break;
       case "dashboard":
         if (MedHub.dashboard) MedHub.dashboard.render(contentContainer);
         break;
@@ -196,6 +223,10 @@ MedHub.router = {
 
   logout() {
     MedHub.state.isAuthenticated = false;
+    MedHub.state.impersonatedStore = null;
+    const banner = document.getElementById("superadmin-return-banner");
+    if (banner) banner.style.display = "none";
+
     if (MedHub.login) {
       MedHub.login.currentStep = 1;
       MedHub.login.tempAuth = { email: "", name: "", password: "" };
@@ -205,6 +236,8 @@ MedHub.router = {
     try {
       localStorage.setItem("medhub_authenticated", "false");
       localStorage.removeItem("medhub_current_user");
+      localStorage.removeItem("medhub_user_role");
+      localStorage.removeItem("medhub_impersonated_store");
     } catch (e) {}
     MedHub.toast("Successfully signed out.", "info");
     this.init();

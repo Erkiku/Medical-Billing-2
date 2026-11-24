@@ -150,6 +150,16 @@ MedHub.api = {
       localStorage.setItem("medhub_store_" + email, JSON.stringify(merged));
       localStorage.setItem("mededuhub_store_settings", JSON.stringify(merged));
       localStorage.setItem("medhub_current_user", email);
+
+      // Sync to all stores directory for Master Admin
+      let allStores = this._getAllLocalStores();
+      const existingIdx = allStores.findIndex(s => s.user_email?.toLowerCase() === email || s.id === merged.id);
+      if (existingIdx >= 0) {
+        allStores[existingIdx] = { ...allStores[existingIdx], ...merged };
+      } else {
+        allStores.push(merged);
+      }
+      this._saveAllLocalStores(allStores);
     } catch (e) {}
     mockStore = merged;
     MedHub.state.store = merged;
@@ -183,6 +193,324 @@ MedHub.api = {
     return true;
   },
 
+  // Master Admin Credentials & All Stores Directory
+  _getMasterAdminCredentials() {
+    try {
+      const ls = localStorage.getItem("medhub_master_admin");
+      if (ls) {
+        const parsed = JSON.parse(ls);
+        if (parsed.username && parsed.password) return parsed;
+      }
+    } catch (e) {}
+    const defaultMaster = {
+      username: "masteradmin",
+      password: "superpassword123",
+      role: "superadmin",
+      name: "Platform Master Administrator",
+      email: "masteradmin@mededuhub.com"
+    };
+    try {
+      localStorage.setItem("medhub_master_admin", JSON.stringify(defaultMaster));
+    } catch (e) {}
+    return defaultMaster;
+  },
+
+  _saveMasterAdminCredentials(creds) {
+    try {
+      localStorage.setItem("medhub_master_admin", JSON.stringify(creds));
+    } catch (e) {}
+  },
+
+  _getAllLocalStores() {
+    try {
+      const ls = localStorage.getItem("medhub_all_stores");
+      if (ls) {
+        const parsed = JSON.parse(ls);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    const initialStores = [
+      {
+        id: "store-001",
+        store_name: "MedEdu Pharmacy",
+        pharmacist_name: "Dr. Anil Kumar",
+        username: "admin",
+        user_email: "admin@mededuhub.com",
+        phone: "9876543210",
+        address: "Shop 4, Medical Plaza, Main Road, Mumbai - 400001",
+        gstin: "27ABCDE1234F1Z5",
+        dl_no_20b: "MH-20-DL-12345",
+        dl_no_21b: "DL-21B-654321",
+        drug_license_no: "MH-20-DL-12345",
+        fssai_no: "10012345678901",
+        upi_id: "sagarstore@upi",
+        status: "active",
+        created_at: "2026-01-15T10:00:00Z"
+      },
+      {
+        id: "store-002",
+        store_name: "Sagar Medical Store",
+        pharmacist_name: "Sagar Sharma",
+        username: "sagar",
+        user_email: "sagar@mededuhub.com",
+        phone: "9811223344",
+        address: "Shop 12, Gandhi Chowk, Bhagalpur - 812001",
+        gstin: "10ABCDE1234F1Z1",
+        dl_no_20b: "BR-20-DL-98765",
+        dl_no_21b: "BR-21-DL-54321",
+        drug_license_no: "BR-20-DL-98765",
+        fssai_no: "10098765432109",
+        upi_id: "sagarstore@upi",
+        status: "active",
+        created_at: "2026-02-10T14:30:00Z"
+      },
+      {
+        id: "store-003",
+        store_name: "Apex Chemist & Druggist",
+        pharmacist_name: "Rajesh Verma",
+        username: "apex",
+        user_email: "apex@mededuhub.com",
+        phone: "9822334455",
+        address: "Plot 8, Civil Lines, New Delhi - 110054",
+        gstin: "07AABCA5678G1Z2",
+        dl_no_20b: "DL-20B-112233",
+        dl_no_21b: "DL-21B-445566",
+        drug_license_no: "DL-20B-112233",
+        fssai_no: "10055443322110",
+        upi_id: "apexchemist@okhdfcbank",
+        status: "active",
+        created_at: "2026-03-01T09:15:00Z"
+      }
+    ];
+    try {
+      localStorage.setItem("medhub_all_stores", JSON.stringify(initialStores));
+    } catch (e) {}
+    return initialStores;
+  },
+
+  _saveAllLocalStores(stores) {
+    try {
+      localStorage.setItem("medhub_all_stores", JSON.stringify(stores));
+    } catch (e) {}
+  },
+
+  async getAllStores() {
+    let cloudStores = null;
+    if (MedHub.supabaseClient) {
+      try {
+        const { data, error } = await MedHub.supabaseClient
+          .from("store_settings")
+          .select("*")
+          .order("id", { ascending: true });
+        if (!error && data && data.length > 0) {
+          cloudStores = data;
+        }
+      } catch (e) {
+        console.warn("getAllStores Supabase error:", e);
+      }
+    }
+
+    const localStores = this._getAllLocalStores();
+    const mergedList = [...(cloudStores || [])];
+
+    localStores.forEach(ls => {
+      if (!mergedList.some(s => s.user_email?.toLowerCase() === ls.user_email?.toLowerCase())) {
+        mergedList.push(ls);
+      }
+    });
+
+    // Attach user status, bill counts & total revenue for each store
+    const localUsers = this._getLocalUsers();
+    mergedList.forEach(s => {
+      const email = s.user_email?.toLowerCase();
+      const user = localUsers.find(u => u.email?.toLowerCase() === email || u.username?.toLowerCase() === email);
+      if (user) {
+        s.username = user.username || s.username || email.split("@")[0];
+        s.pharmacist_name = s.pharmacist_name || user.full_name || user.name;
+        if (!s.status) s.status = user.status || "active";
+      } else {
+        if (!s.status) s.status = "active";
+        if (!s.username) s.username = s.user_email ? s.user_email.split("@")[0] : "pharmacist";
+      }
+    });
+
+    this._saveAllLocalStores(mergedList);
+    return mergedList;
+  },
+
+  async createStoreAdmin(storePayload, userCredentials) {
+    const email = (storePayload.user_email || `${userCredentials.username}@mededuhub.com`).toLowerCase().trim();
+    const newStore = {
+      id: "store-" + Date.now(),
+      ...storePayload,
+      user_email: email,
+      status: "active",
+      created_at: new Date().toISOString()
+    };
+
+    // 1. Save store settings
+    await this.saveStoreSettings(newStore, email);
+
+    // 2. Create user login credentials
+    if (userCredentials && userCredentials.username && userCredentials.password) {
+      await this.createAuthorizedUser({
+        username: userCredentials.username,
+        email: email,
+        password: userCredentials.password,
+        full_name: storePayload.pharmacist_name || storePayload.store_name,
+        role: "admin",
+        status: "active"
+      });
+    }
+
+    // 3. Save to all stores directory
+    const all = this._getAllLocalStores();
+    all.unshift(newStore);
+    this._saveAllLocalStores(all);
+
+    return newStore;
+  },
+
+  async updateStoreAdmin(userEmailOrId, updatedData) {
+    const all = this._getAllLocalStores();
+    const idx = all.findIndex(s => 
+      String(s.id) === String(userEmailOrId) || 
+      s.user_email?.toLowerCase() === String(userEmailOrId).toLowerCase()
+    );
+
+    if (idx >= 0) {
+      all[idx] = { ...all[idx], ...updatedData, updated_at: new Date().toISOString() };
+      this._saveAllLocalStores(all);
+
+      const email = all[idx].user_email;
+      if (email) {
+        try {
+          localStorage.setItem("medhub_store_" + email.toLowerCase(), JSON.stringify(all[idx]));
+        } catch (e) {}
+      }
+
+      // Update Supabase if available
+      if (MedHub.supabaseClient && all[idx].id) {
+        try {
+          await MedHub.supabaseClient
+            .from("store_settings")
+            .update(all[idx])
+            .eq("user_email", email);
+        } catch (e) {}
+      }
+      return all[idx];
+    }
+    return null;
+  },
+
+  async setStoreStatus(userEmailOrId, status) {
+    const key = String(userEmailOrId).toLowerCase().trim();
+    const all = this._getAllLocalStores();
+    const idx = all.findIndex(s => 
+      String(s.id).toLowerCase() === key || 
+      s.user_email?.toLowerCase() === key ||
+      s.username?.toLowerCase() === key ||
+      (s.user_email && s.user_email.toLowerCase().startsWith(key + "@"))
+    );
+
+    if (idx >= 0) {
+      all[idx].status = status;
+      this._saveAllLocalStores(all);
+
+      // Also update in authorized_users
+      const users = this._getLocalUsers();
+      const targetEmail = all[idx].user_email?.toLowerCase();
+      const targetUsername = all[idx].username?.toLowerCase();
+      const uIdx = users.findIndex(u => 
+        u.email?.toLowerCase() === targetEmail || 
+        u.username?.toLowerCase() === targetUsername ||
+        u.username?.toLowerCase() === key ||
+        u.email?.toLowerCase() === key ||
+        (u.email && u.email.toLowerCase().startsWith(key + "@"))
+      );
+      if (uIdx >= 0) {
+        users[uIdx].status = status;
+        this._saveLocalUsers(users);
+      }
+
+      if (MedHub.supabaseClient) {
+        try {
+          await MedHub.supabaseClient
+            .from("store_settings")
+            .update({ status: status })
+            .eq("user_email", all[idx].user_email);
+          await MedHub.supabaseClient
+            .from("authorized_users")
+            .update({ status: status })
+            .eq("email", all[idx].user_email);
+        } catch (e) {}
+      }
+      return true;
+    } else {
+      // If store is not yet in directory list, update directly in authorized users
+      const users = this._getLocalUsers();
+      const uIdx = users.findIndex(u => 
+        u.username?.toLowerCase() === key ||
+        u.email?.toLowerCase() === key ||
+        (u.email && u.email.toLowerCase().startsWith(key + "@"))
+      );
+      if (uIdx >= 0) {
+        users[uIdx].status = status;
+        this._saveLocalUsers(users);
+        return true;
+      }
+    }
+    return false;
+  },
+
+  async resetStorePassword(usernameOrEmail, newPassword) {
+    const clean = usernameOrEmail.toLowerCase().trim();
+    const users = this._getLocalUsers();
+    const u = users.find(u => u.username?.toLowerCase() === clean || u.email?.toLowerCase() === clean);
+    if (u) {
+      u.password = newPassword.trim();
+      this._saveLocalUsers(users);
+
+      if (MedHub.supabaseClient) {
+        try {
+          await MedHub.supabaseClient
+            .from("authorized_users")
+            .update({ password: newPassword.trim() })
+            .or(`username.ilike.${clean},email.ilike.${clean}`);
+        } catch (e) {}
+      }
+      return true;
+    }
+    return false;
+  },
+
+  async deleteStore(userEmailOrId) {
+    let all = this._getAllLocalStores();
+    const store = all.find(s => String(s.id) === String(userEmailOrId) || s.user_email?.toLowerCase() === String(userEmailOrId).toLowerCase());
+    if (store) {
+      all = all.filter(s => s !== store);
+      this._saveAllLocalStores(all);
+
+      try {
+        localStorage.removeItem("medhub_store_" + store.user_email?.toLowerCase());
+      } catch (e) {}
+
+      // Delete from authorized users
+      let users = this._getLocalUsers();
+      users = users.filter(u => u.email?.toLowerCase() !== store.user_email?.toLowerCase() && u.username !== store.username);
+      this._saveLocalUsers(users);
+
+      if (MedHub.supabaseClient) {
+        try {
+          await MedHub.supabaseClient.from("store_settings").delete().eq("user_email", store.user_email);
+          await MedHub.supabaseClient.from("authorized_users").delete().eq("email", store.user_email);
+        } catch (e) {}
+      }
+      return true;
+    }
+    return false;
+  },
+
   // Helper for offline & per-user local storage
   _getLocalUsers() {
     try {
@@ -204,8 +532,8 @@ MedHub.api = {
   },
 
   // 1.5. AUTHORIZED USERS & AUTHENTICATION
-  // Supports existing accounts (with password verification) & automatic registration for new users!
-  async authenticateUser(usernameOrEmail, password) {
+  // Supports Store Pharmacist Login & Master Admin Super Portal
+  async authenticateUser(usernameOrEmail, password, portalMode = "store") {
     if (!usernameOrEmail || !password) {
       return { success: false, message: "Please provide both username/email and password." };
     }
@@ -214,7 +542,65 @@ MedHub.api = {
     const cleanPass = password.trim();
     const cleanEmail = cleanInput.includes("@") ? cleanInput : `${cleanInput}@mededuhub.com`;
 
-    // 1. Check Supabase Database
+    // 1. CHECK MASTER ADMIN CREDENTIALS
+    const masterAdmin = this._getMasterAdminCredentials();
+    const isMasterUser = (cleanInput === masterAdmin.username.toLowerCase() || cleanInput === masterAdmin.email.toLowerCase());
+    const isMasterPass = (cleanPass === masterAdmin.password);
+
+    if (portalMode === "superadmin") {
+      // Must match Master Admin credentials
+      if (isMasterUser && isMasterPass) {
+        return {
+          success: true,
+          isSuperAdmin: true,
+          isNew: false,
+          user: {
+            id: "superadmin-root",
+            username: masterAdmin.username,
+            email: masterAdmin.email,
+            name: masterAdmin.name || "Platform Master Administrator",
+            role: "superadmin"
+          }
+        };
+      } else {
+        return {
+          success: false,
+          message: "🚫 Unauthorized: Invalid Master Admin Username or Security Key. Access restricted to Platform Owner."
+        };
+      }
+    }
+
+    // If logging in via standard store login with Master Admin credentials:
+    if (isMasterUser && isMasterPass) {
+      return {
+        success: true,
+        isSuperAdmin: true,
+        isNew: false,
+        user: {
+          id: "superadmin-root",
+          username: masterAdmin.username,
+          email: masterAdmin.email,
+          name: masterAdmin.name || "Platform Master Administrator",
+          role: "superadmin"
+        }
+      };
+    }
+
+    // 2. CHECK IF STORE ACCOUNT IS SUSPENDED
+    const allStores = this._getAllLocalStores();
+    const matchedStore = allStores.find(s => 
+      s.user_email?.toLowerCase() === cleanEmail || 
+      s.user_email?.toLowerCase() === cleanInput ||
+      s.username?.toLowerCase() === cleanInput
+    );
+    if (matchedStore && matchedStore.status === "suspended") {
+      return {
+        success: false,
+        message: `🚫 Store Suspended: Your store account "${matchedStore.store_name || cleanInput}" has been suspended by the Master Administrator. Contact support.`
+      };
+    }
+
+    // 3. Check Supabase Database for Store Pharmacist
     if (MedHub.supabaseClient) {
       try {
         const { data, error } = await MedHub.supabaseClient
@@ -224,7 +610,12 @@ MedHub.api = {
           .maybeSingle();
 
         if (!error && data) {
-          // User exists in Supabase! Check password:
+          if (data.status === "suspended") {
+            return {
+              success: false,
+              message: "🚫 Store Suspended: Your store account has been deactivated by the Master Administrator."
+            };
+          }
           if (data.password === cleanPass) {
             return {
               success: true,
@@ -249,13 +640,19 @@ MedHub.api = {
       }
     }
 
-    // 2. Check local users cache
+    // 4. Check local users cache
     const localUsers = this._getLocalUsers();
     const existingLocal = localUsers.find(
       u => u.username?.toLowerCase() === cleanInput || u.email?.toLowerCase() === cleanInput
     );
 
     if (existingLocal) {
+      if (existingLocal.status === "suspended") {
+        return {
+          success: false,
+          message: "🚫 Store Suspended: Your store account has been deactivated by the Master Administrator."
+        };
+      }
       if (
         existingLocal.password === cleanPass ||
         (cleanInput === "admin" && (cleanPass === "123456" || cleanPass === "admin123"))
@@ -279,7 +676,7 @@ MedHub.api = {
       }
     }
 
-    // 3. Root admin credentials fallback
+    // 5. Root admin credentials fallback
     if (
       (cleanInput === "admin" || cleanInput === "admin@mededuhub.com") &&
       (cleanPass === "123456" || cleanPass === "admin123")
@@ -296,7 +693,7 @@ MedHub.api = {
       };
     }
 
-    // 4. NEW USER: Auto-register new pharmacist account!
+    // 6. NEW USER: Auto-register new pharmacist account!
     const newUser = {
       id: Date.now(),
       username: cleanInput,
@@ -308,11 +705,9 @@ MedHub.api = {
       created_at: new Date().toISOString()
     };
 
-    // Save to local users list
     localUsers.push(newUser);
     this._saveLocalUsers(localUsers);
 
-    // Save to Supabase if available
     if (MedHub.supabaseClient) {
       try {
         const { data: dbUser } = await MedHub.supabaseClient

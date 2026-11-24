@@ -10,6 +10,7 @@ window.MedHub = window.MedHub || {};
 
 MedHub.login = {
   currentStep: 1, // 1 = Auth credentials, 2 = Store details
+  portalMode: "store", // "store" (Pharmacist) or "superadmin" (Master Admin)
   isNewStore: false,
   storeData: null,
   authError: null,
@@ -81,11 +82,33 @@ MedHub.login = {
   },
 
   // --------------------------------------------------------------------------
-  // STEP 1: USERNAME & PASSWORD FORM (INTEGRATED INTO TEMPLATE)
+  // STEP 1: USERNAME & PASSWORD FORM (WITH MASTER ADMIN PORTAL SWITCHER)
   // --------------------------------------------------------------------------
   renderStep1() {
+    const isSuper = (this.portalMode === "superadmin");
+
     return `
       <form id="step1-auth-form" class="template-auth-form">
+        <!-- PORTAL SELECTOR: STORE PHARMACIST vs MASTER ADMIN -->
+        <div class="login-portal-switcher" style="display: flex; background: rgba(0, 0, 0, 0.22); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 30px; padding: 4px; margin-bottom: 20px;">
+          <button type="button" class="portal-switch-btn ${!isSuper ? 'active' : ''}" data-mode="store" style="flex: 1; padding: 8px 10px; border-radius: 25px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; ${!isSuper ? 'background: #ffffff; color: #0f766e; box-shadow: 0 2px 8px rgba(0,0,0,0.15);' : 'background: transparent; color: #e2e8f0;'}">
+            🏪 Store Login
+          </button>
+          <button type="button" class="portal-switch-btn ${isSuper ? 'active' : ''}" data-mode="superadmin" style="flex: 1; padding: 8px 10px; border-radius: 25px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; ${isSuper ? 'background: #fbbf24; color: #78350f; box-shadow: 0 2px 8px rgba(0,0,0,0.15);' : 'background: transparent; color: #e2e8f0;'}">
+            🛡️ Master Admin
+          </button>
+        </div>
+
+        ${isSuper ? `
+          <div style="background: rgba(15, 23, 42, 0.55); border: 1.5px solid #fbbf24; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 22px;">🛡️</span>
+            <div>
+              <div style="font-size: 12px; font-weight: 800; color: #fbbf24; letter-spacing: 0.5px;">MASTER ADMIN CONTROL ACCESS</div>
+              <div style="font-size: 11px; color: #e2e8f0;">Manage all stores, licenses, status & platform governance</div>
+            </div>
+          </div>
+        ` : ""}
+
         <!-- ERROR BANNER IF UNAUTHORIZED / WRONG CREDENTIALS -->
         ${this.authError ? `
           <div class="template-auth-error">
@@ -94,27 +117,27 @@ MedHub.login = {
         ` : ""}
 
         <div class="template-field-wrap">
-          <label class="template-field-label">Username / Login ID</label>
+          <label class="template-field-label">${isSuper ? 'Master Admin Username / ID' : 'Username / Login ID'}</label>
           <input 
             type="text" 
             id="login-email" 
             class="template-field-input" 
             value="${this.tempAuth.username || this.tempAuth.email || ""}" 
-            placeholder="Enter authorized username" 
+            placeholder="${isSuper ? 'Enter master admin username (e.g. masteradmin)' : 'Enter authorized username'}" 
             required 
             autofocus 
           />
         </div>
 
         <div class="template-field-wrap">
-          <label class="template-field-label">Password / Security PIN</label>
+          <label class="template-field-label">${isSuper ? 'Master Security Key / Password' : 'Password / Security PIN'}</label>
           <div class="template-password-wrap">
             <input 
               type="password" 
               id="login-password" 
               class="template-field-input" 
               value="${this.tempAuth.password || ""}" 
-              placeholder="Enter your security PIN" 
+              placeholder="${isSuper ? 'Enter master admin security key' : 'Enter your security PIN'}" 
               required 
             />
             <button type="button" id="btn-toggle-password" class="template-eye-btn" title="View or Hide Password" tabindex="-1">
@@ -131,8 +154,8 @@ MedHub.login = {
         </div>
 
         <!-- PILL BUTTON (EXACT TEMPLATE PILL BUTTON SHAPE & TEAL COLOR) -->
-        <button type="submit" class="template-pill-btn" id="btn-submit-step1">
-          <span>Sign In to Pharma OS</span>
+        <button type="submit" class="template-pill-btn" id="btn-submit-step1" style="${isSuper ? 'background: linear-gradient(135deg, #d97706 0%, #b45309 100%) !important; color: #ffffff !important;' : ''}">
+          <span>${isSuper ? 'Unlock Master Admin Panel 🛡️' : 'Sign In to Pharma OS'}</span>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </button>
       </form>
@@ -283,6 +306,15 @@ MedHub.login = {
 
     // STEP 1 EVENTS
     if (this.currentStep === 1) {
+      // Portal Switcher buttons
+      container.querySelectorAll(".portal-switch-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          self.portalMode = btn.dataset.mode;
+          self.authError = null;
+          self.render(container);
+        });
+      });
+
       const step1Form = container.querySelector("#step1-auth-form");
       step1Form?.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -300,8 +332,8 @@ MedHub.login = {
           submitBtn.innerText = "Verifying Credentials...";
         }
 
-        // STRICT AUTHENTICATION AGAINST authorized_users TABLE & LOCAL CACHE
-        const authResult = await MedHub.api.authenticateUser(userInput, passwordInput);
+        // STRICT AUTHENTICATION (STORE ACCOUNT vs MASTER ADMIN PORTAL)
+        const authResult = await MedHub.api.authenticateUser(userInput, passwordInput, self.portalMode);
 
         if (!authResult.success) {
           self.authError = authResult.message || "Invalid credentials! Please check your username and password.";
@@ -311,7 +343,33 @@ MedHub.login = {
           return;
         }
 
-        // Auth Successful!
+        // 1. MASTER ADMIN PORTAL DIRECT LOGIN
+        if (authResult.isSuperAdmin || authResult.user?.role === "superadmin") {
+          self.authError = null;
+          MedHub.state.isAuthenticated = true;
+          MedHub.state.isSuperAdmin = true;
+          MedHub.state.user = {
+            id: authResult.user.id || "superadmin",
+            username: authResult.user.username,
+            email: authResult.user.email,
+            role: "superadmin",
+            name: authResult.user.name || "Platform Master Administrator"
+          };
+
+          try {
+            localStorage.setItem("medhub_authenticated", "true");
+            localStorage.setItem("medhub_current_user", authResult.user.email);
+            localStorage.setItem("medhub_user_name", MedHub.state.user.name);
+            localStorage.setItem("medhub_user_role", "superadmin");
+          } catch (e) {}
+
+          MedHub.toast("Master Administrator authenticated! Welcome to Control Center.", "success");
+          MedHub.router.currentPage = "admin";
+          MedHub.router.init();
+          return;
+        }
+
+        // 2. STORE PHARMACIST LOGIN
         self.authError = null;
         const verifiedUser = authResult.user;
         self.tempAuth.username = verifiedUser.username;
