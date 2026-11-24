@@ -45,22 +45,22 @@ MedHub.inventory = {
         <div class="stats-grid" style="margin-top: 16px;">
           <div class="stat-card">
             <span class="stat-label">Total Medicines (SKUs)</span>
-            <span class="stat-value">${totalSkus}</span>
-            <span class="stat-note">${totalUnits} total units in stock</span>
+            <span class="stat-value" id="inv-kpi-skus">${totalSkus}</span>
+            <span class="stat-note" id="inv-kpi-units">${totalUnits} total units in stock</span>
           </div>
           <div class="stat-card stat-low">
             <span class="stat-label">Low Stock Alert</span>
-            <span class="stat-value">${lowStockCount}</span>
+            <span class="stat-value" id="inv-kpi-low">${lowStockCount}</span>
             <span class="stat-note">Reorder required soon</span>
           </div>
           <div class="stat-card stat-out">
             <span class="stat-label">Out of Stock</span>
-            <span class="stat-value">${outStockCount}</span>
+            <span class="stat-value" id="inv-kpi-out">${outStockCount}</span>
             <span class="stat-note">Zero units available</span>
           </div>
           <div class="stat-card">
             <span class="stat-label">Categories Configured</span>
-            <span class="stat-value">${MedHub.state.categories.length}</span>
+            <span class="stat-value" id="inv-kpi-cats">${MedHub.state.categories.length}</span>
             <span class="stat-note">Tablets, Syrups, etc.</span>
           </div>
         </div>
@@ -70,9 +70,9 @@ MedHub.inventory = {
           <div class="filter-bar-flex">
             <!-- Tabs -->
             <div class="tab-pills">
-              <button type="button" class="tab-pill ${this.currentTab === 'all' ? 'active' : ''}" data-tab="all">All (${totalSkus})</button>
-              <button type="button" class="tab-pill ${this.currentTab === 'low' ? 'active' : ''}" data-tab="low">Low Stock (${lowStockCount})</button>
-              <button type="button" class="tab-pill ${this.currentTab === 'out' ? 'active' : ''}" data-tab="out">Out of Stock (${outStockCount})</button>
+              <button type="button" class="tab-pill ${this.currentTab === 'all' ? 'active' : ''}" data-tab="all" id="inv-tab-all">All (${totalSkus})</button>
+              <button type="button" class="tab-pill ${this.currentTab === 'low' ? 'active' : ''}" data-tab="low" id="inv-tab-low">Low Stock (${lowStockCount})</button>
+              <button type="button" class="tab-pill ${this.currentTab === 'out' ? 'active' : ''}" data-tab="out" id="inv-tab-out">Out of Stock (${outStockCount})</button>
             </div>
 
             <!-- Search and category dropdown -->
@@ -253,7 +253,7 @@ MedHub.inventory = {
           if (ok) {
             MedHub.toast(`'${med.name}' delete ho gaya`, "success");
             self.medicinesList = await MedHub.api.getMedicines();
-            self.updateTableOnly();
+            self.updateStatsAndTable();
           } else {
             MedHub.toast("Delete karne me samasya aayi", "error");
           }
@@ -296,6 +296,72 @@ MedHub.inventory = {
   updateTableOnly() {
     const tbody = document.getElementById("inventory-tbody");
     if (tbody) tbody.innerHTML = this.renderTableRows();
+  },
+
+  updateStatsAndTable() {
+    // 1. Dynamic recalculation of status for all items
+    this.medicinesList.forEach(m => {
+      const qty = Number(m.available_qty) || 0;
+      const reorder = Number(m.reorder_level) || 10;
+      m.status = qty <= 0 ? "out" : (qty <= reorder ? "low" : "in");
+    });
+
+    const totalSkus = this.medicinesList.length;
+    const lowStockCount = this.medicinesList.filter(m => m.status === "low").length;
+    const outStockCount = this.medicinesList.filter(m => m.status === "out").length;
+    const totalUnits = this.medicinesList.reduce((sum, m) => sum + (Number(m.available_qty) || 0), 0);
+    const catCount = (MedHub.state.categories && MedHub.state.categories.length) || 16;
+
+    // 2. Real-Time Update of Top KPI Cards
+    const elSkus = document.getElementById("inv-kpi-skus");
+    if (elSkus) elSkus.innerText = totalSkus;
+
+    const elUnits = document.getElementById("inv-kpi-units");
+    if (elUnits) elUnits.innerText = `${totalUnits} total units in stock`;
+
+    const elLow = document.getElementById("inv-kpi-low");
+    if (elLow) elLow.innerText = lowStockCount;
+
+    const elOut = document.getElementById("inv-kpi-out");
+    if (elOut) elOut.innerText = outStockCount;
+
+    const elCats = document.getElementById("inv-kpi-cats");
+    if (elCats) elCats.innerText = catCount;
+
+    // Fallback query selector for stats cards
+    const statCards = document.querySelectorAll(".inventory-page-wrap .stat-card");
+    if (statCards.length >= 4) {
+      const v0 = statCards[0].querySelector(".stat-value");
+      const n0 = statCards[0].querySelector(".stat-note");
+      if (v0) v0.innerText = totalSkus;
+      if (n0) n0.innerText = `${totalUnits} total units in stock`;
+
+      const v1 = statCards[1].querySelector(".stat-value");
+      if (v1) v1.innerText = lowStockCount;
+
+      const v2 = statCards[2].querySelector(".stat-value");
+      if (v2) v2.innerText = outStockCount;
+
+      const v3 = statCards[3].querySelector(".stat-value");
+      if (v3) v3.innerText = catCount;
+    }
+
+    // 3. Real-Time Update of Tab Pills (All, Low Stock, Out of Stock)
+    const tabAll = document.getElementById("inv-tab-all") || document.querySelector('.tab-pill[data-tab="all"]');
+    const tabLow = document.getElementById("inv-tab-low") || document.querySelector('.tab-pill[data-tab="low"]');
+    const tabOut = document.getElementById("inv-tab-out") || document.querySelector('.tab-pill[data-tab="out"]');
+    if (tabAll) tabAll.innerText = `All (${totalSkus})`;
+    if (tabLow) tabLow.innerText = `Low Stock (${lowStockCount})`;
+    if (tabOut) tabOut.innerText = `Out of Stock (${outStockCount})`;
+
+    // 4. Real-Time Update of Table Rows
+    const tbody = document.getElementById("inventory-tbody");
+    if (tbody) tbody.innerHTML = this.renderTableRows();
+
+    // 5. Broadcast global event so POS billing and dashboard reflect changes immediately
+    window.dispatchEvent(new CustomEvent("medhub:stock_updated", {
+      detail: { totalSkus, totalUnits, lowStockCount, outStockCount }
+    }));
   },
 
   async exportFormalStockPdf() {
@@ -632,8 +698,9 @@ MedHub.inventory = {
       if (saved) {
         MedHub.toast(`Medicine "${name}" successfully catalog me add ho gayi!`, "success");
         closeModal();
-        // Refresh inventory table
-        this.render(document.getElementById("page-content"));
+        // Refresh inventory table & KPI stats in real-time
+        this.medicinesList = await MedHub.api.getMedicines();
+        this.updateStatsAndTable();
       } else {
         MedHub.toast("Medicine save karne me dikkat aayi", "error");
         saveBtn.disabled = false;
@@ -729,7 +796,7 @@ MedHub.inventory = {
         MedHub.toast(`New stock (${qty} units) successfully added to ${med.name}!`, "success");
         closeStockModal();
         this.medicinesList = await MedHub.api.getMedicines();
-        this.updateTableOnly();
+        this.updateStatsAndTable();
       } else {
         MedHub.toast("Stock add karne me samasya aayi", "error");
         if (saveBtn) {
@@ -892,7 +959,7 @@ MedHub.inventory = {
         MedHub.toast(`'${name}' updated successfully!`, "success");
         closeEditModal();
         this.medicinesList = await MedHub.api.getMedicines();
-        this.updateTableOnly();
+        this.updateStatsAndTable();
       } else {
         MedHub.toast("Medicine update karne me samasya aayi", "error");
         if (saveBtn) {

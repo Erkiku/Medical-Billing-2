@@ -122,3 +122,10 @@ MedHub.dashboard = {
     });
   }
 };
+
+window.addEventListener("medhub:stock_updated", () => {
+  if (window.MedHub && window.MedHub.router && window.MedHub.router.currentPage === "dashboard") {
+    const pageContent = document.getElementById("page-content");
+    if (pageContent) window.MedHub.dashboard.render(pageContent);
+  }
+});

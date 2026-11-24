@@ -459,35 +459,100 @@ MedHub.api = {
     return newCat;
   },
 
-  // 3. MEDICINES
+  // 3. MEDICINES & PERSISTENCE
+  _getLocalMedicines() {
+    try {
+      const saved = localStorage.getItem("medhub_medicines");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length) return parsed;
+      }
+    } catch (e) {}
+    try {
+      localStorage.setItem("medhub_medicines", JSON.stringify(mockMedicines));
+    } catch (e) {}
+    return mockMedicines;
+  },
+
+  _saveLocalMedicines(list) {
+    try {
+      mockMedicines = list;
+      localStorage.setItem("medhub_medicines", JSON.stringify(list));
+    } catch (e) {}
+  },
+
+  _getLocalBatches() {
+    try {
+      const saved = localStorage.getItem("medhub_batches");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    try {
+      localStorage.setItem("medhub_batches", JSON.stringify(mockBatches));
+    } catch (e) {}
+    return mockBatches;
+  },
+
+  _saveLocalBatches(list) {
+    try {
+      mockBatches = list;
+      localStorage.setItem("medhub_batches", JSON.stringify(list));
+    } catch (e) {}
+  },
+
   async getMedicines() {
+    let list = null;
     if (MedHub.supabaseClient) {
       try {
         // First try medicine_stock view
         const { data, error } = await MedHub.supabaseClient
           .from("medicine_stock")
           .select("*")
+          .neq("is_active", false)
           .order("name", { ascending: true });
-        if (!error && data) return data;
-
-        // Fallback: fetch from medicines directly
-        const { data: rawMeds, error: medErr } = await MedHub.supabaseClient
-          .from("medicines")
-          .select("*")
-          .order("name", { ascending: true });
-        if (!medErr && rawMeds) {
-          return rawMeds.map(m => ({
-            ...m,
-            available_qty: m.available_qty || 0,
-            nearest_expiry: m.nearest_expiry || "—",
-            status: (m.available_qty || 0) <= 0 ? "out" : ((m.available_qty || 0) <= (m.reorder_level || 10) ? "low" : "in")
-          }));
+        if (!error && data && data.length) {
+          list = data.map(m => {
+            const qty = Number(m.available_qty) || 0;
+            const reorder = Number(m.reorder_level) || 10;
+            return {
+              ...m,
+              available_qty: qty,
+              nearest_expiry: m.nearest_expiry || "—",
+              status: qty <= 0 ? "out" : (qty <= reorder ? "low" : "in")
+            };
+          });
+        } else {
+          // Fallback: fetch from medicines directly
+          const { data: rawMeds, error: medErr } = await MedHub.supabaseClient
+            .from("medicines")
+            .select("*")
+            .neq("is_active", false)
+            .order("name", { ascending: true });
+          if (!medErr && rawMeds && rawMeds.length) {
+            list = rawMeds.map(m => {
+              const qty = Number(m.available_qty) || 0;
+              const reorder = Number(m.reorder_level) || 10;
+              return {
+                ...m,
+                available_qty: qty,
+                nearest_expiry: m.nearest_expiry || "—",
+                status: qty <= 0 ? "out" : (qty <= reorder ? "low" : "in")
+              };
+            });
+          }
         }
       } catch (e) {
         console.warn("Medicines fetch fallback:", e);
       }
     }
-    return mockMedicines;
+
+    if (list && list.length) {
+      this._saveLocalMedicines(list);
+      return list;
+    }
+    return this._getLocalMedicines();
   },
 
   async searchMedicines(query) {
@@ -502,6 +567,7 @@ MedHub.api = {
         const { data, error } = await MedHub.supabaseClient
           .from("medicine_stock")
           .select("*")
+          .neq("is_active", false)
           .or(`name.ilike.%${q}%,generic_name.ilike.%${q}%,company.ilike.%${q}%,salt_composition.ilike.%${q}%,category.ilike.%${q}%`)
           .limit(100);
         if (!error && data && data.length) {
@@ -511,6 +577,7 @@ MedHub.api = {
           const { data: rawMeds, error: medErr } = await MedHub.supabaseClient
             .from("medicines")
             .select("*")
+            .neq("is_active", false)
             .or(`name.ilike.%${q}%,generic_name.ilike.%${q}%,company.ilike.%${q}%,salt_composition.ilike.%${q}%,category.ilike.%${q}%`)
             .limit(100);
           if (!medErr && rawMeds && rawMeds.length) {
@@ -523,7 +590,9 @@ MedHub.api = {
     }
 
     // Filter local mock medicines with all search tokens across all fields
-    const localMatches = mockMedicines.filter(m => {
+    const localStoreMeds = this._getLocalMedicines();
+    const localMatches = localStoreMeds.filter(m => {
+      if (m.is_active === false) return false;
       const fullText = `${m.name || ""} ${m.generic_name || ""} ${m.salt_composition || ""} ${m.company || ""} ${m.category || ""} ${m.barcode || ""}`.toLowerCase();
       return tokens.every(token => fullText.includes(token));
     });
@@ -570,14 +639,14 @@ MedHub.api = {
         console.warn("Batches query err:", e);
       }
     }
-    return mockBatches.filter(b => b.medicine_id === medicineId && b.quantity > 0);
+    const localBatches = this._getLocalBatches();
+    return localBatches.filter(b => String(b.medicine_id) === String(medicineId) && b.quantity > 0);
   },
 
   async createMedicine(medData, initialBatch = null) {
     let createdMed = null;
     if (MedHub.supabaseClient) {
       try {
-        // Construct insert payload matching existing DB columns
         const payload = {
           name: medData.name,
           company: medData.company,
@@ -588,13 +657,16 @@ MedHub.api = {
           reorder_level: Number(medData.reorder_level) || 10,
           is_active: true
         };
-        // Add optional extended columns if present
         if (medData.salt_composition) payload.salt_composition = medData.salt_composition;
         if (medData.drug_schedule) payload.drug_schedule = medData.drug_schedule;
         if (medData.pack_size) payload.pack_size = medData.pack_size;
         if (medData.barcode) payload.barcode = medData.barcode;
         if (medData.purchase_price) payload.purchase_price = Number(medData.purchase_price);
         if (medData.selling_rate) payload.selling_rate = Number(medData.selling_rate);
+        if (initialBatch && Number(initialBatch.quantity) > 0) {
+          payload.available_qty = Number(initialBatch.quantity);
+          payload.nearest_expiry = initialBatch.expiry_date || "—";
+        }
 
         const { data, error } = await MedHub.supabaseClient
           .from("medicines")
@@ -604,7 +676,6 @@ MedHub.api = {
 
         if (!error && data) {
           createdMed = data;
-          // Add batch if specified
           if (initialBatch && initialBatch.batch_no && Number(initialBatch.quantity) > 0) {
             await MedHub.supabaseClient.from("medicine_batches").insert({
               medicine_id: createdMed.id,
@@ -615,28 +686,31 @@ MedHub.api = {
               quantity: Number(initialBatch.quantity)
             });
           }
-          return createdMed;
         }
       } catch (e) {
         console.warn("createMedicine Supabase error, saving locally:", e);
       }
     }
 
-    // Local / In-memory fallback
-    const newId = "med-" + Date.now();
+    const newId = createdMed ? createdMed.id : "med-" + Date.now();
     const qty = (initialBatch && Number(initialBatch.quantity)) || 0;
-    createdMed = {
+    const finalMed = {
       id: newId,
       ...medData,
       mrp: Number(medData.mrp) || 0,
       available_qty: qty,
       nearest_expiry: (initialBatch && initialBatch.expiry_date) || "—",
-      status: qty <= 0 ? "out" : (qty <= 10 ? "low" : "in")
+      status: qty <= 0 ? "out" : (qty <= (Number(medData.reorder_level) || 10) ? "low" : "in"),
+      is_active: true
     };
-    mockMedicines.unshift(createdMed);
+
+    const localMeds = this._getLocalMedicines();
+    localMeds.unshift(finalMed);
+    this._saveLocalMedicines(localMeds);
 
     if (initialBatch && initialBatch.batch_no && qty > 0) {
-      mockBatches.push({
+      const localBatches = this._getLocalBatches();
+      localBatches.push({
         id: "b-" + Date.now(),
         medicine_id: newId,
         batch_no: initialBatch.batch_no,
@@ -645,12 +719,14 @@ MedHub.api = {
         selling_price: Number(medData.selling_rate) || Number(medData.mrp) || 0,
         quantity: qty
       });
+      this._saveLocalBatches(localBatches);
     }
 
-    return createdMed;
+    return finalMed;
   },
 
   async updateMedicine(id, medData) {
+    let updatedMed = null;
     if (MedHub.supabaseClient && id) {
       try {
         const payload = {
@@ -668,31 +744,34 @@ MedHub.api = {
         if (medData.barcode !== undefined) payload.barcode = medData.barcode;
         if (medData.purchase_price !== undefined) payload.purchase_price = Number(medData.purchase_price);
         if (medData.selling_rate !== undefined) payload.selling_rate = Number(medData.selling_rate);
+        if (medData.rack_location !== undefined) payload.rack_location = medData.rack_location;
 
         const { data, error } = await MedHub.supabaseClient
           .from("medicines")
           .update(payload)
           .eq("id", id)
           .select()
-          .single();
+          .maybeSingle();
         if (!error && data) {
-          const localIdx = mockMedicines.findIndex(m => String(m.id) === String(id));
-          if (localIdx >= 0) {
-            mockMedicines[localIdx] = { ...mockMedicines[localIdx], ...data };
-          }
-          return data;
+          updatedMed = data;
         }
       } catch (e) {
         console.warn("updateMedicine Supabase error:", e);
       }
     }
 
-    const localIdx = mockMedicines.findIndex(m => String(m.id) === String(id));
+    const localMeds = this._getLocalMedicines();
+    const localIdx = localMeds.findIndex(m => String(m.id) === String(id));
     if (localIdx >= 0) {
-      mockMedicines[localIdx] = { ...mockMedicines[localIdx], ...medData };
-      return mockMedicines[localIdx];
+      localMeds[localIdx] = {
+        ...localMeds[localIdx],
+        ...medData,
+        ...(updatedMed || {})
+      };
+      this._saveLocalMedicines(localMeds);
+      return localMeds[localIdx];
     }
-    return null;
+    return updatedMed || medData;
   },
 
   async deleteMedicine(id) {
@@ -700,16 +779,26 @@ MedHub.api = {
       try {
         await MedHub.supabaseClient.from("medicine_batches").delete().eq("medicine_id", id);
         const { error } = await MedHub.supabaseClient.from("medicines").delete().eq("id", id);
-        if (!error) {
-          mockMedicines = mockMedicines.filter(m => String(m.id) !== String(id));
-          return true;
+        if (error) {
+          console.warn("Hard delete failed, executing soft delete:", error.message);
+          await MedHub.supabaseClient.from("medicines").update({ is_active: false }).eq("id", id);
         }
       } catch (e) {
-        console.warn("deleteMedicine Supabase error:", e);
+        console.warn("deleteMedicine Supabase error, falling back to soft delete:", e);
+        try {
+          await MedHub.supabaseClient.from("medicines").update({ is_active: false }).eq("id", id);
+        } catch (e2) {}
       }
     }
 
-    mockMedicines = mockMedicines.filter(m => String(m.id) !== String(id));
+    let localMeds = this._getLocalMedicines();
+    localMeds = localMeds.filter(m => String(m.id) !== String(id));
+    this._saveLocalMedicines(localMeds);
+
+    let localBatches = this._getLocalBatches();
+    localBatches = localBatches.filter(b => String(b.medicine_id) !== String(id));
+    this._saveLocalBatches(localBatches);
+
     return true;
   },
 
@@ -730,13 +819,27 @@ MedHub.api = {
           selling_price: selRate,
           quantity: qty
         });
-        return true;
+
+        // Also update medicines table available_qty & nearest_expiry if table has these columns
+        const { data: curMed } = await MedHub.supabaseClient
+          .from("medicines")
+          .select("available_qty")
+          .eq("id", medicineId)
+          .maybeSingle();
+        if (curMed) {
+          const newTotal = (Number(curMed.available_qty) || 0) + qty;
+          await MedHub.supabaseClient
+            .from("medicines")
+            .update({ available_qty: newTotal, nearest_expiry: expiry })
+            .eq("id", medicineId);
+        }
       } catch (e) {
         console.warn("addStockBatch Supabase error:", e);
       }
     }
 
-    mockBatches.push({
+    const localBatches = this._getLocalBatches();
+    localBatches.push({
       id: "b-" + Date.now(),
       medicine_id: medicineId,
       batch_no: batchNo,
@@ -745,14 +848,18 @@ MedHub.api = {
       selling_price: selRate,
       quantity: qty
     });
+    this._saveLocalBatches(localBatches);
 
-    const med = mockMedicines.find(m => String(m.id) === String(medicineId));
+    const localMeds = this._getLocalMedicines();
+    const med = localMeds.find(m => String(m.id) === String(medicineId));
     if (med) {
-      med.available_qty = (med.available_qty || 0) + qty;
+      med.available_qty = (Number(med.available_qty) || 0) + qty;
       med.nearest_expiry = expiry;
-      med.status = med.available_qty <= 0 ? "out" : (med.available_qty <= (med.reorder_level || 10) ? "low" : "in");
+      const reorder = Number(med.reorder_level) || 10;
+      med.status = med.available_qty <= 0 ? "out" : (med.available_qty <= reorder ? "low" : "in");
       if (purRate > 0) med.purchase_price = purRate;
       if (selRate > 0) med.selling_rate = selRate;
+      this._saveLocalMedicines(localMeds);
     }
     return true;
   },
