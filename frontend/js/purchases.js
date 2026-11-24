@@ -50,7 +50,7 @@ MedHub.purchases = {
 
         <div class="card table-card" style="margin-top: 20px;">
           <div class="table-wrap">
-            <table class="data-table">
+            <table class="data-table" id="purchases-table">
               <thead>
                 <tr>
                   <th>Invoice No</th>
@@ -58,15 +58,21 @@ MedHub.purchases = {
                   <th>Supplier Name</th>
                   <th>Purchased Medicines (Details)</th>
                   <th>Total Amount</th>
-                  <th>Paid Amount</th>
+                  <th>Payment Done</th>
+                  <th>Payment Dues</th>
                   <th>Status</th>
-                  <th>Actions</th>
+                  <th style="width: 185px; text-align: center;">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 ${this.purchasesList.length ? this.purchasesList.map(p => {
                   const hasItems = Array.isArray(p.items) && p.items.length > 0;
-                  const statusClass = (p.status || "").toLowerCase().includes("paid") ? "status-in" : ((p.status || "").toLowerCase().includes("due") ? "status-low" : "status-in");
+                  const total = Number(p.total_amount) || 0;
+                  const paid = Number(p.paid_amount !== undefined ? p.paid_amount : p.total_amount) || 0;
+                  const dues = Math.max(0, total - paid);
+                  const isFullyPaid = dues === 0;
+                  const statusClass = isFullyPaid ? "status-in" : (paid > 0 ? "status-low" : "status-out");
+                  const displayStatus = p.status || (isFullyPaid ? "PAID" : (paid > 0 ? "PARTIAL DUE" : "DUE"));
                   return `
                     <tr>
                       <td><strong>${p.invoice_no || "INV-NEW"}</strong></td>
@@ -82,20 +88,32 @@ MedHub.purchases = {
                             `).join("")}
                           </div>
                         ` : `
-                          <span style="color:#64748b;font-size:12px;">General Invoice (₹${Number(p.total_amount).toFixed(2)})</span>
+                          <span style="color:#64748b;font-size:12px;">General Invoice (₹${total.toFixed(2)})</span>
                         `}
                       </td>
-                      <td><strong>${MedHub.rupee(p.total_amount)}</strong></td>
-                      <td>${MedHub.rupee(p.paid_amount || p.total_amount)}</td>
-                      <td><span class="badge-status ${statusClass}">${p.status || "RECEIVED"}</span></td>
+                      <td><strong>${MedHub.rupee(total)}</strong></td>
+                      <td><span style="color:#0f766e;font-weight:700;">${MedHub.rupee(paid)}</span></td>
                       <td>
-                        <button type="button" class="btn-outline-sm btn-view-purchase-detail" data-id="${p.id || p.invoice_no}">
+                        ${dues > 0 
+                          ? `<span style="color:#dc2626;font-weight:800;background:#fee2e2;padding:2px 8px;border-radius:4px;">${MedHub.rupee(dues)}</span>`
+                          : `<span style="color:#16a34a;font-weight:700;">₹0.00</span>`
+                        }
+                      </td>
+                      <td><span class="badge-status ${statusClass}">${displayStatus}</span></td>
+                      <td class="cell-nowrap table-actions-cell">
+                        <button type="button" class="btn-outline-sm btn-view-purchase-detail" data-id="${p.id || p.invoice_no}" title="View Details">
                           👁️ Details
+                        </button>
+                        <button type="button" class="btn-action-edit btn-edit-purchase" data-id="${p.id || p.invoice_no}" title="Edit Payment & Dues">
+                          ✏️ Edit
+                        </button>
+                        <button type="button" class="btn-action-delete btn-delete-purchase" data-id="${p.id || p.invoice_no}" title="Delete Invoice">
+                          🗑️
                         </button>
                       </td>
                     </tr>
                   `;
-                }).join("") : `<tr><td colspan="8" class="table-empty">Koi purchase record nahi hai. "Record New Purchase" par click karein.</td></tr>`}
+                }).join("") : `<tr><td colspan="9" class="table-empty">Koi purchase record nahi hai. "Record New Purchase" par click karein.</td></tr>`}
               </tbody>
             </table>
           </div>
@@ -131,15 +149,43 @@ MedHub.purchases = {
       self.openNewPurchaseModal();
     });
 
-    // View Purchase Details Modal
-    container.addEventListener("click", (e) => {
-      const btn = e.target.closest(".btn-view-purchase-detail");
-      if (btn) {
-        const id = btn.dataset.id;
+    // Purchase Actions: View Details, Edit, Delete
+    container.addEventListener("click", async (e) => {
+      const viewBtn = e.target.closest(".btn-view-purchase-detail");
+      if (viewBtn) {
+        const id = viewBtn.dataset.id;
         const purchase = self.purchasesList.find(p => String(p.id) === String(id) || String(p.invoice_no) === String(id));
         if (purchase) {
           self.openPurchaseDetailModal(purchase);
         }
+        return;
+      }
+
+      const editBtn = e.target.closest(".btn-edit-purchase");
+      if (editBtn) {
+        const id = editBtn.dataset.id;
+        const purchase = self.purchasesList.find(p => String(p.id) === String(id) || String(p.invoice_no) === String(id));
+        if (purchase) {
+          self.openEditPurchaseModal(purchase);
+        }
+        return;
+      }
+
+      const deleteBtn = e.target.closest(".btn-delete-purchase");
+      if (deleteBtn) {
+        const id = deleteBtn.dataset.id;
+        const purchase = self.purchasesList.find(p => String(p.id) === String(id) || String(p.invoice_no) === String(id));
+        if (purchase && confirm(`Kya aap Purchase Invoice '${purchase.invoice_no}' ko delete karna chahte hain?`)) {
+          const ok = await MedHub.api.deletePurchase(id);
+          if (ok) {
+            MedHub.toast(`Purchase Invoice #${purchase.invoice_no} delete ho gaya`, "success");
+            self.purchasesList = await MedHub.api.getPurchases();
+            self.render(document.getElementById("page-content"));
+          } else {
+            MedHub.toast("Delete karne me samasya aayi", "error");
+          }
+        }
+        return;
       }
     });
   },
@@ -694,6 +740,169 @@ MedHub.purchases = {
 
     document.getElementById("btn-print-pur-invoice")?.addEventListener("click", () => {
       window.print();
+    });
+  },
+
+  // --------------------------------------------------------------------------
+  // MODAL 3: EDIT PURCHASE INVOICE & PAYMENT DUES
+  // --------------------------------------------------------------------------
+  openEditPurchaseModal(p) {
+    const modalWrap = document.getElementById("new-purchase-modal-wrap");
+    if (!modalWrap) return;
+
+    const total = Number(p.total_amount) || 0;
+    const paid = Number(p.paid_amount !== undefined ? p.paid_amount : p.total_amount) || 0;
+    const dues = Math.max(0, total - paid);
+
+    modalWrap.innerHTML = `
+      <div class="modal-overlay">
+        <div class="modal-box" style="max-width: 520px;">
+          <div class="modal-header-dialog" style="padding: 16px 22px; border-bottom: 1.5px solid var(--cream-border); display: flex; justify-content: space-between; align-items: center;">
+            <h3 class="modal-dialog-title">Edit Purchase Invoice & Payment</h3>
+            <button type="button" class="btn-dialog-close" id="btn-close-edit-pur">${MedHub.icons.close}</button>
+          </div>
+
+          <form id="edit-purchase-form" class="modal-dialog-body" style="padding: 22px;">
+            <div class="form-row-2">
+              <div class="form-group">
+                <label class="form-label">Supplier Name <span class="req">*</span></label>
+                <input type="text" id="edit-pur-supplier" class="input-field" value="${p.supplier_name || ''}" required />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Supplier Invoice No <span class="req">*</span></label>
+                <input type="text" id="edit-pur-inv-no" class="input-field" value="${p.invoice_no || ''}" required />
+              </div>
+            </div>
+
+            <div class="form-row-2" style="margin-top: 14px;">
+              <div class="form-group">
+                <label class="form-label">Purchase Date</label>
+                <input type="date" id="edit-pur-date" class="input-field" value="${p.purchase_date ? String(p.purchase_date).slice(0, 10) : new Date().toISOString().slice(0, 10)}" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Payment Status</label>
+                <select id="edit-pur-status" class="input-field select-field">
+                  <option value="PAID" ${p.status === 'PAID' || dues === 0 ? 'selected' : ''}>PAID (Full Payment Done)</option>
+                  <option value="PARTIAL DUE" ${p.status === 'PARTIAL DUE' || (paid > 0 && dues > 0) ? 'selected' : ''}>PARTIAL (Payment Due Pending)</option>
+                  <option value="DUE" ${p.status === 'DUE' || (paid === 0 && dues > 0) ? 'selected' : ''}>DUE (Full Payment Pending)</option>
+                  <option value="RECEIVED" ${p.status === 'RECEIVED' ? 'selected' : ''}>RECEIVED</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- PAYMENT DONE & PAYMENT DUES LIVE CARD -->
+            <div style="margin-top: 18px; padding: 16px; background: #f8fafc; border-radius: 8px; border: 1.5px solid #e2e8f0;">
+              <h4 style="font-size: 13px; font-weight: 800; color: #1e293b; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                <span>💰 PAYMENT & DUES BREAKDOWN</span>
+                <span id="edit-pur-dues-badge" style="font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: 700; ${dues > 0 ? 'background:#fee2e2;color:#dc2626;' : 'background:#dcfce7;color:#166534;'}">
+                  ${dues > 0 ? `Dues: ₹${dues.toFixed(2)}` : 'No Dues (Fully Paid)'}
+                </span>
+              </h4>
+
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label class="form-label">Total Invoice Amount (₹) <span class="req">*</span></label>
+                  <input type="number" step="0.01" min="0" id="edit-pur-total-amt" class="input-field" value="${total}" required />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Payment Done / Paid (₹) <span class="req">*</span></label>
+                  <input type="number" step="0.01" min="0" id="edit-pur-paid-amt" class="input-field" value="${paid}" required autofocus />
+                </div>
+              </div>
+
+              <div style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px dashed #cbd5e1; font-size: 13px;">
+                <span style="font-weight: 600; color: #475569;">Remaining Payment Dues:</span>
+                <span id="edit-pur-dues-display" style="font-weight: 900; font-size: 16px; color: ${dues > 0 ? '#dc2626' : '#16a34a'};">
+                  ₹${dues.toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            <div class="modal-dialog-footer" style="margin-top: 22px;">
+              <button type="button" class="btn-dialog-cancel" id="btn-cancel-edit-pur">Cancel</button>
+              <button type="submit" class="btn-dialog-save" id="btn-save-edit-pur">Save Changes</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    const closeEditPurModal = () => { modalWrap.innerHTML = ""; };
+    document.getElementById("btn-close-edit-pur")?.addEventListener("click", closeEditPurModal);
+    document.getElementById("btn-cancel-edit-pur")?.addEventListener("click", closeEditPurModal);
+
+    const totalEl = document.getElementById("edit-pur-total-amt");
+    const paidEl = document.getElementById("edit-pur-paid-amt");
+    const duesDisp = document.getElementById("edit-pur-dues-display");
+    const duesBadge = document.getElementById("edit-pur-dues-badge");
+    const statusSelect = document.getElementById("edit-pur-status");
+
+    const recalcDues = () => {
+      const tot = parseFloat(totalEl?.value) || 0;
+      const pd = parseFloat(paidEl?.value) || 0;
+      const d = Math.max(0, tot - pd);
+      if (duesDisp) {
+        duesDisp.innerText = `₹${d.toFixed(2)}`;
+        duesDisp.style.color = d > 0 ? "#dc2626" : "#16a34a";
+      }
+      if (duesBadge) {
+        if (d > 0) {
+          duesBadge.innerText = `Dues: ₹${d.toFixed(2)}`;
+          duesBadge.style.background = "#fee2e2";
+          duesBadge.style.color = "#dc2626";
+        } else {
+          duesBadge.innerText = "No Dues (Fully Paid)";
+          duesBadge.style.background = "#dcfce7";
+          duesBadge.style.color = "#166534";
+        }
+      }
+      if (statusSelect) {
+        if (d === 0) statusSelect.value = "PAID";
+        else if (pd > 0 && d > 0) statusSelect.value = "PARTIAL DUE";
+        else if (pd === 0) statusSelect.value = "DUE";
+      }
+    };
+
+    totalEl?.addEventListener("input", recalcDues);
+    paidEl?.addEventListener("input", recalcDues);
+
+    const form = document.getElementById("edit-purchase-form");
+    form?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const supplier_name = document.getElementById("edit-pur-supplier").value.trim();
+      const invoice_no = document.getElementById("edit-pur-inv-no").value.trim();
+      const purchase_date = document.getElementById("edit-pur-date").value;
+      const total_amount = parseFloat(totalEl.value) || 0;
+      const paid_amount = parseFloat(paidEl.value) || 0;
+      const status = statusSelect.value;
+
+      const saveBtn = document.getElementById("btn-save-edit-pur");
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerText = "Saving...";
+      }
+
+      const updated = await MedHub.api.updatePurchase(p.id || p.invoice_no, {
+        supplier_name,
+        invoice_no,
+        purchase_date,
+        total_amount,
+        paid_amount,
+        status
+      });
+
+      if (updated) {
+        MedHub.toast(`Purchase Invoice #${invoice_no} updated successfully!`, "success");
+        closeEditPurModal();
+        this.purchasesList = await MedHub.api.getPurchases();
+        this.render(document.getElementById("page-content"));
+      } else {
+        MedHub.toast("Purchase update karne me samasya aayi", "error");
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerText = "Save Changes";
+        }
+      }
     });
   }
 };

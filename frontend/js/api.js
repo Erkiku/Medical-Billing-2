@@ -1138,5 +1138,47 @@ MedHub.api = {
     }
 
     return newPur;
+  },
+
+  async updatePurchase(id, updatedData) {
+    if (MedHub.supabaseClient && id) {
+      try {
+        await MedHub.supabaseClient
+          .from("purchases")
+          .update(updatedData)
+          .eq("id", id);
+      } catch (e) {
+        console.warn("updatePurchase Supabase error:", e);
+      }
+    }
+
+    const current = this._getLocalPurchases();
+    const idx = current.findIndex(p => String(p.id) === String(id) || String(p.invoice_no) === String(id));
+    if (idx >= 0) {
+      current[idx] = { ...current[idx], ...updatedData };
+      this._saveLocalPurchases(current);
+      mockPurchases = current;
+      return current[idx];
+    }
+    return null;
+  },
+
+  async deletePurchase(id) {
+    if (MedHub.supabaseClient && id) {
+      try {
+        await MedHub.supabaseClient
+          .from("purchases")
+          .delete()
+          .eq("id", id);
+      } catch (e) {
+        console.warn("deletePurchase Supabase error:", e);
+      }
+    }
+
+    let current = this._getLocalPurchases();
+    current = current.filter(p => String(p.id) !== String(id) && String(p.invoice_no) !== String(id));
+    this._saveLocalPurchases(current);
+    mockPurchases = current;
+    return true;
   }
 };
