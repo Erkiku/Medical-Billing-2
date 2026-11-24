@@ -277,6 +277,41 @@ MedHub.formatDate = function (dateStr) {
   }
 };
 
+// Formats medicine expiry strictly as Month/Year (e.g. 11/28) without exact day or time
+MedHub.formatExpiry = function (dateStr) {
+  if (!dateStr || dateStr === "—" || dateStr === "null" || dateStr === "undefined") return "—";
+  const str = String(dateStr).trim();
+  if (/^\d{1,2}\/\d{2}$/.test(str)) return str;
+  try {
+    const sep = str.includes("-") ? "-" : (str.includes("/") ? "/" : null);
+    if (sep) {
+      const parts = str.split(sep);
+      if (parts.length === 3) {
+        // YYYY-MM-DD vs DD-MM-YYYY
+        if (parts[0].length === 4) {
+          return `${parts[1].padStart(2, "0")}/${parts[0].slice(-2)}`;
+        } else if (parts[2].length === 4 || parts[2].length === 2) {
+          return `${parts[1].padStart(2, "0")}/${parts[2].slice(-2)}`;
+        }
+      } else if (parts.length === 2) {
+        // YYYY-MM or MM/YY
+        if (parts[0].length === 4) {
+          return `${parts[1].padStart(2, "0")}/${parts[0].slice(-2)}`;
+        } else if (parts[1].length === 4 || parts[1].length === 2) {
+          return `${parts[0].padStart(2, "0")}/${parts[1].slice(-2)}`;
+        }
+      }
+    }
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const y = String(d.getFullYear()).slice(-2);
+      return `${m}/${y}`;
+    }
+  } catch (e) {}
+  return str;
+};
+
 MedHub.numberToWords = function (amount) {
   const num = Math.round(Number(amount) || 0);
   if (num === 0) return "Rs. Zero only";

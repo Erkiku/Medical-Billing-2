@@ -76,7 +76,7 @@ MedHub.purchases = {
                         ${hasItems ? `
                           <div class="pur-items-cell">
                             ${p.items.map(it => `
-                              <span class="pur-med-badge" title="Batch: ${it.batch_no || '—'} | Exp: ${it.expiry_date || '—'}">
+                              <span class="pur-med-badge" title="Batch: ${it.batch_no || '—'} | Exp: ${MedHub.formatExpiry ? MedHub.formatExpiry(it.expiry_date) : it.expiry_date}">
                                 💊 <strong>${it.medicine_name || it.name}</strong> (${it.quantity} ${it.pack_size || "packs"} @ ₹${Number(it.purchase_rate || 0).toFixed(2)})
                               </span>
                             `).join("")}
@@ -304,6 +304,11 @@ MedHub.purchases = {
         }
       }
 
+      let monthVal = "2028-11";
+      if (prefill?.expiry_date) {
+        monthVal = String(prefill.expiry_date).slice(0, 7);
+      }
+
       tr.innerHTML = `
         <td style="text-align: center; font-weight: 600; color: #64748b;">${rowCount}</td>
         <td>
@@ -327,10 +332,11 @@ MedHub.purchases = {
         </td>
         <td>
           <input 
-            type="date" 
+            type="month" 
             class="pur-item-exp" 
-            value="${prefill?.expiry_date || defaultExp}" 
+            value="${monthVal}" 
             required 
+            title="Expiry Month & Year (MM/YYYY)"
           />
         </td>
         <td>
@@ -643,7 +649,7 @@ MedHub.purchases = {
                       <td style="color: #64748b; font-weight: 600;">${idx + 1}</td>
                       <td><strong>${it.medicine_name || it.name}</strong></td>
                       <td><code>${it.batch_no || "—"}</code></td>
-                      <td>${MedHub.formatDate(it.expiry_date)}</td>
+                      <td>${MedHub.formatExpiry ? MedHub.formatExpiry(it.expiry_date) : MedHub.formatDate(it.expiry_date)}</td>
                       <td>${it.pack_size || "1x10"}</td>
                       <td style="text-align: center; font-weight: 700;">${it.quantity}</td>
                       <td style="text-align: right;">₹${Number(it.purchase_rate || 0).toFixed(2)}</td>

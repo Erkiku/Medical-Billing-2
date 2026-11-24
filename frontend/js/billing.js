@@ -70,21 +70,61 @@ MedHub.billing = {
           </div>
         </div>
 
-        <!-- SEARCH MEDICINE SECTION -->
-        <div class="card medicine-search-card" style="margin-top: 18px; position: relative;">
-          <div class="search-box-header">
-            <label class="search-title">Medicine Search</label>
-            <span class="search-shortcut">Type medicine or generic name (↑ ↓ Enter to select)</span>
+        <!-- MARG ERP 9+ FAST SALE ENTRY CARD (BLUEPRINT REPLICA) -->
+        <div class="marg-blueprint-card" id="marg-sale-entry-container">
+          <div class="marg-blue-header">
+            <div class="marg-header-left">
+              <span class="marg-logo-text">⚡ MARG ERP 9+ SALE ENTRY</span>
+              <span class="marg-mode-badge">SALE TYPE: LOCAL / RETAIL</span>
+            </div>
+            <div class="marg-header-right">
+              <span class="marg-shortcut-hint">⌨️ <strong>ENTER ↵</strong> shifts to next box • Empty Product + Enter ➔ Bill Summary</span>
+            </div>
           </div>
-          <div class="search-input-wrap">
-            <span class="search-icon">${MedHub.icons.search}</span>
-            <input type="text" id="med-search-input" class="search-input" 
-              placeholder="Search by brand name, salt composition, company or barcode..." autocomplete="off" />
-            <button type="button" id="clear-search-btn" class="clear-search-btn" style="display: none;">${MedHub.icons.close}</button>
+          <div class="marg-entry-row-grid">
+            <div class="marg-cell marg-cell-product">
+              <label class="marg-lbl" for="marg-prod-name">PRODUCT *</label>
+              <input type="text" id="marg-prod-name" class="marg-input" placeholder="Type medicine / brand name..." autocomplete="off" />
+              <div id="marg-prod-dropdown" class="medicine-dropdown-results" style="display: none;"></div>
+            </div>
+            <div class="marg-cell marg-cell-pack">
+              <label class="marg-lbl" for="marg-prod-pack">PACK</label>
+              <input type="text" id="marg-prod-pack" class="marg-input" placeholder="1x10" />
+            </div>
+            <div class="marg-cell marg-cell-batch">
+              <label class="marg-lbl" for="marg-prod-batch">BATCH</label>
+              <input type="text" id="marg-prod-batch" class="marg-input" placeholder="Batch No" />
+            </div>
+            <div class="marg-cell marg-cell-exp">
+              <label class="marg-lbl" for="marg-prod-exp">EXPIRY</label>
+              <input type="text" id="marg-prod-exp" class="marg-input" placeholder="MM/YY" maxlength="7" />
+            </div>
+            <div class="marg-cell marg-cell-qty">
+              <label class="marg-lbl" for="marg-prod-qty">QTY *</label>
+              <input type="number" id="marg-prod-qty" class="marg-input" value="1" min="1" />
+            </div>
+            <div class="marg-cell marg-cell-free">
+              <label class="marg-lbl" for="marg-prod-free">FREE</label>
+              <input type="number" id="marg-prod-free" class="marg-input" value="0" min="0" />
+            </div>
+            <div class="marg-cell marg-cell-rate">
+              <label class="marg-lbl" for="marg-prod-rate">RATE (₹) *</label>
+              <input type="number" step="0.01" id="marg-prod-rate" class="marg-input" placeholder="0.00" />
+            </div>
+            <div class="marg-cell marg-cell-dis">
+              <label class="marg-lbl" for="marg-prod-dis">DIS %</label>
+              <input type="number" step="0.1" id="marg-prod-dis" class="marg-input" value="0" min="0" max="100" />
+            </div>
+            <div class="marg-cell marg-cell-amount">
+              <label class="marg-lbl" for="marg-prod-amount">AMOUNT (₹)</label>
+              <input type="text" id="marg-prod-amount" class="marg-input marg-readonly" readonly placeholder="0.00" />
+            </div>
+            <div class="marg-cell marg-cell-action">
+              <button type="button" id="btn-marg-add" class="btn-primary" style="height: 36px; padding: 0 14px; white-space: nowrap; font-weight: 700;">
+                ↵ Add Item
+              </button>
+            </div>
           </div>
-          
-          <!-- Dropdown search results list -->
-          <div id="medicine-search-dropdown" class="medicine-dropdown-results" style="display: none;"></div>
         </div>
 
         <!-- CART ITEMS & SUMMARY SECTION -->
@@ -103,15 +143,17 @@ MedHub.billing = {
               <table class="data-table" id="cart-table">
                 <thead>
                   <tr>
-                    <th style="width: 40px;">#</th>
-                    <th>Medicine & Composition</th>
-                    <th>Batch</th>
-                    <th>Expiry</th>
-                    <th>Schedule</th>
-                    <th>Rate (₹)</th>
-                    <th style="width: 90px;">Qty</th>
-                    <th>Line Total</th>
-                    <th style="width: 50px;"></th>
+                    <th style="width: 36px;">#</th>
+                    <th>PRODUCT & COMPOSITION</th>
+                    <th>PACK</th>
+                    <th>BATCH</th>
+                    <th>EXPIRY</th>
+                    <th>QTY</th>
+                    <th>FREE</th>
+                    <th>RATE (₹)</th>
+                    <th>DIS %</th>
+                    <th>AMOUNT (₹)</th>
+                    <th style="width: 44px;"></th>
                   </tr>
                 </thead>
                 <tbody id="cart-items-body">
@@ -120,7 +162,7 @@ MedHub.billing = {
               </table>
               <div id="cart-empty-state" class="cart-empty" style="${MedHub.state.cart.length ? "display:none;" : ""}">
                 <p>No medicine added to cart</p>
-                <span class="cart-empty-sub">Search medicine above or scan barcode to add</span>
+                <span class="cart-empty-sub">Type medicine name in Marg entry row above and press Enter ↵</span>
               </div>
             </div>
           </div>
@@ -206,19 +248,18 @@ MedHub.billing = {
           <td>
             <strong>${it.name}</strong>
             ${it.salt_composition ? `<div class="sub-text">${it.salt_composition}</div>` : ""}
+            ${isScheduleH ? `<span class="badge-schedule schedule-h" style="margin-left: 6px;">Sch-H</span>` : ""}
           </td>
+          <td>${it.pack_size || "1x10"}</td>
           <td><span class="badge-code">${it.batch_no || "BT-DEFAULT"}</span></td>
-          <td>${MedHub.formatDate(it.expiry_date)}</td>
-          <td>
-            <span class="badge-schedule ${isScheduleH ? 'schedule-h' : 'schedule-gen'}">
-              ${it.drug_schedule || 'General'}
-            </span>
-          </td>
-          <td>₹${Number(it.rate).toFixed(2)}</td>
+          <td><span class="badge-exp-month">${MedHub.formatExpiry(it.expiry_date)}</span></td>
           <td>
             <input type="number" class="cart-qty-input" min="1" max="${it.max_stock || 999}" 
-              value="${it.quantity}" data-index="${idx}" style="width: 65px;" />
+              value="${it.quantity}" data-index="${idx}" style="width: 60px;" />
           </td>
+          <td>${it.free_qty || 0}</td>
+          <td>₹${Number(it.rate).toFixed(2)}</td>
+          <td>${Number(it.discount_percent || 0)}%</td>
           <td><strong>₹${Number(it.line_total).toFixed(2)}</strong></td>
           <td>
             <button type="button" class="btn-icon-danger btn-remove-item" data-index="${idx}" title="Remove">
@@ -244,6 +285,32 @@ MedHub.billing = {
     custAddress?.addEventListener("input", (e) => { MedHub.state.customer.address = e.target.value; });
     docName?.addEventListener("input", (e) => { MedHub.state.doctor.name = e.target.value; });
 
+    // Enter Key Navigation Chain: Customer Details -> Marg Item Row
+    custName?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        custMobile?.focus();
+      }
+    });
+    custMobile?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        custAddress?.focus();
+      }
+    });
+    custAddress?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        docName?.focus();
+      }
+    });
+    docName?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        container.querySelector("#marg-prod-name")?.focus();
+      }
+    });
+
     // Discount & Received bindings
     const discInput = container.querySelector("#bill-discount");
     discInput?.addEventListener("input", (e) => {
@@ -254,6 +321,20 @@ MedHub.billing = {
     const amtReceivedInput = container.querySelector("#amt-received");
     amtReceivedInput?.addEventListener("input", (e) => {
       MedHub.state.amountReceived = e.target.value;
+    });
+
+    // Enter Key Navigation: Discount -> Received -> Complete & Print
+    discInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        amtReceivedInput?.focus();
+      }
+    });
+    amtReceivedInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        self.submitBill();
+      }
     });
 
     // Payment mode chips
@@ -269,27 +350,63 @@ MedHub.billing = {
       });
     });
 
-    // Medicine Live Search
-    const searchInput = container.querySelector("#med-search-input");
-    const searchDropdown = container.querySelector("#medicine-search-dropdown");
-    const clearBtn = container.querySelector("#clear-search-btn");
+    // MARG ERP 9+ SALE ENTRY ROW LOGIC & ENTER SHIFTING
+    const prodInput = container.querySelector("#marg-prod-name");
+    const packInput = container.querySelector("#marg-prod-pack");
+    const batchInput = container.querySelector("#marg-prod-batch");
+    const expInput = container.querySelector("#marg-prod-exp");
+    const qtyInput = container.querySelector("#marg-prod-qty");
+    const freeInput = container.querySelector("#marg-prod-free");
+    const rateInput = container.querySelector("#marg-prod-rate");
+    const disInput = container.querySelector("#marg-prod-dis");
+    const amountInput = container.querySelector("#marg-prod-amount");
+    const addBtn = container.querySelector("#btn-marg-add");
+    const prodDropdown = container.querySelector("#marg-prod-dropdown");
 
-    const doSearch = MedHub.debounce(async (val) => {
+    let currentSelectedMed = null;
+    let currentSearchResults = [];
+    let highlightedIndex = 0;
+
+    // Helper: Recalculate Marg Item Amount
+    const recalcMargAmount = () => {
+      const q = parseFloat(qtyInput?.value) || 0;
+      const r = parseFloat(rateInput?.value) || 0;
+      const d = parseFloat(disInput?.value) || 0;
+      const gross = q * r;
+      const net = Math.max(0, gross - (gross * (d / 100)));
+      if (amountInput) amountInput.value = net.toFixed(2);
+    };
+
+    qtyInput?.addEventListener("input", recalcMargAmount);
+    rateInput?.addEventListener("input", recalcMargAmount);
+    disInput?.addEventListener("input", recalcMargAmount);
+
+    // Live Search for Marg Product
+    const searchMargProducts = MedHub.debounce(async (val) => {
       if (!val || val.trim().length === 0) {
-        searchDropdown.style.display = "none";
-        clearBtn.style.display = "none";
+        if (prodDropdown) prodDropdown.style.display = "none";
+        currentSearchResults = [];
         return;
       }
-      clearBtn.style.display = "block";
       const results = await MedHub.api.searchMedicines(val);
+      currentSearchResults = results || [];
+      highlightedIndex = 0;
+
       if (!results || results.length === 0) {
-        searchDropdown.innerHTML = `<div class="search-no-res">No medicines found for "${val}"</div>`;
-        searchDropdown.style.display = "block";
+        if (prodDropdown) {
+          prodDropdown.innerHTML = `<div class="search-no-res">No medicines found for "${val}"</div>`;
+          prodDropdown.style.display = "block";
+        }
         return;
       }
 
-      searchDropdown.innerHTML = results.map((m, idx) => `
-        <div class="search-item" data-id="${m.id}" data-idx="${idx}">
+      renderMargDropdown();
+    }, 180);
+
+    const renderMargDropdown = () => {
+      if (!prodDropdown) return;
+      prodDropdown.innerHTML = currentSearchResults.map((m, idx) => `
+        <div class="search-item ${idx === highlightedIndex ? 'highlighted' : ''}" data-id="${m.id}" data-idx="${idx}">
           <div class="search-item-left">
             <span class="search-item-name">${m.name}</span>
             <span class="search-item-comp">${m.salt_composition || m.generic_name || m.company || ""}</span>
@@ -305,49 +422,235 @@ MedHub.billing = {
           </div>
         </div>
       `).join("");
-      searchDropdown.style.display = "block";
+      prodDropdown.style.display = "block";
 
-      // Click to select medicine
-      searchDropdown.querySelectorAll(".search-item").forEach(itemEl => {
-        itemEl.addEventListener("click", async () => {
-          const medId = itemEl.dataset.id;
-          const chosenMed = results.find(r => String(r.id) === String(medId));
-          if (chosenMed) {
-            await self.addMedicineToCart(chosenMed);
-            searchInput.value = "";
-            searchDropdown.style.display = "none";
-            clearBtn.style.display = "none";
-            searchInput.focus();
-          }
+      prodDropdown.querySelectorAll(".search-item").forEach(itemEl => {
+        itemEl.addEventListener("click", () => {
+          const idx = Number(itemEl.dataset.idx);
+          selectMargProduct(currentSearchResults[idx]);
         });
       });
-    }, 200);
+    };
 
-    searchInput?.addEventListener("input", (e) => doSearch(e.target.value));
+    // Populate Marg Item Row from selected medicine
+    const selectMargProduct = async (med) => {
+      if (!med) return;
+      currentSelectedMed = med;
+      if (prodInput) prodInput.value = med.name;
 
-    // Clear search button
-    clearBtn?.addEventListener("click", () => {
-      searchInput.value = "";
-      searchDropdown.style.display = "none";
-      clearBtn.style.display = "none";
-      searchInput.focus();
+      // Pack
+      if (packInput) packInput.value = med.pack_size || "1x10";
+
+      // FEFO Batch lookup
+      const batches = await MedHub.api.getBatches(med.id);
+      const chosenBatch = (batches && batches.length) ? batches[0] : null;
+      currentSelectedMed.chosenBatch = chosenBatch;
+
+      if (batchInput) {
+        batchInput.value = chosenBatch ? chosenBatch.batch_no : ("BT-" + (med.barcode || "01"));
+      }
+
+      // Expiry formatted strictly as MM/YY
+      const rawExp = chosenBatch ? chosenBatch.expiry_date : (med.nearest_expiry || "2028-11");
+      if (expInput) {
+        expInput.value = MedHub.formatExpiry(rawExp);
+      }
+
+      // Rate
+      const selRate = Number(med.selling_rate || (chosenBatch ? chosenBatch.selling_price : med.mrp) || 0);
+      if (rateInput) rateInput.value = selRate.toFixed(2);
+
+      // Qty & Free
+      if (qtyInput) qtyInput.value = 1;
+      if (freeInput) freeInput.value = 0;
+      if (disInput) disInput.value = 0;
+
+      recalcMargAmount();
+
+      if (prodDropdown) prodDropdown.style.display = "none";
+
+      // Instantly shift focus to QTY box for fast Marg workflow
+      qtyInput?.focus();
+      qtyInput?.select();
+    };
+
+    prodInput?.addEventListener("input", (e) => searchMargProducts(e.target.value));
+
+    // Keyboard navigation in Product Search: ArrowUp, ArrowDown, Enter
+    prodInput?.addEventListener("keydown", (e) => {
+      if (prodDropdown && prodDropdown.style.display !== "none" && currentSearchResults.length > 0) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          highlightedIndex = (highlightedIndex + 1) % currentSearchResults.length;
+          renderMargDropdown();
+          return;
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          highlightedIndex = (highlightedIndex - 1 + currentSearchResults.length) % currentSearchResults.length;
+          renderMargDropdown();
+          return;
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          selectMargProduct(currentSearchResults[highlightedIndex]);
+          return;
+        } else if (e.key === "Escape") {
+          prodDropdown.style.display = "none";
+          return;
+        }
+      }
+
+      // If Enter pressed when input is empty -> Shift focus to Bill Summary (Discount)
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (!prodInput.value || !prodInput.value.trim()) {
+          discInput?.focus();
+        } else if (currentSelectedMed) {
+          qtyInput?.focus();
+        }
+      }
     });
+
+    // Enter Key Chain within Marg Entry Row: Pack -> Batch -> Exp -> Qty -> Free -> Rate -> Dis% -> Add
+    packInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        batchInput?.focus();
+      }
+    });
+    batchInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        expInput?.focus();
+      }
+    });
+    expInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        qtyInput?.focus();
+      }
+    });
+    qtyInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        freeInput?.focus();
+      }
+    });
+    freeInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        rateInput?.focus();
+      }
+    });
+    rateInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        disInput?.focus();
+      }
+    });
+    disInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commitMargItem();
+      }
+    });
+
+    // Commit Marg Item to Cart
+    const commitMargItem = () => {
+      const prodName = prodInput?.value?.trim();
+      if (!prodName) {
+        MedHub.toast("Kripya dawai ka naam select karein", "warning");
+        prodInput?.focus();
+        return;
+      }
+
+      const q = parseFloat(qtyInput?.value) || 1;
+      const f = parseFloat(freeInput?.value) || 0;
+      const r = parseFloat(rateInput?.value) || 0;
+      const d = parseFloat(disInput?.value) || 0;
+      const pack = packInput?.value?.trim() || "1x10";
+      const batch = batchInput?.value?.trim() || "BT-DEFAULT";
+      const exp = expInput?.value?.trim() || "11/28";
+      const gross = q * r;
+      const net = Math.max(0, gross - (gross * (d / 100)));
+
+      const medId = currentSelectedMed ? currentSelectedMed.id : ("m-" + Date.now());
+      const batchId = currentSelectedMed?.chosenBatch?.id || null;
+      const maxStock = currentSelectedMed?.available_qty || 999;
+      const sch = currentSelectedMed?.drug_schedule || "General";
+      const comp = currentSelectedMed?.salt_composition || "";
+
+      // Check if existing item in cart
+      const existing = MedHub.state.cart.find(it => it.medicine_id === medId && it.batch_no === batch);
+      if (existing) {
+        existing.quantity += q;
+        existing.free_qty = (existing.free_qty || 0) + f;
+        existing.rate = r;
+        existing.discount_percent = d;
+        const exGross = existing.quantity * existing.rate;
+        existing.line_total = Math.max(0, exGross - (exGross * (existing.discount_percent / 100)));
+      } else {
+        MedHub.state.cart.push({
+          medicine_id: medId,
+          name: prodName,
+          company: currentSelectedMed?.company || "",
+          salt_composition: comp,
+          pack_size: pack,
+          drug_schedule: sch,
+          batch_id: batchId,
+          batch_no: batch,
+          expiry_date: exp,
+          rate: r,
+          quantity: q,
+          free_qty: f,
+          discount_percent: d,
+          line_total: net,
+          max_stock: maxStock
+        });
+      }
+
+      if (sch && sch.includes("H")) {
+        MedHub.toast(`Notice: ${prodName} is Schedule H. Prescribing doctor recorded.`, "info");
+      }
+
+      self.updateCartUI();
+
+      // Reset Marg Row inputs
+      if (prodInput) prodInput.value = "";
+      if (packInput) packInput.value = "";
+      if (batchInput) batchInput.value = "";
+      if (expInput) expInput.value = "";
+      if (qtyInput) qtyInput.value = 1;
+      if (freeInput) freeInput.value = 0;
+      if (rateInput) rateInput.value = "";
+      if (disInput) disInput.value = 0;
+      if (amountInput) amountInput.value = "";
+      currentSelectedMed = null;
+      currentSearchResults = [];
+      if (prodDropdown) prodDropdown.style.display = "none";
+
+      // Refocus product search input immediately for next item entry!
+      prodInput?.focus();
+    };
+
+    addBtn?.addEventListener("click", commitMargItem);
 
     // Close dropdown on outside click
     document.addEventListener("click", (e) => {
       if (!container.contains(e.target)) {
-        if (searchDropdown) searchDropdown.style.display = "none";
+        if (prodDropdown) prodDropdown.style.display = "none";
       }
     });
 
-    // Cart Quantity change
+    // Cart Quantity change in table
     container.addEventListener("input", (e) => {
       if (e.target.classList.contains("cart-qty-input")) {
         const idx = Number(e.target.dataset.index);
         let newQty = parseInt(e.target.value, 10);
         if (isNaN(newQty) || newQty <= 0) newQty = 1;
-        MedHub.state.cart[idx].quantity = newQty;
-        MedHub.state.cart[idx].line_total = newQty * MedHub.state.cart[idx].rate;
+        const it = MedHub.state.cart[idx];
+        it.quantity = newQty;
+        const gross = newQty * it.rate;
+        it.line_total = Math.max(0, gross - (gross * ((it.discount_percent || 0) / 100)));
         self.updateCartUI();
       }
     });
@@ -372,19 +675,26 @@ MedHub.billing = {
 
     // Complete & Print Bill
     container.querySelector("#btn-save-print")?.addEventListener("click", () => self.submitBill());
+
+    // Global Shortcut F9 to Print Bill
+    const f9Handler = (e) => {
+      if (e.key === "F9") {
+        e.preventDefault();
+        self.submitBill();
+      }
+    };
+    window.addEventListener("keydown", f9Handler);
   },
 
   async addMedicineToCart(med) {
-    // Check batches via FEFO
     const batches = await MedHub.api.getBatches(med.id);
     const chosenBatch = (batches && batches.length) ? batches[0] : null;
 
     const rate = Number(med.selling_rate || (chosenBatch ? chosenBatch.selling_price : med.mrp));
     const batchNo = chosenBatch ? chosenBatch.batch_no : "BT-" + (med.barcode || "001");
-    const expiry = chosenBatch ? chosenBatch.expiry_date : (med.nearest_expiry || "2027-12-31");
+    const expiry = chosenBatch ? chosenBatch.expiry_date : (med.nearest_expiry || "2028-11");
     const batchId = chosenBatch ? chosenBatch.id : null;
 
-    // Check if item already in cart with same batch
     const existing = MedHub.state.cart.find(it => it.medicine_id === med.id && it.batch_no === batchNo);
     if (existing) {
       existing.quantity += 1;
@@ -395,18 +705,20 @@ MedHub.billing = {
         name: med.name,
         company: med.company,
         salt_composition: med.salt_composition,
+        pack_size: med.pack_size || "1x10",
         drug_schedule: med.drug_schedule || "General",
         batch_id: batchId,
         batch_no: batchNo,
         expiry_date: expiry,
         rate: rate,
         quantity: 1,
+        free_qty: 0,
+        discount_percent: 0,
         line_total: rate,
         max_stock: (chosenBatch ? chosenBatch.quantity : med.available_qty) || 999
       });
     }
 
-    // Schedule H notification if needed
     if (med.drug_schedule && med.drug_schedule.includes("H")) {
       MedHub.toast(`Notice: ${med.name} is a ${med.drug_schedule} medicine. Prescribing doctor recorded.`, "info");
     }
@@ -612,8 +924,7 @@ MedHub.billing = {
                   </thead>
                   <tbody>
                     ${items.map((it, i) => {
-                      const expMatch = it.expiry_date ? new Date(it.expiry_date) : null;
-                      const expFormatted = expMatch && !isNaN(expMatch.getTime()) ? `${expMatch.getMonth() + 1}/${String(expMatch.getFullYear()).slice(-2)}` : "3/28";
+                      const expFormatted = MedHub.formatExpiry(it.expiry_date);
                       const oldMrpVal = Number(it.old_mrp || 0).toFixed(2);
                       const rateVal = Number(it.rate || it.mrp || 0).toFixed(2);
                       const qtyVal = Number(it.quantity || 1).toFixed(2);
@@ -695,7 +1006,7 @@ MedHub.billing = {
                     <div class="digital-item-row">
                       <div>
                         <div class="digital-item-name">${it.medicine_name || it.name || "Medicine"}</div>
-                        <div class="digital-item-meta">Qty: ${it.quantity} | Batch: ${it.batch_no || "BT-01"} | Exp: ${MedHub.formatDate(it.expiry_date)}</div>
+                        <div class="digital-item-meta">Qty: ${it.quantity} | Batch: ${it.batch_no || "BT-01"} | Exp: ${MedHub.formatExpiry(it.expiry_date)}</div>
                       </div>
                       <div class="digital-item-price">₹${Number(it.line_total || (it.quantity * it.rate) || 0).toFixed(2)}</div>
                     </div>

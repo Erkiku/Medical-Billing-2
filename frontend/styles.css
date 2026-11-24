@@ -3326,6 +3326,140 @@ button {
 }
 
 /* ============================================================================
+   MARG ERP 9+ SALE ENTRY BLUEPRINT STYLING
+   ============================================================================ */
+.marg-blueprint-card {
+  background: #ffffff;
+  border: 1.5px solid #2563eb;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12);
+  margin-top: 16px;
+  position: relative;
+}
+.marg-blue-header {
+  background: linear-gradient(90deg, #1e40af, #2563eb);
+  color: #ffffff;
+  padding: 8px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: inherit;
+}
+.marg-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.marg-logo-text {
+  font-weight: 800;
+  font-size: 13.5px;
+  letter-spacing: 0.5px;
+}
+.marg-mode-badge {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.marg-shortcut-hint {
+  font-size: 12px;
+  color: #dbeafe;
+}
+.marg-entry-row-grid {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 12px 14px;
+  background: #f0f7ff;
+  border-bottom: 1.5px solid #bfdbfe;
+  align-items: flex-end;
+}
+.marg-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  position: relative;
+}
+.marg-cell-product {
+  flex: 3 1 240px;
+  min-width: 200px;
+}
+.marg-cell-pack {
+  flex: 0 0 75px;
+  width: 75px;
+}
+.marg-cell-batch {
+  flex: 1 1 120px;
+  min-width: 105px;
+}
+.marg-cell-exp {
+  flex: 0 0 85px;
+  width: 85px;
+}
+.marg-cell-qty {
+  flex: 0 0 70px;
+  width: 70px;
+}
+.marg-cell-free {
+  flex: 0 0 60px;
+  width: 60px;
+}
+.marg-cell-rate {
+  flex: 1 1 95px;
+  min-width: 85px;
+}
+.marg-cell-dis {
+  flex: 0 0 65px;
+  width: 65px;
+}
+.marg-cell-amount {
+  flex: 1 1 105px;
+  min-width: 95px;
+}
+.marg-cell-action {
+  flex: 0 0 auto;
+}
+.marg-lbl {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #1e3a8a;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.marg-input {
+  height: 36px;
+  border: 1.5px solid #93c5fd;
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-size: 13px;
+  background: #ffffff;
+  color: #0f172a;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+}
+.marg-input:focus {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25) !important;
+  background: #ffffff !important;
+}
+.marg-readonly {
+  background: #e2e8f0 !important;
+  color: #334155 !important;
+  font-weight: 700;
+}
+.marg-entry-row-grid .medicine-dropdown-results {
+  top: 60px;
+  left: 0;
+  width: 380px;
+  max-height: 280px;
+}
+
+
+/* ============================================================================
    DIRECT PRINT ENTER BUTTON & INSTANT BANNER
    ============================================================================ */
 .btn-direct-print-enter {

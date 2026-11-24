@@ -180,7 +180,7 @@ MedHub.inventory = {
           <td class="cell-nowrap">₹${Number(m.mrp).toFixed(2)}</td>
           <td class="cell-nowrap"><strong>₹${Number(m.selling_rate || m.mrp).toFixed(2)}</strong></td>
           <td class="cell-nowrap"><strong style="font-size:14px;">${m.available_qty || 0}</strong></td>
-          <td class="cell-nowrap">${MedHub.formatDate(m.nearest_expiry)}</td>
+          <td class="cell-nowrap">${MedHub.formatExpiry ? MedHub.formatExpiry(m.nearest_expiry) : MedHub.formatDate(m.nearest_expiry)}</td>
           <td class="cell-nowrap">${statusBadge}</td>
         </tr>
       `;
@@ -337,7 +337,7 @@ MedHub.inventory = {
                 <td>₹${Number(m.mrp).toFixed(2)}</td>
                 <td>₹${Number(m.selling_rate || m.mrp).toFixed(2)}</td>
                 <td><strong>${m.available_qty || 0}</strong></td>
-                <td>${MedHub.formatDate(m.nearest_expiry)}</td>
+                <td>${MedHub.formatExpiry ? MedHub.formatExpiry(m.nearest_expiry) : MedHub.formatDate(m.nearest_expiry)}</td>
                 <td>${m.status === 'out' ? 'Out of Stock' : (m.status === 'low' ? 'Low Stock' : 'In Stock')}</td>
               </tr>
             `).join("")}
@@ -487,8 +487,8 @@ MedHub.inventory = {
                   <input type="text" id="m-batch-no" class="input-field" placeholder="e.g. B-998" />
                 </div>
                 <div class="form-group">
-                  <label class="form-label">Expiry Date</label>
-                  <input type="date" id="m-expiry-date" class="input-field" />
+                  <label class="form-label">Expiry (Month & Year)</label>
+                  <input type="month" id="m-expiry-date" class="input-field" title="Expiry Month & Year" />
                 </div>
                 <div class="form-group">
                   <label class="form-label">Quantity</label>
