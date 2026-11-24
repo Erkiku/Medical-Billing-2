@@ -3471,6 +3471,68 @@ button {
   border-left: 4px solid #2563eb !important;
 }
 
+/* INVENTORY ACTION BUTTONS (+ Stock, Edit, Delete) */
+.table-actions-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.btn-action-stock {
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: all 0.15s ease;
+}
+.btn-action-stock:hover {
+  background: #059669;
+  color: #ffffff;
+}
+.btn-action-edit {
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: all 0.15s ease;
+}
+.btn-action-edit:hover {
+  background: #2563eb;
+  color: #ffffff;
+}
+.btn-action-delete {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: all 0.15s ease;
+}
+.btn-action-delete:hover {
+  background: #dc2626;
+  color: #ffffff;
+}
+
 
 /* ============================================================================
    DIRECT PRINT ENTER BUTTON & INSTANT BANNER

@@ -106,6 +106,7 @@ MedHub.inventory = {
                   <th>Available Qty</th>
                   <th>Expiry</th>
                   <th>Status</th>
+                  <th style="width: 175px; text-align: center;">Actions</th>
                 </tr>
               </thead>
               <tbody id="inventory-tbody">
@@ -153,7 +154,7 @@ MedHub.inventory = {
   renderTableRows() {
     const list = this.getFilteredMedicines();
     if (!list.length) {
-      return `<tr><td colspan="11" class="table-empty">Koi medicine nahi mili. Nayi medicine add karein.</td></tr>`;
+      return `<tr><td colspan="12" class="table-empty">Koi medicine nahi mili. Nayi medicine add karein.</td></tr>`;
     }
 
     return list.map((m, idx) => {
@@ -182,6 +183,17 @@ MedHub.inventory = {
           <td class="cell-nowrap"><strong style="font-size:14px;">${m.available_qty || 0}</strong></td>
           <td class="cell-nowrap">${MedHub.formatExpiry ? MedHub.formatExpiry(m.nearest_expiry) : MedHub.formatDate(m.nearest_expiry)}</td>
           <td class="cell-nowrap">${statusBadge}</td>
+          <td class="cell-nowrap table-actions-cell">
+            <button type="button" class="btn-action-stock btn-stock-action" data-id="${m.id}" title="Add New Stock Batch">
+              + Stock
+            </button>
+            <button type="button" class="btn-action-edit btn-edit-action" data-id="${m.id}" title="Edit Medicine">
+              Edit
+            </button>
+            <button type="button" class="btn-action-delete btn-delete-action" data-id="${m.id}" title="Delete Medicine">
+              Delete
+            </button>
+          </td>
         </tr>
       `;
     }).join("");
@@ -212,6 +224,42 @@ MedHub.inventory = {
     catSelect?.addEventListener("change", (e) => {
       self.categoryFilter = e.target.value;
       self.updateTableOnly();
+    });
+
+    // Table Row Actions: + Stock, Edit, Delete
+    container.addEventListener("click", async (e) => {
+      const stockBtn = e.target.closest(".btn-stock-action");
+      if (stockBtn) {
+        const id = stockBtn.dataset.id;
+        const med = self.medicinesList.find(m => String(m.id) === String(id));
+        if (med) self.openAddStockModal(med);
+        return;
+      }
+
+      const editBtn = e.target.closest(".btn-edit-action");
+      if (editBtn) {
+        const id = editBtn.dataset.id;
+        const med = self.medicinesList.find(m => String(m.id) === String(id));
+        if (med) self.openEditMedicineModal(med);
+        return;
+      }
+
+      const deleteBtn = e.target.closest(".btn-delete-action");
+      if (deleteBtn) {
+        const id = deleteBtn.dataset.id;
+        const med = self.medicinesList.find(m => String(m.id) === String(id));
+        if (med && confirm(`Kya aap '${med.name}' ko catalog se delete karna chahte hain?`)) {
+          const ok = await MedHub.api.deleteMedicine(id);
+          if (ok) {
+            MedHub.toast(`'${med.name}' delete ho gaya`, "success");
+            self.medicinesList = await MedHub.api.getMedicines();
+            self.updateTableOnly();
+          } else {
+            MedHub.toast("Delete karne me samasya aayi", "error");
+          }
+        }
+        return;
+      }
     });
 
     // Export Excel
@@ -479,8 +527,8 @@ MedHub.inventory = {
                   <input type="text" id="m-batch-no" class="input-field" placeholder="e.g. B-998" />
                 </div>
                 <div class="form-group">
-                  <label class="form-label">Expiry (Month & Year)</label>
-                  <input type="month" id="m-expiry-date" class="input-field" title="Expiry Month & Year" />
+                  <label class="form-label">Expiry (Month & Year only)</label>
+                  <input type="month" id="m-expiry-date" class="input-field" title="Expiry Month & Year only" />
                 </div>
                 <div class="form-group">
                   <label class="form-label">Quantity</label>
@@ -590,6 +638,267 @@ MedHub.inventory = {
         MedHub.toast("Medicine save karne me dikkat aayi", "error");
         saveBtn.disabled = false;
         saveBtn.innerText = "Save Medicine";
+      }
+    });
+  },
+
+  // ==========================================================================
+  // ADD NEW STOCK BATCH (Batch No & Expiry Month/Year Only)
+  // ==========================================================================
+  openAddStockModal(med) {
+    let modalWrap = document.getElementById("add-medicine-modal-wrap");
+    if (!modalWrap) return;
+
+    modalWrap.innerHTML = `
+      <div class="modal-overlay">
+        <div class="modal-box" style="max-width: 480px;">
+          <div class="modal-header-dialog">
+            <h3 class="modal-dialog-title">+ Add New Stock / Inward</h3>
+            <button type="button" class="btn-dialog-close" id="btn-close-stock-modal">${MedHub.icons.close}</button>
+          </div>
+          <form id="add-stock-form" class="modal-dialog-body" style="padding: 20px;">
+            <div style="background: #f0f7ff; padding: 12px 14px; border-radius: 6px; border: 1.5px solid #bfdbfe; margin-bottom: 16px;">
+              <strong style="color: #1e40af; font-size: 14.5px;">${med.name}</strong>
+              <div style="font-size: 12px; color: #475569; margin-top: 4px;">
+                ${med.company || "Manufacturer"} • Current Stock: <strong style="color: #0f766e;">${med.available_qty || 0} units</strong>
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 14px;">
+              <label class="form-label">Batch Number <span class="req">*</span></label>
+              <input type="text" id="stock-batch-no" class="input-field" placeholder="e.g. BT-2026" required autofocus />
+            </div>
+
+            <div class="form-group" style="margin-bottom: 14px;">
+              <label class="form-label">Expiry (Month & Year only) <span class="req">*</span></label>
+              <input type="month" id="stock-expiry-date" class="input-field" title="Expiry Month & Year only" required />
+            </div>
+
+            <div class="form-row-2" style="margin-bottom: 16px;">
+              <div class="form-group">
+                <label class="form-label">Quantity (Units) <span class="req">*</span></label>
+                <input type="number" id="stock-qty" class="input-field" min="1" placeholder="e.g. 50" required />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Purchase Rate (₹)</label>
+                <input type="number" step="0.01" id="stock-pur-rate" class="input-field" placeholder="25.00" value="${med.purchase_price || ''}" />
+              </div>
+            </div>
+
+            <div class="modal-dialog-footer" style="margin-top: 10px;">
+              <button type="button" class="btn-dialog-cancel" id="btn-cancel-stock-modal">Cancel</button>
+              <button type="submit" class="btn-dialog-save" id="btn-save-stock">Add Stock</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    const closeStockModal = () => { modalWrap.innerHTML = ""; };
+    document.getElementById("btn-close-stock-modal")?.addEventListener("click", closeStockModal);
+    document.getElementById("btn-cancel-stock-modal")?.addEventListener("click", closeStockModal);
+
+    const form = document.getElementById("add-stock-form");
+    form?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const batch_no = document.getElementById("stock-batch-no").value.trim();
+      const expiry_date = document.getElementById("stock-expiry-date").value;
+      const qty = parseInt(document.getElementById("stock-qty").value, 10);
+      const pur_rate = parseFloat(document.getElementById("stock-pur-rate").value) || med.purchase_price || 0;
+
+      if (!batch_no || !expiry_date || isNaN(qty) || qty <= 0) {
+        MedHub.toast("Kripya Batch Number, Expiry (Month/Year) aur valid Quantity darj karein", "warning");
+        return;
+      }
+
+      const saveBtn = document.getElementById("btn-save-stock");
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerText = "Adding...";
+      }
+
+      const ok = await MedHub.api.addStockBatch(med.id, {
+        batch_no,
+        expiry_date,
+        quantity: qty,
+        purchase_price: pur_rate,
+        selling_price: med.selling_rate || med.mrp || 0
+      });
+
+      if (ok) {
+        MedHub.toast(`New stock (${qty} units) successfully added to ${med.name}!`, "success");
+        closeStockModal();
+        this.medicinesList = await MedHub.api.getMedicines();
+        this.updateTableOnly();
+      } else {
+        MedHub.toast("Stock add karne me samasya aayi", "error");
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerText = "Add Stock";
+        }
+      }
+    });
+  },
+
+  // ==========================================================================
+  // EDIT MEDICINE DETAILS MODAL
+  // ==========================================================================
+  openEditMedicineModal(med) {
+    let modalWrap = document.getElementById("add-medicine-modal-wrap");
+    if (!modalWrap) return;
+
+    const packParts = (med.pack_size || "1 × 10").split(/×|x/i).map(s => s.trim());
+    const stripVal = packParts[0] || "1";
+    const unitVal = packParts[1] || "10";
+
+    modalWrap.innerHTML = `
+      <div class="modal-overlay">
+        <div class="modal-box medicine-modal-dialog">
+          <div class="modal-header-dialog">
+            <h3 class="modal-dialog-title">Edit Medicine Details</h3>
+            <button type="button" class="btn-dialog-close" id="btn-close-edit-modal">${MedHub.icons.close}</button>
+          </div>
+
+          <form id="edit-medicine-form" class="modal-dialog-body">
+            <div class="form-row-2">
+              <div class="form-group">
+                <label class="form-label">Medicine Name <span class="req">*</span></label>
+                <input type="text" id="edit-m-name" class="input-field" value="${med.name || ''}" required />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Company / Manufacturer <span class="req">*</span></label>
+                <input type="text" id="edit-m-company" class="input-field" value="${med.company || ''}" required />
+              </div>
+            </div>
+
+            <div class="form-row-2" style="margin-top: 14px;">
+              <div class="form-group">
+                <label class="form-label">Generic Name</label>
+                <input type="text" id="edit-m-generic" class="input-field" value="${med.generic_name || ''}" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Salt Composition</label>
+                <input type="text" id="edit-m-salt" class="input-field" value="${med.salt_composition || ''}" />
+              </div>
+            </div>
+
+            <div class="form-row-medicine-specs" style="margin-top: 14px;">
+              <div class="form-group">
+                <label class="form-label">Category</label>
+                <select id="edit-m-category" class="input-field select-field">
+                  ${MedHub.state.categories.map(c => `<option value="${c.name}" ${med.category === c.name ? 'selected' : ''}>${c.name}</option>`).join("")}
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Drug Schedule</label>
+                <select id="edit-m-schedule" class="input-field select-field">
+                  <option value="General (OTC / Non-Rx)" ${med.drug_schedule === 'General (OTC / Non-Rx)' ? 'selected' : ''}>General (OTC / Non-Rx)</option>
+                  <option value="Schedule H" ${med.drug_schedule === 'Schedule H' ? 'selected' : ''}>Schedule H</option>
+                  <option value="Schedule H1" ${med.drug_schedule === 'Schedule H1' ? 'selected' : ''}>Schedule H1</option>
+                  <option value="Schedule C" ${med.drug_schedule === 'Schedule C' ? 'selected' : ''}>Schedule C</option>
+                  <option value="Schedule X" ${med.drug_schedule === 'Schedule X' ? 'selected' : ''}>Schedule X</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Pack Size</label>
+                <div class="pack-size-duo-wrap">
+                  <input type="number" id="edit-m-pack-strip" min="1" value="${stripVal}" />
+                  <span class="pack-size-x-badge">×</span>
+                  <input type="text" id="edit-m-pack-unit" value="${unitVal}" />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Barcode</label>
+                <input type="text" id="edit-m-barcode" class="input-field" value="${med.barcode || ''}" />
+              </div>
+            </div>
+
+            <div class="form-row-2" style="margin-top: 14px;">
+              <div class="form-group">
+                <label class="form-label">Purchase Price (₹)</label>
+                <input type="number" step="0.01" id="edit-m-purchase-price" class="input-field" value="${med.purchase_price || ''}" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">GST Rate (%)</label>
+                <select id="edit-m-gst" class="input-field select-field">
+                  <option value="12" ${med.gst_percent === 12 ? 'selected' : ''}>12%</option>
+                  <option value="0" ${med.gst_percent === 0 ? 'selected' : ''}>0%</option>
+                  <option value="5" ${med.gst_percent === 5 ? 'selected' : ''}>5%</option>
+                  <option value="18" ${med.gst_percent === 18 ? 'selected' : ''}>18%</option>
+                  <option value="28" ${med.gst_percent === 28 ? 'selected' : ''}>28%</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-top: 14px;">
+              <label class="form-label">Rack / Shelf Location</label>
+              <input type="text" id="edit-m-rack" class="input-field" value="${med.rack_location || ''}" placeholder="e.g. Shelf A-02" />
+            </div>
+
+            <div class="modal-dialog-footer" style="margin-top: 24px;">
+              <button type="button" class="btn-dialog-cancel" id="btn-cancel-edit-modal">Cancel</button>
+              <button type="submit" class="btn-dialog-save" id="btn-save-edit-medicine">Save Changes</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    const closeEditModal = () => { modalWrap.innerHTML = ""; };
+    document.getElementById("btn-close-edit-modal")?.addEventListener("click", closeEditModal);
+    document.getElementById("btn-cancel-edit-modal")?.addEventListener("click", closeEditModal);
+
+    const form = document.getElementById("edit-medicine-form");
+    form?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = document.getElementById("edit-m-name").value.trim();
+      const company = document.getElementById("edit-m-company").value.trim();
+      const generic_name = document.getElementById("edit-m-generic").value.trim();
+      const salt_composition = document.getElementById("edit-m-salt").value.trim();
+      const category = document.getElementById("edit-m-category").value;
+      const drug_schedule = document.getElementById("edit-m-schedule").value;
+      const stripV = document.getElementById("edit-m-pack-strip").value.trim() || "1";
+      const unitV = document.getElementById("edit-m-pack-unit").value.trim() || "10";
+      const pack_size = `${stripV} × ${unitV}`;
+      const barcode = document.getElementById("edit-m-barcode").value.trim();
+      const purchase_price = parseFloat(document.getElementById("edit-m-purchase-price").value) || 0;
+      const gst_percent = parseInt(document.getElementById("edit-m-gst").value, 10) || 12;
+      const rack_location = document.getElementById("edit-m-rack").value.trim();
+
+      const saveBtn = document.getElementById("btn-save-edit-medicine");
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerText = "Saving...";
+      }
+
+      const updated = await MedHub.api.updateMedicine(med.id, {
+        name,
+        company,
+        generic_name,
+        salt_composition,
+        category,
+        drug_schedule,
+        pack_size,
+        barcode,
+        purchase_price,
+        gst_percent,
+        rack_location
+      });
+
+      if (updated) {
+        MedHub.toast(`'${name}' updated successfully!`, "success");
+        closeEditModal();
+        this.medicinesList = await MedHub.api.getMedicines();
+        this.updateTableOnly();
+      } else {
+        MedHub.toast("Medicine update karne me samasya aayi", "error");
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerText = "Save Changes";
+        }
       }
     });
   }

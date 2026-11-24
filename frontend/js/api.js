@@ -650,6 +650,113 @@ MedHub.api = {
     return createdMed;
   },
 
+  async updateMedicine(id, medData) {
+    if (MedHub.supabaseClient && id) {
+      try {
+        const payload = {
+          name: medData.name,
+          company: medData.company,
+          generic_name: medData.generic_name || "",
+          category: medData.category || "Tablet",
+          mrp: Number(medData.mrp) || 0,
+          gst_percent: Number(medData.gst_percent) || 12,
+          reorder_level: Number(medData.reorder_level) || 10
+        };
+        if (medData.salt_composition !== undefined) payload.salt_composition = medData.salt_composition;
+        if (medData.drug_schedule !== undefined) payload.drug_schedule = medData.drug_schedule;
+        if (medData.pack_size !== undefined) payload.pack_size = medData.pack_size;
+        if (medData.barcode !== undefined) payload.barcode = medData.barcode;
+        if (medData.purchase_price !== undefined) payload.purchase_price = Number(medData.purchase_price);
+        if (medData.selling_rate !== undefined) payload.selling_rate = Number(medData.selling_rate);
+
+        const { data, error } = await MedHub.supabaseClient
+          .from("medicines")
+          .update(payload)
+          .eq("id", id)
+          .select()
+          .single();
+        if (!error && data) {
+          const localIdx = mockMedicines.findIndex(m => String(m.id) === String(id));
+          if (localIdx >= 0) {
+            mockMedicines[localIdx] = { ...mockMedicines[localIdx], ...data };
+          }
+          return data;
+        }
+      } catch (e) {
+        console.warn("updateMedicine Supabase error:", e);
+      }
+    }
+
+    const localIdx = mockMedicines.findIndex(m => String(m.id) === String(id));
+    if (localIdx >= 0) {
+      mockMedicines[localIdx] = { ...mockMedicines[localIdx], ...medData };
+      return mockMedicines[localIdx];
+    }
+    return null;
+  },
+
+  async deleteMedicine(id) {
+    if (MedHub.supabaseClient && id) {
+      try {
+        await MedHub.supabaseClient.from("medicine_batches").delete().eq("medicine_id", id);
+        const { error } = await MedHub.supabaseClient.from("medicines").delete().eq("id", id);
+        if (!error) {
+          mockMedicines = mockMedicines.filter(m => String(m.id) !== String(id));
+          return true;
+        }
+      } catch (e) {
+        console.warn("deleteMedicine Supabase error:", e);
+      }
+    }
+
+    mockMedicines = mockMedicines.filter(m => String(m.id) !== String(id));
+    return true;
+  },
+
+  async addStockBatch(medicineId, batchData) {
+    const qty = Number(batchData.quantity) || 0;
+    const batchNo = (batchData.batch_no || "BT-" + Date.now().toString().slice(-4)).trim();
+    const expiry = batchData.expiry_date || "2027-12";
+    const purRate = Number(batchData.purchase_price) || 0;
+    const selRate = Number(batchData.selling_price) || 0;
+
+    if (MedHub.supabaseClient && medicineId) {
+      try {
+        await MedHub.supabaseClient.from("medicine_batches").insert({
+          medicine_id: medicineId,
+          batch_no: batchNo,
+          expiry_date: expiry.length === 7 ? `${expiry}-01` : expiry,
+          purchase_price: purRate,
+          selling_price: selRate,
+          quantity: qty
+        });
+        return true;
+      } catch (e) {
+        console.warn("addStockBatch Supabase error:", e);
+      }
+    }
+
+    mockBatches.push({
+      id: "b-" + Date.now(),
+      medicine_id: medicineId,
+      batch_no: batchNo,
+      expiry_date: expiry,
+      purchase_price: purRate,
+      selling_price: selRate,
+      quantity: qty
+    });
+
+    const med = mockMedicines.find(m => String(m.id) === String(medicineId));
+    if (med) {
+      med.available_qty = (med.available_qty || 0) + qty;
+      med.nearest_expiry = expiry;
+      med.status = med.available_qty <= 0 ? "out" : (med.available_qty <= (med.reorder_level || 10) ? "low" : "in");
+      if (purRate > 0) med.purchase_price = purRate;
+      if (selRate > 0) med.selling_rate = selRate;
+    }
+    return true;
+  },
+
   // 4. BILLS & SALES
   async getBills() {
     if (MedHub.supabaseClient) {
