@@ -401,7 +401,7 @@ MedHub.billing = {
       }
 
       renderMargDropdown();
-    }, 180);
+    }, 100);
 
     const renderMargDropdown = () => {
       if (!prodDropdown) return;
@@ -423,6 +423,11 @@ MedHub.billing = {
         </div>
       `).join("");
       prodDropdown.style.display = "block";
+
+      const highlightedEl = prodDropdown.querySelector(`.search-item[data-idx="${highlightedIndex}"]`);
+      if (highlightedEl) {
+        highlightedEl.scrollIntoView({ block: "nearest" });
+      }
 
       prodDropdown.querySelectorAll(".search-item").forEach(itemEl => {
         itemEl.addEventListener("click", () => {
@@ -475,6 +480,11 @@ MedHub.billing = {
     };
 
     prodInput?.addEventListener("input", (e) => searchMargProducts(e.target.value));
+    prodInput?.addEventListener("focus", (e) => {
+      if (e.target.value && e.target.value.trim().length > 0) {
+        searchMargProducts(e.target.value);
+      }
+    });
 
     // Keyboard navigation in Product Search: ArrowUp, ArrowDown, Enter
     prodInput?.addEventListener("keydown", (e) => {

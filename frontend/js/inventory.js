@@ -452,19 +452,11 @@ MedHub.inventory = {
               </div>
             </div>
 
-            <!-- ROW 4: Pricing & GST -->
-            <div class="form-row-4" style="margin-top: 14px;">
+            <!-- ROW 4: Pricing & GST (Adjusted: MRP & Selling Rate removed) -->
+            <div class="form-row-2" style="margin-top: 14px;">
               <div class="form-group">
                 <label class="form-label">Purchase Price (₹)</label>
                 <input type="number" step="0.01" id="m-purchase-price" class="input-field" placeholder="25.00" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">MRP (₹) <span class="req">*</span></label>
-                <input type="number" step="0.01" id="m-mrp" class="input-field" placeholder="35.00" required />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Selling Rate (₹)</label>
-                <input type="number" step="0.01" id="m-selling-rate" class="input-field" placeholder="33.00" />
               </div>
               <div class="form-group">
                 <label class="form-label">GST Rate (%)</label>
@@ -547,10 +539,13 @@ MedHub.inventory = {
       const unitVal = document.getElementById("m-pack-unit")?.value.trim() || "10";
       const pack_size = `${stripVal} × ${unitVal}`;
       const barcode = document.getElementById("m-barcode").value.trim();
-      const purchase_price = document.getElementById("m-purchase-price").value;
-      const mrp = document.getElementById("m-mrp").value;
-      const selling_rate = document.getElementById("m-selling-rate").value || mrp;
-      const gst_percent = document.getElementById("m-gst").value;
+      const purchase_price = document.getElementById("m-purchase-price")?.value;
+      const mrpInput = document.getElementById("m-mrp");
+      const sellingRateInput = document.getElementById("m-selling-rate");
+      const purPriceNum = purchase_price ? Number(purchase_price) : 0;
+      const mrp = mrpInput ? (Number(mrpInput.value) || purPriceNum) : purPriceNum;
+      const selling_rate = sellingRateInput ? (Number(sellingRateInput.value) || mrp) : mrp;
+      const gst_percent = document.getElementById("m-gst")?.value;
 
       // Initial batch fields
       const batch_no = document.getElementById("m-batch-no").value.trim();
@@ -575,9 +570,9 @@ MedHub.inventory = {
         drug_schedule,
         pack_size: pack_size || "1x10",
         barcode,
-        purchase_price: purchase_price ? Number(purchase_price) : 0,
-        mrp: Number(mrp),
-        selling_rate: Number(selling_rate),
+        purchase_price: purPriceNum,
+        mrp: mrp,
+        selling_rate: selling_rate,
         gst_percent: Number(gst_percent) || 12
       };
 

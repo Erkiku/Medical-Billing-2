@@ -493,27 +493,66 @@ MedHub.api = {
   async searchMedicines(query) {
     if (!query || query.trim().length === 0) return [];
     const q = query.trim().toLowerCase();
+    const tokens = q.split(/\s+/).filter(Boolean);
+
+    let results = [];
 
     if (MedHub.supabaseClient) {
       try {
         const { data, error } = await MedHub.supabaseClient
           .from("medicine_stock")
           .select("*")
-          .or(`name.ilike.%${q}%,generic_name.ilike.%${q}%,company.ilike.%${q}%`)
-          .limit(10);
-        if (!error && data && data.length) return data;
+          .or(`name.ilike.%${q}%,generic_name.ilike.%${q}%,company.ilike.%${q}%,salt_composition.ilike.%${q}%,category.ilike.%${q}%`)
+          .limit(100);
+        if (!error && data && data.length) {
+          results = data;
+        } else {
+          // Fallback to medicines table directly
+          const { data: rawMeds, error: medErr } = await MedHub.supabaseClient
+            .from("medicines")
+            .select("*")
+            .or(`name.ilike.%${q}%,generic_name.ilike.%${q}%,company.ilike.%${q}%,salt_composition.ilike.%${q}%,category.ilike.%${q}%`)
+            .limit(100);
+          if (!medErr && rawMeds && rawMeds.length) {
+            results = rawMeds;
+          }
+        }
       } catch (e) {
         // Fall back to local search
       }
     }
 
-    return mockMedicines.filter(m => 
-      (m.name && m.name.toLowerCase().includes(q)) ||
-      (m.generic_name && m.generic_name.toLowerCase().includes(q)) ||
-      (m.salt_composition && m.salt_composition.toLowerCase().includes(q)) ||
-      (m.company && m.company.toLowerCase().includes(q)) ||
-      (m.barcode && m.barcode.toLowerCase().includes(q))
-    ).slice(0, 10);
+    // Filter local mock medicines with all search tokens across all fields
+    const localMatches = mockMedicines.filter(m => {
+      const fullText = `${m.name || ""} ${m.generic_name || ""} ${m.salt_composition || ""} ${m.company || ""} ${m.category || ""} ${m.barcode || ""}`.toLowerCase();
+      return tokens.every(token => fullText.includes(token));
+    });
+
+    // Merge Supabase results with local matches without duplicates
+    localMatches.forEach(lm => {
+      if (!results.some(r => String(r.id) === String(lm.id) || (r.name && r.name.toLowerCase() === lm.name.toLowerCase()))) {
+        results.push(lm);
+      }
+    });
+
+    // Filter results so all tokens in query match
+    if (tokens.length > 1) {
+      results = results.filter(m => {
+        const fullText = `${m.name || ""} ${m.generic_name || ""} ${m.salt_composition || ""} ${m.company || ""} ${m.category || ""} ${m.barcode || ""}`.toLowerCase();
+        return tokens.every(token => fullText.includes(token));
+      });
+    }
+
+    // Sort by best match (name starting with search query ranks first)
+    results.sort((a, b) => {
+      const aStarts = (a.name || "").toLowerCase().startsWith(q);
+      const bStarts = (b.name || "").toLowerCase().startsWith(q);
+      if (aStarts && !bStarts) return -1;
+      if (!aStarts && bStarts) return 1;
+      return (a.name || "").localeCompare(b.name || "");
+    });
+
+    return results;
   },
 
   async getBatches(medicineId) {

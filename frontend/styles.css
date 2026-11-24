@@ -3332,10 +3332,11 @@ button {
   background: #ffffff;
   border: 1.5px solid #2563eb;
   border-radius: 8px;
-  overflow: hidden;
+  overflow: visible;
   box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12);
   margin-top: 16px;
   position: relative;
+  z-index: 50;
 }
 .marg-blue-header {
   background: linear-gradient(90deg, #1e40af, #2563eb);
@@ -3452,10 +3453,22 @@ button {
   font-weight: 700;
 }
 .marg-entry-row-grid .medicine-dropdown-results {
-  top: 60px;
+  top: calc(100% + 4px);
   left: 0;
-  width: 380px;
-  max-height: 280px;
+  width: 480px;
+  max-width: 90vw;
+  max-height: 320px;
+  overflow-y: auto;
+  position: absolute;
+  z-index: 999999;
+  background: #ffffff;
+  border: 1.5px solid #2563eb;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(37, 99, 235, 0.25);
+}
+.search-item.highlighted {
+  background: #dbeafe !important;
+  border-left: 4px solid #2563eb !important;
 }
 
 
