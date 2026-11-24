@@ -377,19 +377,33 @@ MedHub.login = {
         self.tempAuth.name = verifiedUser.name || verifiedUser.full_name || verifiedUser.username;
         self.tempAuth.role = verifiedUser.role || "admin";
         self.tempAuth.password = passwordInput;
+        self.tempAuth.store_id = verifiedUser.store_id;
+        self.tempAuth.store_name = verifiedUser.store_name;
 
-        // Fetch store settings for THIS specific user email/username
-        const existingStore = await MedHub.api.getStoreSettings(self.tempAuth.email);
+        // Fetch store settings for THIS specific user / store
+        let existingStore = authResult.store;
+        if (!existingStore) {
+          existingStore = await MedHub.api.getStoreSettings(verifiedUser);
+        }
 
-        // CHECK IF STORE PROFILE HAS ALREADY BEEN SET UP:
-        // Once a user has completed store details, NEVER ask for Step 2 again!
-        if (existingStore && existingStore.store_name && existingStore.store_name.trim() !== "" && !authResult.isNew) {
-          self.completeLogin(verifiedUser, existingStore);
+        // CHECK IF STORE PROFILE HAS ALREADY BEEN SET UP OR USER IS REGISTERED:
+        // Once a store is registered in Supabase or local, NEVER ask for Step 2 again! DIRECT LOGIN!
+        if (existingStore || !authResult.isNew) {
+          const finalStore = existingStore || {
+            store_name: verifiedUser.store_name || "Pharmacy Store",
+            pharmacist_name: verifiedUser.name || "Dr. Anil Kumar",
+            user_email: verifiedUser.email || `${verifiedUser.username}@mededuhub.com`,
+            phone: "",
+            address: "",
+            gstin: "",
+            dl_no_20b: ""
+          };
+          self.completeLogin(verifiedUser, finalStore);
           return;
         }
 
-        // NEW USER / STORE NOT CONFIGURED YET:
-        // Ask for store profile ONLY on the very first setup
+        // NEW USER / UNREGISTERED:
+        // Ask for store profile ONLY on the very first fresh signup
         self.isNewStore = true;
         self.storeData = {
           pharmacist_name: verifiedUser.username === "admin" ? "Dr. Anil Kumar" : (verifiedUser.name || ""),
@@ -515,6 +529,15 @@ MedHub.login = {
       localStorage.setItem("medhub_user_name", pharmacistName);
       localStorage.setItem("medhub_user_role", user.role || "admin");
     } catch (err) {}
+
+    // Persist real-time active store settings to Supabase
+    if (MedHub.supabaseClient && storePayload) {
+      MedHub.api.saveStoreSettings({
+        ...storePayload,
+        last_login_user: user.username,
+        last_login_at: new Date().toISOString()
+      }, email).catch(err => console.warn("Background store sync error:", err));
+    }
 
     // 4. Update sidebar avatar & name
     if (typeof MedHub.updateUserBadge === "function") {

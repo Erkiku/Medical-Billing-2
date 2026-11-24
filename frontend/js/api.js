@@ -68,71 +68,114 @@ let mockPurchases = [
 
 MedHub.api = {
   // 1. STORE SETTINGS (Per-Store / Per-User with Supabase & LocalStorage)
-  async getStoreSettings(userEmail) {
-    const targetEmail = userEmail || MedHub.state.user?.email || localStorage.getItem("medhub_current_user");
+  async getStoreSettings(userEmailOrUser) {
+    let targetEmail = "";
+    let targetUsername = "";
+    let targetStoreId = null;
+    let targetName = "";
 
-    // Case A: Querying for a specific user/store email
+    if (typeof userEmailOrUser === "object" && userEmailOrUser !== null) {
+      targetEmail = userEmailOrUser.email || "";
+      targetUsername = userEmailOrUser.username || "";
+      targetStoreId = userEmailOrUser.store_id || null;
+      targetName = userEmailOrUser.name || userEmailOrUser.full_name || "";
+    } else if (typeof userEmailOrUser === "string") {
+      targetEmail = userEmailOrUser;
+      targetUsername = userEmailOrUser.includes("@") ? userEmailOrUser.split("@")[0] : userEmailOrUser;
+    } else {
+      targetEmail = MedHub.state.user?.email || localStorage.getItem("medhub_current_user") || "";
+      targetUsername = MedHub.state.user?.username || "";
+    }
+
+    targetEmail = (targetEmail || "").toLowerCase().trim();
+    targetUsername = (targetUsername || "").toLowerCase().trim();
+
+    // 1. Check local per-user cache
+    let localStore = null;
     if (targetEmail) {
-      // 1. Check local per-user cache
-      let localStore = null;
       try {
-        const ls = localStorage.getItem("medhub_store_" + targetEmail.toLowerCase().trim());
+        const ls = localStorage.getItem("medhub_store_" + targetEmail);
         if (ls) localStore = JSON.parse(ls);
       } catch (e) {}
-
-      // 2. Check Supabase by user_email
-      let cloudStore = null;
-      if (MedHub.supabaseClient) {
-        try {
-          const { data, error } = await MedHub.supabaseClient
-            .from("store_settings")
-            .select("*")
-            .eq("user_email", targetEmail.toLowerCase().trim())
-            .maybeSingle();
-          if (!error && data) cloudStore = data;
-        } catch (e) {
-          console.warn("Store settings fetch error for user:", targetEmail, e);
-        }
-      }
-
-      const found = cloudStore || localStore;
-      if (found) {
-        try {
-          localStorage.setItem("medhub_store_" + targetEmail.toLowerCase().trim(), JSON.stringify(found));
-        } catch (e) {}
-        MedHub.state.store = found;
-        return found;
-      }
-
-      // If specific email was asked and NOT found, return null (NEW USER!)
-      if (userEmail) {
-        return null;
-      }
     }
-
-    // Case B: General fallback for active session
-    let generalLocal = null;
-    try {
-      const ls = localStorage.getItem("mededuhub_store_settings");
-      if (ls) generalLocal = JSON.parse(ls);
-    } catch (e) {}
-
-    let generalCloud = null;
-    if (MedHub.supabaseClient) {
+    if (!localStore && targetUsername) {
       try {
-        const { data, error } = await MedHub.supabaseClient
-          .from("store_settings")
-          .select("*")
-          .order("id", { ascending: true })
-          .limit(1)
-          .maybeSingle();
-        if (!error && data) generalCloud = data;
+        const ls = localStorage.getItem("medhub_store_" + targetUsername);
+        if (ls) localStore = JSON.parse(ls);
       } catch (e) {}
     }
 
-    const fallbackStore = generalCloud || generalLocal || MedHub.defaultStore || mockStore;
-    MedHub.state.store = fallbackStore;
-    return fallbackStore;
+    // 2. Check Supabase Live Database
+    let cloudStore = null;
+    if (MedHub.supabaseClient) {
+      try {
+        // Priority A: Match by store_id if known
+        if (targetStoreId) {
+          const { data } = await MedHub.supabaseClient
+            .from("store_settings")
+            .select("*")
+            .eq("id", targetStoreId)
+            .maybeSingle();
+          if (data) cloudStore = data;
+        }
+
+        // Priority B: Match by user_email
+        if (!cloudStore && targetEmail) {
+          const { data } = await MedHub.supabaseClient
+            .from("store_settings")
+            .select("*")
+            .eq("user_email", targetEmail)
+            .maybeSingle();
+          if (data) cloudStore = data;
+        }
+
+        // Priority C: Match by username or pharmacist_name
+        if (!cloudStore && (targetUsername || targetName)) {
+          const { data } = await MedHub.supabaseClient
+            .from("store_settings")
+            .select("*")
+            .or(`user_email.ilike.%${targetUsername}%,pharmacist_name.ilike.%${targetName || targetUsername}%`)
+            .maybeSingle();
+          if (data) cloudStore = data;
+        }
+
+        // Priority D: Fallback to the primary configured store in Supabase
+        if (!cloudStore) {
+          const { data } = await MedHub.supabaseClient
+            .from("store_settings")
+            .select("*")
+            .order("id", { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          if (data) cloudStore = data;
+        }
+      } catch (e) {
+        console.warn("Store settings fetch error:", e);
+      }
+    }
+
+    let found = cloudStore || localStore;
+    if (!found) {
+      const all = this._getAllLocalStores();
+      found = all.find(s => 
+        (targetEmail && s.user_email?.toLowerCase() === targetEmail) || 
+        (targetUsername && s.username?.toLowerCase() === targetUsername) ||
+        (targetStoreId && String(s.id) === String(targetStoreId))
+      ) || all[0] || mockStore;
+    }
+
+    if (found) {
+      if (targetEmail) {
+        try {
+          localStorage.setItem("medhub_store_" + targetEmail, JSON.stringify(found));
+          localStorage.setItem("mededuhub_store_settings", JSON.stringify(found));
+        } catch (e) {}
+      }
+      MedHub.state.store = found;
+      return found;
+    }
+
+    return null;
   },
 
   async saveStoreSettings(settings, userEmail) {
@@ -164,26 +207,52 @@ MedHub.api = {
     mockStore = merged;
     MedHub.state.store = merged;
 
-    // 2. Persist to Supabase Database
+    // 2. Persist to Supabase Database with strict schema sanitization
     if (MedHub.supabaseClient) {
       try {
-        // Check if row exists for this store/user
-        const { data: existing } = await MedHub.supabaseClient
-          .from("store_settings")
-          .select("id")
-          .eq("user_email", email)
-          .maybeSingle();
+        const allowedCols = [
+          "store_name", "address", "phone", "gstin", "drug_license_no", 
+          "bill_footer", "show_gst_breakup", "tagline", "city", "state", 
+          "pincode", "dl_no_20b", "dl_no_21b", "fssai_no", "upi_id", 
+          "payee_name", "custom_qr_image", "bill_terms", "user_email", 
+          "pharmacist_name", "last_login_user", "last_login_at", "status", "updated_at"
+        ];
+        const dbPayload = {};
+        for (const col of allowedCols) {
+          if (merged[col] !== undefined) {
+            dbPayload[col] = merged[col];
+          }
+        }
+        dbPayload.updated_at = new Date().toISOString();
 
-        if (existing && existing.id) {
+        // Check if row exists by integer id OR user_email
+        let existingId = null;
+        if (typeof merged.id === "number" && !isNaN(merged.id)) {
+          existingId = merged.id;
+        } else {
+          const { data: existing } = await MedHub.supabaseClient
+            .from("store_settings")
+            .select("id")
+            .eq("user_email", email)
+            .maybeSingle();
+          if (existing && existing.id) existingId = existing.id;
+        }
+
+        if (existingId) {
           const { error: updErr } = await MedHub.supabaseClient
             .from("store_settings")
-            .update(merged)
-            .eq("id", existing.id);
+            .update(dbPayload)
+            .eq("id", existingId);
           if (updErr) console.warn("Supabase store_settings update error:", updErr);
         } else {
-          const { error: insErr } = await MedHub.supabaseClient
+          const { data: inserted, error: insErr } = await MedHub.supabaseClient
             .from("store_settings")
-            .insert(merged);
+            .insert(dbPayload)
+            .select()
+            .maybeSingle();
+          if (!insErr && inserted && inserted.id) {
+            merged.id = inserted.id;
+          }
           if (insErr) console.warn("Supabase store_settings insert error:", insErr);
         }
       } catch (e) {
@@ -295,38 +364,51 @@ MedHub.api = {
   },
 
   async getAllStores() {
-    let cloudStores = null;
+    let cloudStores = [];
+    let cloudUsers = [];
     if (MedHub.supabaseClient) {
       try {
-        const { data, error } = await MedHub.supabaseClient
-          .from("store_settings")
-          .select("*")
-          .order("id", { ascending: true });
-        if (!error && data && data.length > 0) {
-          cloudStores = data;
-        }
+        const [storesRes, usersRes] = await Promise.all([
+          MedHub.supabaseClient.from("store_settings").select("*").order("id", { ascending: true }),
+          MedHub.supabaseClient.from("authorized_users").select("*").order("id", { ascending: true })
+        ]);
+        if (!storesRes.error && storesRes.data) cloudStores = storesRes.data;
+        if (!usersRes.error && usersRes.data) cloudUsers = usersRes.data;
       } catch (e) {
         console.warn("getAllStores Supabase error:", e);
       }
     }
 
     const localStores = this._getAllLocalStores();
-    const mergedList = [...(cloudStores || [])];
+    const localUsers = this._getLocalUsers();
+    const allUsers = [...cloudUsers, ...localUsers];
+
+    // Combined unique stores
+    const mergedList = [...cloudStores];
 
     localStores.forEach(ls => {
-      if (!mergedList.some(s => s.user_email?.toLowerCase() === ls.user_email?.toLowerCase())) {
+      if (!mergedList.some(s => 
+        (s.id && String(s.id) === String(ls.id)) || 
+        (s.user_email && ls.user_email && s.user_email.toLowerCase() === ls.user_email.toLowerCase())
+      )) {
         mergedList.push(ls);
       }
     });
 
-    // Attach user status, bill counts & total revenue for each store
-    const localUsers = this._getLocalUsers();
+    // Attach user status, real-time login activity & contact
     mergedList.forEach(s => {
       const email = s.user_email?.toLowerCase();
-      const user = localUsers.find(u => u.email?.toLowerCase() === email || u.username?.toLowerCase() === email);
+      const user = allUsers.find(u => 
+        (s.id && u.store_id === s.id) || 
+        (u.email && email && u.email.toLowerCase() === email) || 
+        (u.username && email && u.username.toLowerCase() === email) ||
+        (u.username && s.username && u.username.toLowerCase() === s.username.toLowerCase())
+      );
       if (user) {
-        s.username = user.username || s.username || email.split("@")[0];
-        s.pharmacist_name = s.pharmacist_name || user.full_name || user.name;
+        s.username = user.username || s.username || (email ? email.split("@")[0] : "pharmacist");
+        s.pharmacist_name = s.pharmacist_name || user.full_name || "Pharmacist In-Charge";
+        s.last_login_at = s.last_login_at || user.last_login_at || null;
+        s.last_login_user = s.last_login_user || user.username || null;
         if (!s.status) s.status = user.status || "active";
       } else {
         if (!s.status) s.status = "active";
@@ -341,17 +423,16 @@ MedHub.api = {
   async createStoreAdmin(storePayload, userCredentials) {
     const email = (storePayload.user_email || `${userCredentials.username}@mededuhub.com`).toLowerCase().trim();
     const newStore = {
-      id: "store-" + Date.now(),
       ...storePayload,
       user_email: email,
       status: "active",
       created_at: new Date().toISOString()
     };
 
-    // 1. Save store settings
+    // 1. Save store settings to Supabase and LocalStorage
     await this.saveStoreSettings(newStore, email);
 
-    // 2. Create user login credentials
+    // 2. Create user login credentials in Supabase and LocalStorage
     if (userCredentials && userCredentials.username && userCredentials.password) {
       await this.createAuthorizedUser({
         username: userCredentials.username,
@@ -359,7 +440,9 @@ MedHub.api = {
         password: userCredentials.password,
         full_name: storePayload.pharmacist_name || storePayload.store_name,
         role: "admin",
-        status: "active"
+        status: "active",
+        store_id: newStore.id,
+        store_name: storePayload.store_name
       });
     }
 
@@ -617,16 +700,80 @@ MedHub.api = {
             };
           }
           if (data.password === cleanPass) {
+            // Real-time update last_login_at in Supabase authorized_users
+            try {
+              await MedHub.supabaseClient
+                .from("authorized_users")
+                .update({ 
+                  last_login_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString()
+                })
+                .eq("id", data.id);
+            } catch (err) {}
+
+            // Find associated store in Supabase store_settings
+            let matchedStore = null;
+            if (data.store_id) {
+              const { data: stById } = await MedHub.supabaseClient
+                .from("store_settings")
+                .select("*")
+                .eq("id", data.store_id)
+                .maybeSingle();
+              if (stById) matchedStore = stById;
+            }
+            if (!matchedStore && data.email) {
+              const { data: stByEmail } = await MedHub.supabaseClient
+                .from("store_settings")
+                .select("*")
+                .eq("user_email", data.email.toLowerCase().trim())
+                .maybeSingle();
+              if (stByEmail) matchedStore = stByEmail;
+            }
+            if (!matchedStore) {
+              const { data: stByUsername } = await MedHub.supabaseClient
+                .from("store_settings")
+                .select("*")
+                .or(`user_email.ilike.%${data.username}%,pharmacist_name.ilike.%${data.full_name || data.username}%`)
+                .maybeSingle();
+              if (stByUsername) matchedStore = stByUsername;
+            }
+            if (!matchedStore) {
+              // Fallback to primary registered store in Supabase
+              const { data: stFallback } = await MedHub.supabaseClient
+                .from("store_settings")
+                .select("*")
+                .order("id", { ascending: true })
+                .limit(1)
+                .maybeSingle();
+              if (stFallback) matchedStore = stFallback;
+            }
+
+            // Real-time update store_settings in Supabase with last_login_user and last_login_at
+            if (matchedStore && matchedStore.id) {
+              try {
+                await MedHub.supabaseClient
+                  .from("store_settings")
+                  .update({
+                    last_login_user: data.username,
+                    last_login_at: new Date().toISOString()
+                  })
+                  .eq("id", matchedStore.id);
+              } catch (err) {}
+            }
+
             return {
               success: true,
               isNew: false,
               user: {
                 id: data.id,
                 username: data.username,
-                email: data.email || cleanEmail,
+                email: data.email || (matchedStore ? matchedStore.user_email : cleanEmail),
                 name: data.full_name || data.username,
-                role: data.role || "admin"
-              }
+                role: data.role || "admin",
+                store_id: matchedStore ? matchedStore.id : data.store_id,
+                store_name: matchedStore ? matchedStore.store_name : data.store_name
+              },
+              store: matchedStore
             };
           } else {
             return {
@@ -657,6 +804,11 @@ MedHub.api = {
         existingLocal.password === cleanPass ||
         (cleanInput === "admin" && (cleanPass === "123456" || cleanPass === "admin123"))
       ) {
+        const localMatchedStore = this._getAllLocalStores().find(s => 
+          s.user_email?.toLowerCase() === existingLocal.email?.toLowerCase() || 
+          s.username?.toLowerCase() === existingLocal.username?.toLowerCase()
+        ) || this._getAllLocalStores()[0];
+
         return {
           success: true,
           isNew: false,
@@ -665,8 +817,11 @@ MedHub.api = {
             username: existingLocal.username,
             email: existingLocal.email || cleanEmail,
             name: existingLocal.full_name || existingLocal.username,
-            role: existingLocal.role || "admin"
-          }
+            role: existingLocal.role || "admin",
+            store_id: localMatchedStore ? localMatchedStore.id : null,
+            store_name: localMatchedStore ? localMatchedStore.store_name : null
+          },
+          store: localMatchedStore
         };
       } else {
         return {

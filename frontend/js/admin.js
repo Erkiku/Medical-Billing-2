@@ -185,6 +185,15 @@ MedHub.admin = {
           <td>
             <strong>${s.pharmacist_name || "Pharmacist Admin"}</strong>
             <div style="font-size: 11.5px; color: #64748b;">${s.user_email || "store@mededuhub.com"}</div>
+            ${s.last_login_at ? `
+              <div style="font-size: 10.5px; color: #059669; margin-top: 2px; font-weight: 600;">
+                🟢 Active: ${new Date(s.last_login_at).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+              </div>
+            ` : `
+              <div style="font-size: 10.5px; color: #94a3b8; margin-top: 2px;">
+                ⚪ Not logged in yet
+              </div>
+            `}
           </td>
           <td>
             <span class="badge-cat" style="font-family: monospace; font-size: 12px; font-weight: 700;">
