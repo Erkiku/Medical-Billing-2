@@ -269,14 +269,15 @@ MedHub.purchases = {
                     <tr>
                       <th style="width: 30px;">#</th>
                       <th style="min-width: 190px;">Medicine Name *</th>
-                      <th style="width: 120px;">Batch No *</th>
-                      <th style="width: 120px;">Expiry *</th>
-                      <th style="width: 115px;">Pack</th>
-                      <th style="width: 80px;">Qty *</th>
-                      <th style="width: 100px;">Pur. Rate (₹) *</th>
+                      <th style="width: 110px;">Batch No *</th>
+                      <th style="width: 115px;">Expiry *</th>
+                      <th style="width: 110px;">Pack</th>
+                      <th style="width: 75px;">Qty *</th>
+                      <th style="width: 95px;">Pur. Rate (₹) *</th>
                       <th style="width: 90px;">MRP (₹)</th>
-                      <th style="width: 110px;">Total (₹)</th>
-                      <th style="width: 40px; text-align: center;">✕</th>
+                      <th style="width: 85px;">GST %</th>
+                      <th style="width: 105px;">Total (₹)</th>
+                      <th style="width: 38px; text-align: center;">✕</th>
                     </tr>
                   </thead>
                   <tbody id="pur-items-tbody">
@@ -297,7 +298,15 @@ MedHub.purchases = {
                 <span class="pur-stat-val" id="pur-total-qty-count">0 Packs</span>
               </div>
               <div class="pur-summary-stat">
-                <span class="pur-stat-label">Total Purchase Amount</span>
+                <span class="pur-stat-label">Taxable Amount</span>
+                <span class="pur-stat-val" id="pur-taxable-amount-display">₹0.00</span>
+              </div>
+              <div class="pur-summary-stat">
+                <span class="pur-stat-label">GST Tax Total</span>
+                <span class="pur-stat-val" id="pur-gst-amount-display">₹0.00</span>
+              </div>
+              <div class="pur-summary-stat">
+                <span class="pur-stat-label">Net Purchase Total</span>
                 <span class="pur-stat-val" style="color: #0f766e;" id="pur-total-amount-display">₹0.00</span>
               </div>
               <div class="pur-summary-stat">
@@ -438,6 +447,15 @@ MedHub.purchases = {
           />
         </td>
         <td>
+          <select class="pur-item-gst" style="padding: 4px 6px; border-radius: 4px; border: 1.5px solid var(--cream-border); font-size: 13px; font-weight: 700; width: 75px; background: #ffffff;">
+            <option value="12" ${prefill?.gst_percent === 12 || (!prefill && prefill?.gst_percent === undefined) ? 'selected' : ''}>12%</option>
+            <option value="0" ${prefill?.gst_percent === 0 ? 'selected' : ''}>0%</option>
+            <option value="5" ${prefill?.gst_percent === 5 ? 'selected' : ''}>5%</option>
+            <option value="18" ${prefill?.gst_percent === 18 ? 'selected' : ''}>18%</option>
+            <option value="28" ${prefill?.gst_percent === 28 ? 'selected' : ''}>28%</option>
+          </select>
+        </td>
+        <td>
           <input 
             type="text" 
             class="pur-item-total" 
@@ -455,21 +473,26 @@ MedHub.purchases = {
 
       // Event Listeners for Row Inputs
       const nameInput = tr.querySelector(".pur-item-name");
+      const batchInput = tr.querySelector(".pur-item-batch");
+      const expInput = tr.querySelector(".pur-item-exp");
+      const packAInput = tr.querySelector(".pur-item-pack-a");
+      const packBInput = tr.querySelector(".pur-item-pack-b");
       const qtyInput = tr.querySelector(".pur-item-qty");
       const rateInput = tr.querySelector(".pur-item-rate");
       const mrpInput = tr.querySelector(".pur-item-mrp");
-      const packAInput = tr.querySelector(".pur-item-pack-a");
-      const packBInput = tr.querySelector(".pur-item-pack-b");
+      const gstInput = tr.querySelector(".pur-item-gst");
       const totalInput = tr.querySelector(".pur-item-total");
       const delBtn = tr.querySelector(".pur-del-btn");
 
-      // Auto-populate MRP and Pack if selected from datalist
+      // Auto-populate MRP, Rate, GST & Pack if selected from catalog
       nameInput.addEventListener("change", () => {
         const val = nameInput.value.trim().toLowerCase();
-        const matched = medicines.find(m => m.name.toLowerCase() === val);
+        const matched = medicines.find(m => m.name.toLowerCase() === val || (m.name.toLowerCase().startsWith(val) && val.length > 2));
         if (matched) {
-          if (!mrpInput.value && matched.mrp) mrpInput.value = matched.mrp;
-          if (!rateInput.value && matched.purchase_price) rateInput.value = matched.purchase_price;
+          nameInput.value = matched.name;
+          if (!mrpInput.value || Number(mrpInput.value) === 0) mrpInput.value = matched.mrp || "";
+          if (!rateInput.value || Number(rateInput.value) === 0) rateInput.value = matched.purchase_price || "";
+          if (matched.gst_percent !== undefined) gstInput.value = String(matched.gst_percent);
           if (matched.pack_size) {
             const parts = String(matched.pack_size).split(/[xX×]/);
             if (parts.length >= 2) {
@@ -483,16 +506,94 @@ MedHub.purchases = {
         }
       });
 
+      // MARG ERP STYLE ENTER-KEY NAVIGATION (FAST KEYBOARD WORKFLOW)
+      nameInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          batchInput?.focus();
+          batchInput?.select();
+        }
+      });
+      batchInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          expInput?.focus();
+        }
+      });
+      expInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          packAInput?.focus();
+          packAInput?.select();
+        }
+      });
+      packAInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          packBInput?.focus();
+          packBInput?.select();
+        }
+      });
+      packBInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          qtyInput?.focus();
+          qtyInput?.select();
+        }
+      });
+      qtyInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          rateInput?.focus();
+          rateInput?.select();
+        }
+      });
+      rateInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          mrpInput?.focus();
+          mrpInput?.select();
+        }
+      });
+      mrpInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          gstInput?.focus();
+        }
+      });
+      gstInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          const nextTr = tr.nextElementSibling;
+          if (nextTr) {
+            const nextName = nextTr.querySelector(".pur-item-name");
+            nextName?.focus();
+            nextName?.select();
+          } else {
+            addItemRow();
+            setTimeout(() => {
+              const newTr = tbody.lastElementChild;
+              const nextName = newTr?.querySelector(".pur-item-name");
+              nextName?.focus();
+            }, 50);
+          }
+        }
+      });
+
       const calcRow = () => {
         const qty = Number(qtyInput.value) || 0;
         const rate = Number(rateInput.value) || 0;
-        const lineTot = qty * rate;
+        const gst = Number(gstInput.value) || 0;
+        const taxable = qty * rate;
+        const taxAmt = (taxable * gst) / 100;
+        const lineTot = taxable + taxAmt;
         totalInput.value = lineTot.toFixed(2);
         recalcSummary();
       };
 
       qtyInput.addEventListener("input", calcRow);
       rateInput.addEventListener("input", calcRow);
+      gstInput.addEventListener("change", calcRow);
 
       delBtn.addEventListener("click", () => {
         if (tbody.querySelectorAll("tr").length > 1) {
@@ -506,10 +607,12 @@ MedHub.purchases = {
       calcRow();
     };
 
-    // Calculate Summary Totals
+    // Calculate Summary Totals (Taxable, GST, Net Total)
     const recalcSummary = () => {
       const rows = tbody.querySelectorAll("tr");
       let totalQty = 0;
+      let totalTaxable = 0;
+      let totalGst = 0;
       let totalAmt = 0;
       let itemCount = 0;
 
@@ -517,16 +620,32 @@ MedHub.purchases = {
         const name = tr.querySelector(".pur-item-name")?.value.trim();
         const qty = Number(tr.querySelector(".pur-item-qty")?.value) || 0;
         const rate = Number(tr.querySelector(".pur-item-rate")?.value) || 0;
+        const gst = Number(tr.querySelector(".pur-item-gst")?.value) || 0;
         if (name || qty > 0 || rate > 0) {
           itemCount++;
           totalQty += qty;
-          totalAmt += (qty * rate);
+          const taxable = qty * rate;
+          const tax = (taxable * gst) / 100;
+          totalTaxable += taxable;
+          totalGst += tax;
+          totalAmt += (taxable + tax);
         }
       });
 
-      document.getElementById("pur-total-items-count").innerText = `${itemCount} Medicines`;
-      document.getElementById("pur-total-qty-count").innerText = `${totalQty} Units/Packs`;
-      document.getElementById("pur-total-amount-display").innerText = `₹${totalAmt.toFixed(2)}`;
+      const elItems = document.getElementById("pur-total-items-count");
+      if (elItems) elItems.innerText = `${itemCount} Medicines`;
+
+      const elQty = document.getElementById("pur-total-qty-count");
+      if (elQty) elQty.innerText = `${totalQty} Units/Packs`;
+
+      const elTaxable = document.getElementById("pur-taxable-amount-display");
+      if (elTaxable) elTaxable.innerText = `₹${totalTaxable.toFixed(2)}`;
+
+      const elGst = document.getElementById("pur-gst-amount-display");
+      if (elGst) elGst.innerText = `₹${totalGst.toFixed(2)}`;
+
+      const elTotal = document.getElementById("pur-total-amount-display");
+      if (elTotal) elTotal.innerText = `₹${totalAmt.toFixed(2)}`;
 
       const paidInput = document.getElementById("pur-paid-amount");
       if (paidInput && (!paidInput.dataset.touched || Number(paidInput.value) === 0)) {
@@ -576,9 +695,12 @@ MedHub.purchases = {
         const qty = Number(tr.querySelector(".pur-item-qty")?.value) || 0;
         const purchaseRate = Number(tr.querySelector(".pur-item-rate")?.value) || 0;
         const mrp = Number(tr.querySelector(".pur-item-mrp")?.value) || purchaseRate;
+        const gstPercent = Number(tr.querySelector(".pur-item-gst")?.value) || 0;
 
         if (name && qty > 0) {
-          const lineTotal = qty * purchaseRate;
+          const taxable = qty * purchaseRate;
+          const gstAmt = (taxable * gstPercent) / 100;
+          const lineTotal = taxable + gstAmt;
           totalAmount += lineTotal;
           items.push({
             medicine_name: name,
@@ -589,6 +711,9 @@ MedHub.purchases = {
             quantity: qty,
             purchase_rate: purchaseRate,
             mrp: mrp,
+            gst_percent: gstPercent,
+            taxable_amount: taxable,
+            gst_amount: gstAmt,
             line_total: lineTotal
           });
         }
@@ -686,6 +811,7 @@ MedHub.purchases = {
                     <th style="text-align: center;">Qty</th>
                     <th style="text-align: right;">Pur. Rate</th>
                     <th style="text-align: right;">MRP</th>
+                    <th style="text-align: center;">GST %</th>
                     <th style="text-align: right;">Total Amount</th>
                   </tr>
                 </thead>
@@ -700,11 +826,12 @@ MedHub.purchases = {
                       <td style="text-align: center; font-weight: 700;">${it.quantity}</td>
                       <td style="text-align: right;">₹${Number(it.purchase_rate || 0).toFixed(2)}</td>
                       <td style="text-align: right;">₹${Number(it.mrp || 0).toFixed(2)}</td>
+                      <td style="text-align: center;"><span class="badge-cat">${it.gst_percent !== undefined ? it.gst_percent + '%' : '12%'}</span></td>
                       <td style="text-align: right; font-weight: 700; color: #0f766e;">₹${Number(it.line_total || (it.quantity * it.purchase_rate) || 0).toFixed(2)}</td>
                     </tr>
                   `).join("") : `
                     <tr>
-                      <td colspan="9" style="text-align: center; color: #64748b; padding: 18px;">
+                      <td colspan="10" style="text-align: center; color: #64748b; padding: 18px;">
                         Is invoice ke specific medicine items logged nahi hain. Total Invoice Amount: ₹${Number(purchase.total_amount).toFixed(2)}
                       </td>
                     </tr>
@@ -714,7 +841,7 @@ MedHub.purchases = {
                   <tr style="background: #f8fafc; font-weight: 800; font-size: 14px;">
                     <td colspan="5">Grand Total:</td>
                     <td style="text-align: center;">${totalQty}</td>
-                    <td colspan="2"></td>
+                    <td colspan="3"></td>
                     <td style="text-align: right; color: #0f766e;">₹${Number(purchase.total_amount).toFixed(2)}</td>
                   </tr>
                 </tfoot>

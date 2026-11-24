@@ -103,10 +103,6 @@ MedHub.billing = {
               <label class="marg-lbl" for="marg-prod-qty">QTY *</label>
               <input type="number" id="marg-prod-qty" class="marg-input" value="1" min="1" />
             </div>
-            <div class="marg-cell marg-cell-free">
-              <label class="marg-lbl" for="marg-prod-free">FREE</label>
-              <input type="number" id="marg-prod-free" class="marg-input" value="0" min="0" />
-            </div>
             <div class="marg-cell marg-cell-rate">
               <label class="marg-lbl" for="marg-prod-rate">RATE (₹) *</label>
               <input type="number" step="0.01" id="marg-prod-rate" class="marg-input" placeholder="0.00" />
@@ -149,7 +145,6 @@ MedHub.billing = {
                     <th>BATCH</th>
                     <th>EXPIRY</th>
                     <th>QTY</th>
-                    <th>FREE</th>
                     <th>RATE (₹)</th>
                     <th>DIS %</th>
                     <th>AMOUNT (₹)</th>
@@ -257,7 +252,6 @@ MedHub.billing = {
             <input type="number" class="cart-qty-input" min="1" max="${it.max_stock || 999}" 
               value="${it.quantity}" data-index="${idx}" style="width: 60px;" />
           </td>
-          <td>${it.free_qty || 0}</td>
           <td>₹${Number(it.rate).toFixed(2)}</td>
           <td>${Number(it.discount_percent || 0)}%</td>
           <td><strong>₹${Number(it.line_total).toFixed(2)}</strong></td>
@@ -356,7 +350,6 @@ MedHub.billing = {
     const batchInput = container.querySelector("#marg-prod-batch");
     const expInput = container.querySelector("#marg-prod-exp");
     const qtyInput = container.querySelector("#marg-prod-qty");
-    const freeInput = container.querySelector("#marg-prod-free");
     const rateInput = container.querySelector("#marg-prod-rate");
     const disInput = container.querySelector("#marg-prod-dis");
     const amountInput = container.querySelector("#marg-prod-amount");
@@ -465,9 +458,8 @@ MedHub.billing = {
       const selRate = Number(med.selling_rate || (chosenBatch ? chosenBatch.selling_price : med.mrp) || 0);
       if (rateInput) rateInput.value = selRate.toFixed(2);
 
-      // Qty & Free
+      // Qty & Discount
       if (qtyInput) qtyInput.value = 1;
-      if (freeInput) freeInput.value = 0;
       if (disInput) disInput.value = 0;
 
       recalcMargAmount();
@@ -542,13 +534,8 @@ MedHub.billing = {
     qtyInput?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        freeInput?.focus();
-      }
-    });
-    freeInput?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
         rateInput?.focus();
+        rateInput?.select();
       }
     });
     rateInput?.addEventListener("keydown", (e) => {
@@ -574,7 +561,6 @@ MedHub.billing = {
       }
 
       const q = parseFloat(qtyInput?.value) || 1;
-      const f = parseFloat(freeInput?.value) || 0;
       const r = parseFloat(rateInput?.value) || 0;
       const d = parseFloat(disInput?.value) || 0;
       const pack = packInput?.value?.trim() || "1x10";
@@ -593,7 +579,6 @@ MedHub.billing = {
       const existing = MedHub.state.cart.find(it => it.medicine_id === medId && it.batch_no === batch);
       if (existing) {
         existing.quantity += q;
-        existing.free_qty = (existing.free_qty || 0) + f;
         existing.rate = r;
         existing.discount_percent = d;
         const exGross = existing.quantity * existing.rate;
@@ -611,7 +596,6 @@ MedHub.billing = {
           expiry_date: exp,
           rate: r,
           quantity: q,
-          free_qty: f,
           discount_percent: d,
           line_total: net,
           max_stock: maxStock
@@ -630,7 +614,6 @@ MedHub.billing = {
       if (batchInput) batchInput.value = "";
       if (expInput) expInput.value = "";
       if (qtyInput) qtyInput.value = 1;
-      if (freeInput) freeInput.value = 0;
       if (rateInput) rateInput.value = "";
       if (disInput) disInput.value = 0;
       if (amountInput) amountInput.value = "";

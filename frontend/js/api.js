@@ -1017,7 +1017,28 @@ MedHub.api = {
     return savedBill;
   },
 
-  // 5. SUPPLIERS
+  // 5. SUPPLIERS (With full edit, delete & local persistence)
+  _getLocalSuppliers() {
+    try {
+      const ls = localStorage.getItem("medhub_suppliers");
+      if (ls) {
+        const parsed = JSON.parse(ls);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    try {
+      localStorage.setItem("medhub_suppliers", JSON.stringify(mockSuppliers));
+    } catch (e) {}
+    return mockSuppliers;
+  },
+
+  _saveLocalSuppliers(list) {
+    try {
+      mockSuppliers = list;
+      localStorage.setItem("medhub_suppliers", JSON.stringify(list));
+    } catch (e) {}
+  },
+
   async getSuppliers() {
     if (MedHub.supabaseClient) {
       try {
@@ -1025,13 +1046,17 @@ MedHub.api = {
           .from("suppliers")
           .select("*")
           .order("name", { ascending: true });
-        if (!error && data && data.length) return data;
+        if (!error && data && data.length) {
+          this._saveLocalSuppliers(data);
+          return data;
+        }
       } catch (e) {}
     }
-    return mockSuppliers;
+    return this._getLocalSuppliers();
   },
 
   async createSupplier(sup) {
+    let created = null;
     if (MedHub.supabaseClient) {
       try {
         const { data, error } = await MedHub.supabaseClient
@@ -1040,14 +1065,56 @@ MedHub.api = {
           .select()
           .single();
         if (!error && data) {
-          mockSuppliers.push(data);
-          return data;
+          created = data;
         }
       } catch (e) {}
     }
-    const newSup = { id: "sup-" + Date.now(), ...sup, balance: 0.00 };
-    mockSuppliers.push(newSup);
+    const newSup = created || { id: "sup-" + Date.now(), ...sup, balance: Number(sup.balance) || 0.00 };
+    const list = this._getLocalSuppliers();
+    list.push(newSup);
+    this._saveLocalSuppliers(list);
     return newSup;
+  },
+
+  async updateSupplier(id, supData) {
+    let updated = null;
+    if (MedHub.supabaseClient && id) {
+      try {
+        const { data, error } = await MedHub.supabaseClient
+          .from("suppliers")
+          .update(supData)
+          .eq("id", id)
+          .select()
+          .maybeSingle();
+        if (!error && data) {
+          updated = data;
+        }
+      } catch (e) {
+        console.warn("updateSupplier Supabase error:", e);
+      }
+    }
+    const list = this._getLocalSuppliers();
+    const idx = list.findIndex(s => String(s.id) === String(id));
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...supData, ...(updated || {}) };
+      this._saveLocalSuppliers(list);
+      return list[idx];
+    }
+    return updated || supData;
+  },
+
+  async deleteSupplier(id) {
+    if (MedHub.supabaseClient && id) {
+      try {
+        await MedHub.supabaseClient.from("suppliers").delete().eq("id", id);
+      } catch (e) {
+        console.warn("deleteSupplier Supabase error:", e);
+      }
+    }
+    let list = this._getLocalSuppliers();
+    list = list.filter(s => String(s.id) !== String(id));
+    this._saveLocalSuppliers(list);
+    return true;
   },
 
   // 6. PURCHASES & INWARD STOCK (Never erases existing store data)
