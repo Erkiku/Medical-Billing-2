@@ -67,8 +67,31 @@ let mockPurchases = [
 ];
 
 MedHub.api = {
+  getActiveStoreId() {
+    const raw = MedHub.state.store?.id || MedHub.state.user?.store_id || localStorage.getItem("medhub_store_id");
+    const n = Number(raw);
+    return Number.isInteger(n) && n > 0 ? n : null;
+  },
+
+  async _queryByStoreScope(buildQueryFn, storeId) {
+    if (!MedHub.supabaseClient) return { data: null, error: new Error("Offline") };
+    if (storeId) {
+      try {
+        const res = await buildQueryFn(true);
+        if (!res.error) return res;
+        const msg = String(res.error.message || "").toLowerCase();
+        // If store_id column is not yet added in Supabase schema, retry unfiltered safely
+        if (!msg.includes("store_id") && !msg.includes("column")) {
+          return res;
+        }
+      } catch (e) {}
+    }
+    return await buildQueryFn(false);
+  },
+
   // 1. STORE SETTINGS (Per-Store / Per-User with Supabase & LocalStorage)
-  async getStoreSettings(userEmailOrUser) {
+  async getStoreSettings(userEmailOrUser, opts = {}) {
+    const allowFallback = opts.allowFallback !== false;
     let targetEmail = "";
     let targetUsername = "";
     let targetStoreId = null;
@@ -84,7 +107,8 @@ MedHub.api = {
       targetUsername = userEmailOrUser.includes("@") ? userEmailOrUser.split("@")[0] : userEmailOrUser;
     } else {
       targetEmail = MedHub.state.user?.email || localStorage.getItem("medhub_current_user") || "";
-      targetUsername = MedHub.state.user?.username || "";
+      targetUsername = MedHub.state.user?.username || localStorage.getItem("medhub_username") || "";
+      targetStoreId = MedHub.state.user?.store_id || localStorage.getItem("medhub_store_id") || null;
     }
 
     targetEmail = (targetEmail || "").toLowerCase().trim();
@@ -115,8 +139,8 @@ MedHub.api = {
             .from("store_settings")
             .select("*")
             .eq("id", targetStoreId)
-            .maybeSingle();
-          if (data) cloudStore = data;
+            .limit(1);
+          if (data && data.length) cloudStore = data[0];
         }
 
         // Priority B: Match by user_email
@@ -124,9 +148,9 @@ MedHub.api = {
           const { data } = await MedHub.supabaseClient
             .from("store_settings")
             .select("*")
-            .eq("user_email", targetEmail)
-            .maybeSingle();
-          if (data) cloudStore = data;
+            .ilike("user_email", targetEmail)
+            .limit(1);
+          if (data && data.length) cloudStore = data[0];
         }
 
         // Priority C: Match by username or pharmacist_name
@@ -135,19 +159,18 @@ MedHub.api = {
             .from("store_settings")
             .select("*")
             .or(`user_email.ilike.%${targetUsername}%,pharmacist_name.ilike.%${targetName || targetUsername}%`)
-            .maybeSingle();
-          if (data) cloudStore = data;
+            .limit(1);
+          if (data && data.length) cloudStore = data[0];
         }
 
-        // Priority D: Fallback to the primary configured store in Supabase
-        if (!cloudStore) {
+        // Priority D: Fallback to primary store ONLY when allowed or root admin
+        if (!cloudStore && (allowFallback || targetUsername === "admin" || targetEmail === "admin@mededuhub.com")) {
           const { data } = await MedHub.supabaseClient
             .from("store_settings")
             .select("*")
             .order("id", { ascending: true })
-            .limit(1)
-            .maybeSingle();
-          if (data) cloudStore = data;
+            .limit(1);
+          if (data && data.length) cloudStore = data[0];
         }
       } catch (e) {
         console.warn("Store settings fetch error:", e);
@@ -155,7 +178,7 @@ MedHub.api = {
     }
 
     let found = cloudStore || localStore;
-    if (!found) {
+    if (!found && allowFallback) {
       const all = this._getAllLocalStores();
       found = all.find(s => 
         (targetEmail && s.user_email?.toLowerCase() === targetEmail) || 
@@ -171,6 +194,7 @@ MedHub.api = {
           localStorage.setItem("medhub_store_" + targetEmail, json);
           localStorage.setItem("medhub_store_settings", json);
           localStorage.setItem("mededuhub_store_settings", json);
+          if (found.id) localStorage.setItem("medhub_store_id", String(found.id));
         } catch (e) {}
       }
       MedHub.state.store = found;
@@ -200,28 +224,7 @@ MedHub.api = {
       merged.dl_no_21b = String(merged.dl_no_21b || "").trim();
     }
 
-    // 1. Save to local per-store and active cache
-    try {
-      const json = JSON.stringify(merged);
-      localStorage.setItem("medhub_store_" + email, json);
-      localStorage.setItem("medhub_store_settings", json);
-      localStorage.setItem("mededuhub_store_settings", json);
-      localStorage.setItem("medhub_current_user", email);
-
-      // Sync to all stores directory for Master Admin
-      let allStores = this._getAllLocalStores();
-      const existingIdx = allStores.findIndex(s => s.user_email?.toLowerCase() === email || s.id === merged.id);
-      if (existingIdx >= 0) {
-        allStores[existingIdx] = { ...allStores[existingIdx], ...merged };
-      } else {
-        allStores.push(merged);
-      }
-      this._saveAllLocalStores(allStores);
-    } catch (e) {}
-    mockStore = merged;
-    MedHub.state.store = merged;
-
-    // 2. Persist to Supabase Database with strict schema sanitization
+    // Persist to Supabase Database FIRST so merged.id is captured cleanly for local cache
     if (MedHub.supabaseClient) {
       try {
         const allowedCols = [
@@ -244,19 +247,27 @@ MedHub.api = {
         if (typeof merged.id === "number" && !isNaN(merged.id)) {
           existingId = merged.id;
         } else {
-          const { data: existing } = await MedHub.supabaseClient
+          const { data: existingList } = await MedHub.supabaseClient
             .from("store_settings")
             .select("id")
-            .eq("user_email", email)
-            .maybeSingle();
-          if (existing && existing.id) existingId = existing.id;
+            .ilike("user_email", email)
+            .limit(1);
+          if (existingList && existingList.length && existingList[0].id) {
+            existingId = existingList[0].id;
+            merged.id = existingId;
+          }
         }
 
         if (existingId) {
-          const { error: updErr } = await MedHub.supabaseClient
+          const { data: updData, error: updErr } = await MedHub.supabaseClient
             .from("store_settings")
             .update(dbPayload)
-            .eq("id", existingId);
+            .eq("id", existingId)
+            .select()
+            .maybeSingle();
+          if (!updErr && updData && updData.id) {
+            merged.id = updData.id;
+          }
           if (updErr) console.warn("Supabase store_settings update error:", updErr);
         } else {
           const { data: inserted, error: insErr } = await MedHub.supabaseClient
@@ -273,7 +284,30 @@ MedHub.api = {
         console.warn("Store settings save error:", e);
       }
     }
-    return true;
+
+    // Save to local per-store and active cache
+    try {
+      const json = JSON.stringify(merged);
+      localStorage.setItem("medhub_store_" + email, json);
+      localStorage.setItem("medhub_store_settings", json);
+      localStorage.setItem("mededuhub_store_settings", json);
+      localStorage.setItem("medhub_current_user", email);
+      if (merged.id) localStorage.setItem("medhub_store_id", String(merged.id));
+
+      // Sync to all stores directory for Master Admin
+      let allStores = this._getAllLocalStores();
+      const existingIdx = allStores.findIndex(s => s.user_email?.toLowerCase() === email || (merged.id && s.id === merged.id));
+      if (existingIdx >= 0) {
+        allStores[existingIdx] = { ...allStores[existingIdx], ...merged };
+      } else {
+        allStores.push(merged);
+      }
+      this._saveAllLocalStores(allStores);
+    } catch (e) {}
+    mockStore = merged;
+    MedHub.state.store = merged;
+
+    return merged;
   },
 
   // Master Admin Credentials & All Stores Directory
@@ -700,13 +734,14 @@ MedHub.api = {
     // 3. Check Supabase Database for Store Pharmacist
     if (MedHub.supabaseClient) {
       try {
-        const { data, error } = await MedHub.supabaseClient
+        const { data: userRows, error } = await MedHub.supabaseClient
           .from("authorized_users")
           .select("*")
           .or(`username.ilike.${cleanInput},email.ilike.${cleanInput}`)
-          .maybeSingle();
+          .limit(1);
 
-        if (!error && data) {
+        const data = (!error && Array.isArray(userRows) && userRows.length > 0) ? userRows[0] : null;
+        if (data) {
           if (data.status === "suspended") {
             return {
               success: false,
@@ -714,17 +749,6 @@ MedHub.api = {
             };
           }
           if (data.password === cleanPass) {
-            // Real-time update last_login_at in Supabase authorized_users
-            try {
-              await MedHub.supabaseClient
-                .from("authorized_users")
-                .update({ 
-                  last_login_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString()
-                })
-                .eq("id", data.id);
-            } catch (err) {}
-
             // Find associated store in Supabase store_settings
             let matchedStore = null;
             if (data.store_id) {
@@ -732,35 +756,57 @@ MedHub.api = {
                 .from("store_settings")
                 .select("*")
                 .eq("id", data.store_id)
-                .maybeSingle();
-              if (stById) matchedStore = stById;
+                .limit(1);
+              if (stById && stById.length) matchedStore = stById[0];
             }
             if (!matchedStore && data.email) {
               const { data: stByEmail } = await MedHub.supabaseClient
                 .from("store_settings")
                 .select("*")
-                .eq("user_email", data.email.toLowerCase().trim())
-                .maybeSingle();
-              if (stByEmail) matchedStore = stByEmail;
+                .ilike("user_email", data.email.trim())
+                .limit(1);
+              if (stByEmail && stByEmail.length) matchedStore = stByEmail[0];
             }
             if (!matchedStore) {
               const { data: stByUsername } = await MedHub.supabaseClient
                 .from("store_settings")
                 .select("*")
                 .or(`user_email.ilike.%${data.username}%,pharmacist_name.ilike.%${data.full_name || data.username}%`)
-                .maybeSingle();
-              if (stByUsername) matchedStore = stByUsername;
+                .limit(1);
+              if (stByUsername && stByUsername.length) matchedStore = stByUsername[0];
             }
-            if (!matchedStore) {
-              // Fallback to primary registered store in Supabase
+            if (!matchedStore && data.store_name) {
+              const { data: stByName } = await MedHub.supabaseClient
+                .from("store_settings")
+                .select("*")
+                .ilike("store_name", data.store_name.trim())
+                .limit(1);
+              if (stByName && stByName.length) matchedStore = stByName[0];
+            }
+            if (!matchedStore && (data.username === "admin" || data.email === "admin@mededuhub.com")) {
               const { data: stFallback } = await MedHub.supabaseClient
                 .from("store_settings")
                 .select("*")
                 .order("id", { ascending: true })
-                .limit(1)
-                .maybeSingle();
-              if (stFallback) matchedStore = stFallback;
+                .limit(1);
+              if (stFallback && stFallback.length) matchedStore = stFallback[0];
             }
+
+            // Real-time update last_login_at (and link store_id if missing) in Supabase authorized_users
+            try {
+              const userPatch = {
+                last_login_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              };
+              if (matchedStore && matchedStore.id && !data.store_id) {
+                userPatch.store_id = matchedStore.id;
+                userPatch.store_name = matchedStore.store_name;
+              }
+              await MedHub.supabaseClient
+                .from("authorized_users")
+                .update(userPatch)
+                .eq("id", data.id);
+            } catch (err) {}
 
             // Real-time update store_settings in Supabase with last_login_user and last_login_at
             if (matchedStore && matchedStore.id) {
@@ -777,7 +823,7 @@ MedHub.api = {
 
             return {
               success: true,
-              isNew: false,
+              isNew: !matchedStore,
               user: {
                 id: data.id,
                 username: data.username,
@@ -942,10 +988,17 @@ MedHub.api = {
       status: "active",
       updated_at: new Date().toISOString()
     };
+    const numericStoreId = Number(user.store_id);
+    if (Number.isInteger(numericStoreId) && numericStoreId > 0) {
+      cleanUser.store_id = numericStoreId;
+    }
+    if (user.store_name && String(user.store_name).trim()) {
+      cleanUser.store_name = String(user.store_name).trim();
+    }
 
     // Save locally
     const localUsers = this._getLocalUsers();
-    const idx = localUsers.findIndex(u => u.username === cleanUser.username);
+    const idx = localUsers.findIndex(u => u.username === cleanUser.username || u.email === cleanUser.email);
     if (idx >= 0) {
       localUsers[idx] = { ...localUsers[idx], ...cleanUser };
     } else {
@@ -961,6 +1014,14 @@ MedHub.api = {
           .select()
           .maybeSingle();
         if (!error && data) return data;
+        // If conflict occurred on email or existing row, update directly
+        const { data: updData } = await MedHub.supabaseClient
+          .from("authorized_users")
+          .update(cleanUser)
+          .or(`username.ilike.${cleanUser.username},email.ilike.${cleanUser.email}`)
+          .select()
+          .limit(1);
+        if (updData && updData.length) return updData[0];
       } catch (e) {
         console.warn("Create authorized user error:", e);
       }
@@ -1231,15 +1292,25 @@ MedHub.api = {
 
   async getMedicines() {
     let list = null;
+    const storeId = this.getActiveStoreId();
     if (MedHub.supabaseClient) {
       try {
+        const applyStore = (q) => {
+          if (!storeId) return q;
+          return storeId === 1 ? q.or("store_id.eq.1,store_id.is.null") : q.eq("store_id", storeId);
+        };
+
         // First try medicine_stock view
-        const { data, error } = await MedHub.supabaseClient
-          .from("medicine_stock")
-          .select("*")
-          .neq("is_active", false)
-          .order("name", { ascending: true });
-        if (!error && data && data.length) {
+        const { data, error } = await this._queryByStoreScope((withStore) => {
+          let q = MedHub.supabaseClient
+            .from("medicine_stock")
+            .select("*")
+            .neq("is_active", false)
+            .order("name", { ascending: true });
+          return withStore ? applyStore(q) : q;
+        }, storeId);
+
+        if (!error && Array.isArray(data)) {
           list = data.map(m => {
             const qty = Number(m.available_qty) || 0;
             const reorder = Number(m.reorder_level) || 10;
@@ -1252,12 +1323,16 @@ MedHub.api = {
           });
         } else {
           // Fallback: fetch from medicines directly
-          const { data: rawMeds, error: medErr } = await MedHub.supabaseClient
-            .from("medicines")
-            .select("*")
-            .neq("is_active", false)
-            .order("name", { ascending: true });
-          if (!medErr && rawMeds && rawMeds.length) {
+          const { data: rawMeds, error: medErr } = await this._queryByStoreScope((withStore) => {
+            let q = MedHub.supabaseClient
+              .from("medicines")
+              .select("*")
+              .neq("is_active", false)
+              .order("name", { ascending: true });
+            return withStore ? applyStore(q) : q;
+          }, storeId);
+
+          if (!medErr && Array.isArray(rawMeds)) {
             list = rawMeds.map(m => {
               const qty = Number(m.available_qty) || 0;
               const reorder = Number(m.reorder_level) || 10;
@@ -1275,7 +1350,7 @@ MedHub.api = {
       }
     }
 
-    if (list && list.length) {
+    if (Array.isArray(list)) {
       this._saveLocalMedicines(list);
       return list;
     }
@@ -1372,9 +1447,11 @@ MedHub.api = {
 
   async createMedicine(medData, initialBatch = null) {
     let createdMed = null;
+    const storeId = this.getActiveStoreId();
+
     if (MedHub.supabaseClient) {
       try {
-        const payload = {
+        const basePayload = {
           name: medData.name,
           company: medData.company,
           generic_name: medData.generic_name || "",
@@ -1384,35 +1461,49 @@ MedHub.api = {
           reorder_level: Number(medData.reorder_level) || 10,
           is_active: true
         };
+        const payload = { ...basePayload };
+        if (storeId) payload.store_id = storeId;
         if (medData.salt_composition) payload.salt_composition = medData.salt_composition;
         if (medData.drug_schedule) payload.drug_schedule = medData.drug_schedule;
         if (medData.pack_size) payload.pack_size = medData.pack_size;
         if (medData.barcode) payload.barcode = medData.barcode;
         if (medData.purchase_price) payload.purchase_price = Number(medData.purchase_price);
         if (medData.selling_rate) payload.selling_rate = Number(medData.selling_rate);
-        if (initialBatch && Number(initialBatch.quantity) > 0) {
-          payload.available_qty = Number(initialBatch.quantity);
-          payload.nearest_expiry = initialBatch.expiry_date || "—";
-        }
 
-        const { data, error } = await MedHub.supabaseClient
+        let res = await MedHub.supabaseClient
           .from("medicines")
           .insert(payload)
           .select()
           .single();
 
-        if (!error && data) {
-          createdMed = data;
+        if (res.error) {
+          // Retry without store_id / optional columns in case schema differs
+          const noStorePayload = { ...payload };
+          delete noStorePayload.store_id;
+          res = await MedHub.supabaseClient.from("medicines").insert(noStorePayload).select().single();
+          if (res.error) {
+            res = await MedHub.supabaseClient.from("medicines").insert(basePayload).select().single();
+          }
+        }
+
+        if (!res.error && res.data) {
+          createdMed = res.data;
           if (initialBatch && initialBatch.batch_no) {
             const normExp = this._normalizeDateForPg(initialBatch.expiry_date) || new Date(Date.now() + 365*86400000).toISOString().slice(0, 10);
-            await MedHub.supabaseClient.from("medicine_batches").insert({
+            const batchPayload = {
               medicine_id: createdMed.id,
               batch_no: initialBatch.batch_no,
               expiry_date: normExp,
               purchase_price: Number(medData.purchase_price) || 0,
               selling_price: Number(medData.selling_rate) || Number(medData.mrp) || 0,
               quantity: Math.max(0, Number(initialBatch.quantity) || 0)
-            });
+            };
+            if (storeId) batchPayload.store_id = storeId;
+            const { error: bErr } = await MedHub.supabaseClient.from("medicine_batches").insert(batchPayload);
+            if (bErr && batchPayload.store_id) {
+              delete batchPayload.store_id;
+              await MedHub.supabaseClient.from("medicine_batches").insert(batchPayload);
+            }
           }
         }
       } catch (e) {
@@ -1424,6 +1515,7 @@ MedHub.api = {
     const qty = (initialBatch && Number(initialBatch.quantity)) || 0;
     const finalMed = {
       id: newId,
+      store_id: storeId || undefined,
       ...medData,
       mrp: Number(medData.mrp) || 0,
       available_qty: qty,
@@ -1455,7 +1547,7 @@ MedHub.api = {
 
   async updateMedicine(id, medData) {
     let updatedMed = null;
-    if (MedHub.supabaseClient && id) {
+    if (MedHub.supabaseClient && id && this._isUuid(String(id))) {
       try {
         const payload = {
           name: medData.name,
@@ -1503,7 +1595,7 @@ MedHub.api = {
   },
 
   async deleteMedicine(id) {
-    if (MedHub.supabaseClient && id) {
+    if (MedHub.supabaseClient && id && this._isUuid(String(id))) {
       try {
         await MedHub.supabaseClient.from("medicine_batches").delete().eq("medicine_id", id);
         const { error } = await MedHub.supabaseClient.from("medicines").delete().eq("id", id);
@@ -1534,32 +1626,44 @@ MedHub.api = {
     const qty = Number(batchData.quantity) || 0;
     const batchNo = (batchData.batch_no || "BT-" + Date.now().toString().slice(-4)).trim();
     const expiry = batchData.expiry_date || "2027-12";
+    const normExp = this._normalizeDateForPg(expiry) || (expiry.length === 7 ? `${expiry}-01` : expiry);
     const purRate = Number(batchData.purchase_price) || 0;
     const selRate = Number(batchData.selling_price) || 0;
+    const storeId = this.getActiveStoreId();
 
-    if (MedHub.supabaseClient && medicineId) {
+    if (MedHub.supabaseClient && medicineId && this._isUuid(String(medicineId))) {
       try {
-        await MedHub.supabaseClient.from("medicine_batches").insert({
-          medicine_id: medicineId,
-          batch_no: batchNo,
-          expiry_date: expiry.length === 7 ? `${expiry}-01` : expiry,
-          purchase_price: purRate,
-          selling_price: selRate,
-          quantity: qty
-        });
+        const { data: existingBatches } = await MedHub.supabaseClient
+          .from("medicine_batches")
+          .select("id, quantity")
+          .eq("medicine_id", medicineId)
+          .eq("batch_no", batchNo)
+          .limit(1);
 
-        // Also update medicines table available_qty & nearest_expiry if table has these columns
-        const { data: curMed } = await MedHub.supabaseClient
-          .from("medicines")
-          .select("available_qty")
-          .eq("id", medicineId)
-          .maybeSingle();
-        if (curMed) {
-          const newTotal = (Number(curMed.available_qty) || 0) + qty;
-          await MedHub.supabaseClient
-            .from("medicines")
-            .update({ available_qty: newTotal, nearest_expiry: expiry })
-            .eq("id", medicineId);
+        if (existingBatches && existingBatches.length > 0) {
+          const cur = existingBatches[0];
+          const updPayload = {
+            quantity: (Number(cur.quantity) || 0) + qty,
+            expiry_date: normExp
+          };
+          if (purRate > 0) updPayload.purchase_price = purRate;
+          if (selRate > 0) updPayload.selling_price = selRate;
+          await MedHub.supabaseClient.from("medicine_batches").update(updPayload).eq("id", cur.id);
+        } else {
+          const batchPayload = {
+            medicine_id: medicineId,
+            batch_no: batchNo,
+            expiry_date: normExp,
+            purchase_price: purRate,
+            selling_price: selRate,
+            quantity: qty
+          };
+          if (storeId) batchPayload.store_id = storeId;
+          const { error: bErr } = await MedHub.supabaseClient.from("medicine_batches").insert(batchPayload);
+          if (bErr && batchPayload.store_id) {
+            delete batchPayload.store_id;
+            await MedHub.supabaseClient.from("medicine_batches").insert(batchPayload);
+          }
         }
       } catch (e) {
         console.warn("addStockBatch Supabase error:", e);
@@ -1786,22 +1890,47 @@ MedHub.api = {
     } catch (e) {}
   },
 
+  _unpackBillMeta(b) {
+    let meta = null;
+    if (typeof b?.notes === "string" && b.notes.trim().startsWith("{")) {
+      try {
+        const parsed = JSON.parse(b.notes);
+        if (parsed && parsed.__medhub_bill_meta) meta = parsed;
+      } catch (e) {}
+    }
+    const baseItems = (Array.isArray(b.items) && b.items.length)
+      ? b.items
+      : (Array.isArray(b.bill_items) && b.bill_items.length ? b.bill_items : (meta?.items || []));
+    return {
+      ...b,
+      customer_name: b.customer_name || b.customers?.name || meta?.customer_name || "Walk-in Customer",
+      customer_mobile: b.customer_mobile || b.customers?.mobile || meta?.customer_mobile || "",
+      patient_address: b.patient_address || b.customers?.address || meta?.patient_address || "",
+      payment_mode: b.payment_mode || meta?.payment_mode || "CASH",
+      notes: meta ? (meta.user_notes || "") : (b.notes || ""),
+      items: baseItems
+    };
+  },
+
   async getBills() {
+    const storeId = this.getActiveStoreId();
     if (MedHub.supabaseClient) {
       try {
-        const { data, error } = await MedHub.supabaseClient
-          .from("bills")
-          .select("*, bill_items(*), customers(name, mobile, address)")
-          .order("bill_no", { ascending: false })
-          .limit(100);
-        if (!error && data) {
-          const mapped = data.map(b => ({
-            ...b,
-            customer_name: b.customer_name || b.customers?.name || "Walk-in Customer",
-            customer_mobile: b.customer_mobile || b.customers?.mobile || "",
-            patient_address: b.patient_address || b.customers?.address || "",
-            items: b.items || b.bill_items || []
-          }));
+        const applyStore = (q) => {
+          if (!storeId) return q;
+          return storeId === 1 ? q.or("store_id.eq.1,store_id.is.null") : q.eq("store_id", storeId);
+        };
+        const { data, error } = await this._queryByStoreScope((withStore) => {
+          let q = MedHub.supabaseClient
+            .from("bills")
+            .select("*, bill_items(*), customers(name, mobile, address)")
+            .order("bill_no", { ascending: false })
+            .limit(100);
+          return withStore ? applyStore(q) : q;
+        }, storeId);
+
+        if (!error && Array.isArray(data)) {
+          const mapped = data.map(b => this._unpackBillMeta(b));
           this._saveLocalBills(mapped);
           return mapped;
         }
@@ -1809,10 +1938,7 @@ MedHub.api = {
         console.warn("Bills query fallback:", e);
       }
     }
-    return this._getLocalBills().map(b => ({
-      ...b,
-      items: b.items || b.bill_items || []
-    }));
+    return this._getLocalBills().map(b => this._unpackBillMeta(b));
   },
 
   async _upsertCustomerForBill(billData) {
@@ -1821,13 +1947,17 @@ MedHub.api = {
     const name = (billData.customer_name || "").trim();
     const address = (billData.patient_address || "").trim();
     if (!/^[0-9]{10}$/.test(mobile)) return null;
+    const storeId = this.getActiveStoreId();
 
     try {
-      const { data: cust } = await MedHub.supabaseClient
-        .from("customers")
-        .select("id")
-        .eq("mobile", mobile)
-        .maybeSingle();
+      const { data: custList } = await this._queryByStoreScope((withStore) => {
+        let q = MedHub.supabaseClient.from("customers").select("id").eq("mobile", mobile).limit(1);
+        if (withStore && storeId) {
+          q = storeId === 1 ? q.or("store_id.eq.1,store_id.is.null") : q.eq("store_id", storeId);
+        }
+        return q;
+      }, storeId);
+      const cust = custList && custList[0];
 
       if (cust && cust.id) {
         if (name || address) {
@@ -1840,12 +1970,18 @@ MedHub.api = {
       }
 
       if (name) {
-        const { data: newCust } = await MedHub.supabaseClient
+        const insPayload = { name, mobile, address };
+        if (storeId) insPayload.store_id = storeId;
+        let res = await MedHub.supabaseClient
           .from("customers")
-          .insert({ name, mobile, address })
+          .insert(insPayload)
           .select("id")
           .maybeSingle();
-        if (newCust) return newCust.id;
+        if (res.error && insPayload.store_id) {
+          delete insPayload.store_id;
+          res = await MedHub.supabaseClient.from("customers").insert(insPayload).select("id").maybeSingle();
+        }
+        if (res.data) return res.data.id;
       }
     } catch (e) {}
     return null;
@@ -1856,6 +1992,17 @@ MedHub.api = {
     const nowIso = new Date().toISOString();
     const payMode = (billData.payment_mode || "CASH").toUpperCase();
     const safePayMode = ["CASH", "UPI", "CARD"].includes(payMode) ? payMode : "CASH";
+    const storeId = this.getActiveStoreId();
+
+    const billMetaJson = JSON.stringify({
+      __medhub_bill_meta: true,
+      customer_name: billData.customer_name || "Walk-in Customer",
+      customer_mobile: billData.customer_mobile || "",
+      patient_address: billData.patient_address || "",
+      payment_mode: payMode,
+      user_notes: billData.notes || "",
+      items: billData.items || []
+    });
 
     if (MedHub.supabaseClient) {
       try {
@@ -1871,15 +2018,17 @@ MedHub.api = {
           gst_amount: Number(billData.gst_amount) || 0,
           grand_total: Number(billData.grand_total) || 0,
           paid_amount: Number(billData.paid_amount) || 0,
-          notes: billData.notes || ""
+          notes: billMetaJson
         };
 
         const extendedBillPayload = {
           ...baseBillPayload,
           customer_name: billData.customer_name || "Walk-in Customer",
           customer_mobile: billData.customer_mobile || "",
-          payment_mode: payMode
+          payment_mode: payMode,
+          notes: billData.notes || ""
         };
+        if (storeId) extendedBillPayload.store_id = storeId;
 
         let { data: bData, error: bErr } = await MedHub.supabaseClient
           .from("bills")
@@ -1887,12 +2036,24 @@ MedHub.api = {
           .select()
           .single();
 
+        if (bErr && extendedBillPayload.store_id) {
+          const noStoreExt = { ...extendedBillPayload };
+          delete noStoreExt.store_id;
+          const retryExt = await MedHub.supabaseClient.from("bills").insert(noStoreExt).select().single();
+          bData = retryExt.data;
+          bErr = retryExt.error;
+        }
+
         if (bErr) {
-          const retry = await MedHub.supabaseClient
+          const retryBasePayload = storeId ? { ...baseBillPayload, store_id: storeId } : baseBillPayload;
+          let retry = await MedHub.supabaseClient
             .from("bills")
-            .insert(baseBillPayload)
+            .insert(retryBasePayload)
             .select()
             .single();
+          if (retry.error && retryBasePayload.store_id) {
+            retry = await MedHub.supabaseClient.from("bills").insert(baseBillPayload).select().single();
+          }
           bData = retry.data;
           bErr = retry.error;
         }
@@ -1902,9 +2063,11 @@ MedHub.api = {
             ...bData,
             customer_name: bData.customer_name || billData.customer_name || "Walk-in Customer",
             customer_mobile: bData.customer_mobile || billData.customer_mobile || "",
-            payment_mode: bData.payment_mode || payMode
+            payment_mode: bData.payment_mode || payMode,
+            notes: billData.notes || ""
           };
 
+          let anyItemFailed = false;
           for (const item of billData.items) {
             const medIdValid = this._isUuid(item.medicine_id) ? item.medicine_id : null;
             const batchIdValid = this._isUuid(item.batch_id) ? item.batch_id : null;
@@ -1932,8 +2095,9 @@ MedHub.api = {
             };
 
             const { error: iErr } = await MedHub.supabaseClient.from("bill_items").insert(extItem);
-            if (iErr && medIdValid && batchIdValid) {
-              await MedHub.supabaseClient.from("bill_items").insert(baseItem);
+            if (iErr) {
+              const { error: bItemErr } = await MedHub.supabaseClient.from("bill_items").insert(baseItem);
+              if (bItemErr) anyItemFailed = true;
             }
 
             if (batchIdValid) {
@@ -1955,6 +2119,13 @@ MedHub.api = {
                 }
               }
             }
+          }
+
+          // If any bill_item insert failed (e.g. non-UUID medicine/batch), persist item backup in bills.notes
+          if (anyItemFailed && bData.notes !== billMetaJson) {
+            try {
+              await MedHub.supabaseClient.from("bills").update({ notes: billMetaJson }).eq("id", savedBill.id);
+            } catch (e) {}
           }
 
           if (Number(billData.paid_amount) > 0) {
@@ -2282,15 +2453,27 @@ MedHub.api = {
   },
 
   async getSuppliers() {
+    const storeId = this.getActiveStoreId();
     if (MedHub.supabaseClient) {
       try {
-        const { data, error } = await MedHub.supabaseClient
-          .from("suppliers")
-          .select("*")
-          .order("name", { ascending: true });
-        if (!error && data && data.length) {
+        const applyStore = (q) => {
+          if (!storeId) return q;
+          return storeId === 1 ? q.or("store_id.eq.1,store_id.is.null") : q.eq("store_id", storeId);
+        };
+        const { data, error } = await this._queryByStoreScope((withStore) => {
+          let q = MedHub.supabaseClient
+            .from("suppliers")
+            .select("*")
+            .order("name", { ascending: true });
+          return withStore ? applyStore(q) : q;
+        }, storeId);
+        if (!error && Array.isArray(data) && data.length > 0) {
           this._saveLocalSuppliers(data);
           return data;
+        }
+        if (!error && Array.isArray(data) && storeId && storeId !== 1) {
+          this._saveLocalSuppliers([]);
+          return [];
         }
       } catch (e) {}
     }
@@ -2299,15 +2482,25 @@ MedHub.api = {
 
   async createSupplier(sup) {
     let created = null;
+    const storeId = this.getActiveStoreId();
     if (MedHub.supabaseClient) {
       try {
-        const { data, error } = await MedHub.supabaseClient
-          .from("suppliers")
-          .insert(sup)
-          .select()
-          .single();
-        if (!error && data) {
-          created = data;
+        const baseSup = {
+          name: sup.name,
+          phone: sup.phone || null,
+          email: sup.email || null,
+          gstin: sup.gstin || null,
+          dl_no: sup.dl_no || null,
+          address: sup.address || null,
+          balance: Number(sup.balance) || 0
+        };
+        const extSup = storeId ? { ...baseSup, store_id: storeId } : baseSup;
+        let res = await MedHub.supabaseClient.from("suppliers").insert(extSup).select().single();
+        if (res.error && extSup.store_id) {
+          res = await MedHub.supabaseClient.from("suppliers").insert(baseSup).select().single();
+        }
+        if (!res.error && res.data) {
+          created = res.data;
         }
       } catch (e) {}
     }
@@ -2320,16 +2513,34 @@ MedHub.api = {
 
   async updateSupplier(id, supData) {
     let updated = null;
+    const storeId = this.getActiveStoreId();
     if (MedHub.supabaseClient && id) {
       try {
-        const { data, error } = await MedHub.supabaseClient
-          .from("suppliers")
-          .update(supData)
-          .eq("id", id)
-          .select()
-          .maybeSingle();
-        if (!error && data) {
-          updated = data;
+        const cleanSup = {
+          name: supData.name,
+          phone: supData.phone || null,
+          email: supData.email || null,
+          gstin: supData.gstin || null,
+          dl_no: supData.dl_no || null,
+          address: supData.address || null,
+          balance: Number(supData.balance) || 0
+        };
+        if (this._isUuid(String(id))) {
+          const { data, error } = await MedHub.supabaseClient
+            .from("suppliers")
+            .update(cleanSup)
+            .eq("id", id)
+            .select()
+            .maybeSingle();
+          if (!error && data) updated = data;
+        } else {
+          // Promote starter/local supplier to Supabase row on edit
+          const insSup = storeId ? { ...cleanSup, store_id: storeId } : cleanSup;
+          let res = await MedHub.supabaseClient.from("suppliers").insert(insSup).select().maybeSingle();
+          if (res.error && insSup.store_id) {
+            res = await MedHub.supabaseClient.from("suppliers").insert(cleanSup).select().maybeSingle();
+          }
+          if (!res.error && res.data) updated = res.data;
         }
       } catch (e) {
         console.warn("updateSupplier Supabase error:", e);
@@ -2346,7 +2557,7 @@ MedHub.api = {
   },
 
   async deleteSupplier(id) {
-    if (MedHub.supabaseClient && id) {
+    if (MedHub.supabaseClient && id && this._isUuid(String(id))) {
       try {
         await MedHub.supabaseClient.from("suppliers").delete().eq("id", id);
       } catch (e) {
@@ -2377,10 +2588,51 @@ MedHub.api = {
     } catch (e) {}
   },
 
+  async _upsertBatchInSupabase(medicineId, batchNo, normExp, rate, mrp, qty, storeId) {
+    if (!MedHub.supabaseClient || !this._isUuid(String(medicineId))) return;
+    try {
+      const { data: existingRows } = await MedHub.supabaseClient
+        .from("medicine_batches")
+        .select("id, quantity")
+        .eq("medicine_id", medicineId)
+        .eq("batch_no", batchNo)
+        .limit(1);
+
+      if (existingRows && existingRows.length > 0) {
+        const cur = existingRows[0];
+        const upd = {
+          quantity: (Number(cur.quantity) || 0) + qty,
+          expiry_date: normExp
+        };
+        if (rate > 0) upd.purchase_price = rate;
+        if (mrp > 0) upd.selling_price = mrp;
+        await MedHub.supabaseClient.from("medicine_batches").update(upd).eq("id", cur.id);
+      } else {
+        const ins = {
+          medicine_id: medicineId,
+          batch_no: batchNo,
+          expiry_date: normExp,
+          purchase_price: rate,
+          selling_price: mrp,
+          quantity: qty
+        };
+        if (storeId) ins.store_id = storeId;
+        const { error: bErr } = await MedHub.supabaseClient.from("medicine_batches").insert(ins);
+        if (bErr && ins.store_id) {
+          delete ins.store_id;
+          await MedHub.supabaseClient.from("medicine_batches").insert(ins);
+        }
+      }
+    } catch (e) {
+      console.warn("Batch Supabase upsert err:", e);
+    }
+  },
+
   async inwardStockFromPurchase(items) {
     if (!Array.isArray(items) || !items.length) return;
     const localMeds = this._getLocalMedicines();
     const localBatches = this._getLocalBatches();
+    const storeId = this.getActiveStoreId();
 
     for (const item of items) {
       const medName = (item.medicine_name || item.name || "").trim();
@@ -2391,12 +2643,27 @@ MedHub.api = {
       const mrp = Number(item.mrp) || rate || 0;
       const gstPct = item.gst_percent !== undefined ? Number(item.gst_percent) : 12;
       const batchNo = (item.batch_no || "BT-" + Date.now().toString().slice(-4)).trim();
-      const expDate = item.expiry_date || "2028-12-31";
+      const rawExp = item.expiry_date || "2028-12-31";
+      const normExp = this._normalizeDateForPg(rawExp) || "2028-12-31";
 
-      // 1. Check if medicine already exists in local persisted catalog
+      // 1. Check if medicine already exists in local catalog or Supabase
       let existingMed = localMeds.find(
         m => m.name && m.name.toLowerCase() === medName.toLowerCase()
       );
+
+      if (!existingMed && MedHub.supabaseClient) {
+        try {
+          const { data: cloudMeds } = await MedHub.supabaseClient
+            .from("medicines")
+            .select("*")
+            .ilike("name", medName)
+            .limit(1);
+          if (cloudMeds && cloudMeds.length > 0) {
+            existingMed = cloudMeds[0];
+            localMeds.push(existingMed);
+          }
+        } catch (e) {}
+      }
 
       if (existingMed) {
         existingMed.available_qty = (Number(existingMed.available_qty) || 0) + qty;
@@ -2405,8 +2672,7 @@ MedHub.api = {
         if (mrp > 0) existingMed.mrp = mrp;
         if (item.gst_percent !== undefined) existingMed.gst_percent = gstPct;
 
-        // Add or update batch
-        const existingBatch = localBatches.find(b => b.medicine_id === existingMed.id && b.batch_no === batchNo);
+        const existingBatch = localBatches.find(b => String(b.medicine_id) === String(existingMed.id) && b.batch_no === batchNo);
         if (existingBatch) {
           existingBatch.quantity = (Number(existingBatch.quantity) || 0) + qty;
           if (rate > 0) existingBatch.purchase_price = rate;
@@ -2416,31 +2682,22 @@ MedHub.api = {
             id: "b-" + Date.now() + "-" + Math.floor(Math.random() * 100),
             medicine_id: existingMed.id,
             batch_no: batchNo,
-            expiry_date: expDate,
+            expiry_date: normExp,
             purchase_price: rate,
             selling_price: mrp,
             quantity: qty
           });
         }
 
-        // Supabase sync if connected
-        if (MedHub.supabaseClient) {
-          try {
-            await MedHub.supabaseClient.from("medicine_batches").insert({
-              medicine_id: existingMed.id,
-              batch_no: batchNo,
-              expiry_date: expDate,
-              purchase_price: rate,
-              selling_price: mrp,
-              quantity: qty
-            });
-          } catch (e) {}
+        if (MedHub.supabaseClient && this._isUuid(String(existingMed.id))) {
+          await this._upsertBatchInSupabase(existingMed.id, batchNo, normExp, rate, mrp, qty, storeId);
         }
       } else {
         // Create new medicine and batch
         const newMedId = "med-" + Date.now() + "-" + Math.floor(Math.random() * 100);
         const newMed = {
           id: newMedId,
+          store_id: storeId || undefined,
           name: medName,
           generic_name: medName,
           company: item.company || "Pharma Distributor",
@@ -2453,50 +2710,47 @@ MedHub.api = {
           reorder_level: 10,
           rack_location: "General",
           available_qty: qty,
-          nearest_expiry: expDate,
+          nearest_expiry: normExp,
           status: "in"
         };
-        localMeds.push(newMed);
 
+        if (MedHub.supabaseClient) {
+          try {
+            const medPayload = {
+              name: newMed.name,
+              generic_name: newMed.generic_name,
+              company: newMed.company,
+              category: newMed.category,
+              pack_size: newMed.pack_size,
+              purchase_price: rate,
+              selling_rate: mrp,
+              mrp: newMed.mrp,
+              gst_percent: gstPct,
+              is_active: true
+            };
+            if (storeId) medPayload.store_id = storeId;
+            let res = await MedHub.supabaseClient.from("medicines").insert(medPayload).select().maybeSingle();
+            if (res.error && medPayload.store_id) {
+              delete medPayload.store_id;
+              res = await MedHub.supabaseClient.from("medicines").insert(medPayload).select().maybeSingle();
+            }
+            if (!res.error && res.data && res.data.id) {
+              newMed.id = res.data.id;
+              await this._upsertBatchInSupabase(res.data.id, batchNo, normExp, rate, mrp, qty, storeId);
+            }
+          } catch (e) {}
+        }
+
+        localMeds.push(newMed);
         localBatches.push({
           id: "b-" + Date.now() + "-" + Math.floor(Math.random() * 100),
-          medicine_id: newMedId,
+          medicine_id: newMed.id,
           batch_no: batchNo,
-          expiry_date: expDate,
+          expiry_date: normExp,
           purchase_price: rate,
           selling_price: mrp,
           quantity: qty
         });
-
-        // Supabase sync if connected
-        if (MedHub.supabaseClient) {
-          try {
-            const { data: dbMed } = await MedHub.supabaseClient
-              .from("medicines")
-              .insert({
-                name: newMed.name,
-                generic_name: newMed.generic_name,
-                company: newMed.company,
-                category: newMed.category,
-                mrp: newMed.mrp,
-                gst_percent: gstPct
-              })
-              .select()
-              .maybeSingle();
-
-            if (dbMed && dbMed.id) {
-              newMed.id = dbMed.id;
-              await MedHub.supabaseClient.from("medicine_batches").insert({
-                medicine_id: dbMed.id,
-                batch_no: batchNo,
-                expiry_date: expDate,
-                purchase_price: rate,
-                selling_price: mrp,
-                quantity: qty
-              });
-            }
-          } catch (e) {}
-        }
       }
     }
 
@@ -2505,65 +2759,174 @@ MedHub.api = {
     if (MedHub.state) MedHub.state.medicines = localMeds;
   },
 
-  async getPurchases() {
-    let cloudData = null;
-    if (MedHub.supabaseClient) {
+  _unpackPurchaseMeta(p) {
+    let meta = null;
+    if (typeof p?.notes === "string" && p.notes.trim().startsWith("{")) {
       try {
-        const { data, error } = await MedHub.supabaseClient
-          .from("purchases")
-          .select("*")
-          .order("created_at", { ascending: false });
-        if (!error && data && data.length) cloudData = data;
+        const parsed = JSON.parse(p.notes);
+        if (parsed && parsed.__medhub_meta) meta = parsed;
       } catch (e) {}
     }
-    const local = this._getLocalPurchases();
-    if (cloudData && cloudData.length) {
-      // Merge unique without wiping local purchases
-      const map = new Map();
-      local.forEach(p => map.set(String(p.id || p.invoice_no), p));
-      cloudData.forEach(p => {
-        const k = String(p.id || p.invoice_no);
-        map.set(k, { ...(map.get(k) || {}), ...p });
-      });
-      return Array.from(map.values());
+    const items = (Array.isArray(p.items) && p.items.length)
+      ? p.items
+      : ((Array.isArray(p.purchase_items) && p.purchase_items.length) ? p.purchase_items : (meta?.items || []));
+    return {
+      ...p,
+      payment_mode: p.payment_mode || meta?.payment_mode || "BANK TRANSFER",
+      taxable_amount: p.taxable_amount ?? meta?.taxable_amount ?? 0,
+      discount_amount: p.discount_amount ?? meta?.discount_amount ?? 0,
+      extra_discount: p.extra_discount ?? meta?.extra_discount ?? 0,
+      extra_discount_type: p.extra_discount_type || meta?.extra_discount_type || "AMOUNT",
+      gst_amount: p.gst_amount ?? meta?.gst_amount ?? 0,
+      items
+    };
+  },
+
+  async _syncPurchaseItemsToSupabase(purchaseId, items, storeId) {
+    if (!MedHub.supabaseClient || !this._isUuid(String(purchaseId)) || !Array.isArray(items)) return;
+    try {
+      await MedHub.supabaseClient.from("purchase_items").delete().eq("purchase_id", purchaseId);
+      for (const it of items) {
+        const baseItem = {
+          purchase_id: purchaseId,
+          medicine_name: it.medicine_name || it.name || "Medicine",
+          batch_no: it.batch_no || "BT-01",
+          expiry_date: this._normalizeDateForPg(it.expiry_date) || "2028-12-01",
+          quantity: Math.max(1, Number(it.quantity) || 1),
+          purchase_rate: Number(it.purchase_rate) || 0,
+          mrp: Number(it.mrp) || 0,
+          line_total: Number(it.line_total) || 0
+        };
+        const extItem = {
+          ...baseItem,
+          pack_size: it.pack_size || "1x10",
+          discount_percent: Number(it.discount_percent) || 0,
+          discount_amount: Number(it.discount_amount) || 0,
+          gst_percent: Number(it.gst_percent) || 0,
+          taxable_amount: Number(it.taxable_amount) || 0,
+          gst_amount: Number(it.gst_amount) || 0
+        };
+        if (storeId) extItem.store_id = storeId;
+        const { error: iErr } = await MedHub.supabaseClient.from("purchase_items").insert(extItem);
+        if (iErr) {
+          await MedHub.supabaseClient.from("purchase_items").insert(baseItem);
+        }
+      }
+    } catch (e) {
+      console.warn("purchase_items sync warn:", e);
     }
-    return local;
+  },
+
+  async getPurchases() {
+    let cloudData = null;
+    const storeId = this.getActiveStoreId();
+    if (MedHub.supabaseClient) {
+      try {
+        const applyStore = (q) => {
+          if (!storeId) return q;
+          return storeId === 1 ? q.or("store_id.eq.1,store_id.is.null") : q.eq("store_id", storeId);
+        };
+        let res = await this._queryByStoreScope((withStore) => {
+          let q = MedHub.supabaseClient
+            .from("purchases")
+            .select("*, purchase_items(*)")
+            .order("created_at", { ascending: false });
+          return withStore ? applyStore(q) : q;
+        }, storeId);
+        if (res.error) {
+          res = await this._queryByStoreScope((withStore) => {
+            let q = MedHub.supabaseClient
+              .from("purchases")
+              .select("*")
+              .order("created_at", { ascending: false });
+            return withStore ? applyStore(q) : q;
+          }, storeId);
+        }
+        if (!res.error && Array.isArray(res.data)) {
+          cloudData = res.data.map(p => this._unpackPurchaseMeta(p));
+        }
+      } catch (e) {}
+    }
+
+    if (Array.isArray(cloudData)) {
+      // Keep only local-only records (non-UUID) not yet synced to cloud, preferring cloud rows
+      const local = this._getLocalPurchases();
+      const cloudMap = new Map();
+      cloudData.forEach(p => cloudMap.set(String(p.id || p.invoice_no), p));
+      const merged = [...cloudData];
+      local.forEach(lp => {
+        if (!this._isUuid(String(lp.id)) && lp.id !== "pur-1" && !cloudMap.has(String(lp.invoice_no))) {
+          merged.push(lp);
+        }
+      });
+      if (merged.length > 0 || (storeId && storeId !== 1)) {
+        this._saveLocalPurchases(merged);
+        mockPurchases = merged;
+        return merged;
+      }
+    }
+    return this._getLocalPurchases();
   },
 
   async createPurchase(purchaseData) {
+    const storeId = this.getActiveStoreId();
     const newPur = {
       id: "pur-" + Date.now(),
       created_at: new Date().toISOString(),
+      store_id: storeId || undefined,
       ...purchaseData
     };
+
+    const metaBundle = {
+      __medhub_meta: true,
+      payment_mode: purchaseData.payment_mode || "BANK TRANSFER",
+      taxable_amount: Number(purchaseData.taxable_amount) || 0,
+      discount_amount: Number(purchaseData.discount_amount) || 0,
+      extra_discount: Number(purchaseData.extra_discount) || 0,
+      extra_discount_type: purchaseData.extra_discount_type || "AMOUNT",
+      gst_amount: Number(purchaseData.gst_amount) || 0,
+      items: purchaseData.items || []
+    };
+
+    const compatPayload = {
+      supplier_name: purchaseData.supplier_name || "",
+      invoice_no: purchaseData.invoice_no || "",
+      purchase_date: this._normalizeDateForPg(purchaseData.purchase_date) || new Date().toISOString().slice(0, 10),
+      total_amount: Number(purchaseData.total_amount) || 0,
+      paid_amount: Number(purchaseData.paid_amount) || 0,
+      status: purchaseData.status || "RECEIVED",
+      notes: JSON.stringify(metaBundle)
+    };
+
+    const extPayload = {
+      ...compatPayload,
+      payment_mode: metaBundle.payment_mode,
+      taxable_amount: metaBundle.taxable_amount,
+      discount_amount: metaBundle.discount_amount,
+      extra_discount: metaBundle.extra_discount,
+      extra_discount_type: metaBundle.extra_discount_type,
+      gst_amount: metaBundle.gst_amount,
+      items: metaBundle.items
+    };
+    if (storeId) extPayload.store_id = storeId;
 
     if (MedHub.supabaseClient) {
       try {
         let res = await MedHub.supabaseClient
           .from("purchases")
-          .insert(purchaseData)
+          .insert(extPayload)
           .select()
           .maybeSingle();
         if (res.error) {
-          // Fallback with base schema columns in case extra discount/tax columns are absent in DB
-          const basePurchaseData = {
-            supplier_name: purchaseData.supplier_name,
-            invoice_no: purchaseData.invoice_no,
-            purchase_date: purchaseData.purchase_date,
-            total_amount: purchaseData.total_amount,
-            paid_amount: purchaseData.paid_amount,
-            status: purchaseData.status,
-            payment_mode: purchaseData.payment_mode,
-            items: purchaseData.items
-          };
           res = await MedHub.supabaseClient
             .from("purchases")
-            .insert(basePurchaseData)
+            .insert(compatPayload)
             .select()
             .maybeSingle();
         }
-        if (!res.error && res.data) {
-          newPur.id = res.data.id || newPur.id;
+        if (!res.error && res.data && res.data.id) {
+          newPur.id = res.data.id;
+          await this._syncPurchaseItemsToSupabase(res.data.id, purchaseData.items || [], storeId);
         }
       } catch (e) {
         console.warn("createPurchase Supabase error, stored locally:", e);
@@ -2585,28 +2948,54 @@ MedHub.api = {
   },
 
   async updatePurchase(id, updatedData, oldItems = null) {
-    if (MedHub.supabaseClient && id && !String(id).startsWith("pur-")) {
+    const storeId = this.getActiveStoreId();
+    const metaBundle = {
+      __medhub_meta: true,
+      payment_mode: updatedData.payment_mode || "BANK TRANSFER",
+      taxable_amount: Number(updatedData.taxable_amount) || 0,
+      discount_amount: Number(updatedData.discount_amount) || 0,
+      extra_discount: Number(updatedData.extra_discount) || 0,
+      extra_discount_type: updatedData.extra_discount_type || "AMOUNT",
+      gst_amount: Number(updatedData.gst_amount) || 0,
+      items: updatedData.items || []
+    };
+
+    const compatUpdate = {
+      supplier_name: updatedData.supplier_name,
+      invoice_no: updatedData.invoice_no,
+      purchase_date: this._normalizeDateForPg(updatedData.purchase_date) || updatedData.purchase_date,
+      total_amount: Number(updatedData.total_amount) || 0,
+      paid_amount: Number(updatedData.paid_amount) || 0,
+      status: updatedData.status,
+      notes: JSON.stringify(metaBundle)
+    };
+    Object.keys(compatUpdate).forEach(k => compatUpdate[k] === undefined && delete compatUpdate[k]);
+
+    const extUpdate = {
+      ...compatUpdate,
+      payment_mode: metaBundle.payment_mode,
+      taxable_amount: metaBundle.taxable_amount,
+      discount_amount: metaBundle.discount_amount,
+      extra_discount: metaBundle.extra_discount,
+      extra_discount_type: metaBundle.extra_discount_type,
+      gst_amount: metaBundle.gst_amount,
+      items: metaBundle.items
+    };
+
+    if (MedHub.supabaseClient && id && this._isUuid(String(id))) {
       try {
         let res = await MedHub.supabaseClient
           .from("purchases")
-          .update(updatedData)
+          .update(extUpdate)
           .eq("id", id);
         if (res.error) {
-          const baseUpdate = {
-            supplier_name: updatedData.supplier_name,
-            invoice_no: updatedData.invoice_no,
-            purchase_date: updatedData.purchase_date,
-            total_amount: updatedData.total_amount,
-            paid_amount: updatedData.paid_amount,
-            status: updatedData.status,
-            payment_mode: updatedData.payment_mode,
-            items: updatedData.items
-          };
-          Object.keys(baseUpdate).forEach(k => baseUpdate[k] === undefined && delete baseUpdate[k]);
           await MedHub.supabaseClient
             .from("purchases")
-            .update(baseUpdate)
+            .update(compatUpdate)
             .eq("id", id);
+        }
+        if (Array.isArray(updatedData.items) && updatedData.items.length > 0) {
+          await this._syncPurchaseItemsToSupabase(id, updatedData.items, storeId);
         }
       } catch (e) {
         console.warn("updatePurchase Supabase error:", e);
@@ -2655,8 +3044,9 @@ MedHub.api = {
   },
 
   async deletePurchase(id) {
-    if (MedHub.supabaseClient && id) {
+    if (MedHub.supabaseClient && id && this._isUuid(String(id))) {
       try {
+        await MedHub.supabaseClient.from("purchase_items").delete().eq("purchase_id", id);
         await MedHub.supabaseClient
           .from("purchases")
           .delete()

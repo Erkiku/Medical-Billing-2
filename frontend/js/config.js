@@ -18,12 +18,16 @@ MedHub.loadConfig = async function () {
 
   // Priority 1: Fetch from Vercel Serverless Function (/api/config)
   try {
-    const res = await fetch("/api/config");
+    const res = await fetch("/api/config", { cache: "no-store" });
     if (res.ok) {
       const data = await res.json();
       if (data && data.supabaseUrl && data.supabaseAnonKey) {
         url = data.supabaseUrl;
         key = data.supabaseAnonKey;
+        try {
+          localStorage.setItem("supabase_url", url);
+          localStorage.setItem("supabase_anon_key", key);
+        } catch (e) {}
       }
     }
   } catch (err) {
@@ -36,7 +40,7 @@ MedHub.loadConfig = async function () {
     key = window.__ENV__.SUPABASE_ANON_KEY || window.__ENV__.SUPABASE_PUBLISHABLE_KEY || "";
   }
 
-  // Priority 3: LocalStorage fallback (if set manually)
+  // Priority 3: LocalStorage fallback (if cached from prior load or set manually)
   if (!url) {
     url = localStorage.getItem("supabase_url") || "";
     key = localStorage.getItem("supabase_anon_key") || "";
@@ -139,9 +143,11 @@ MedHub.state = {
   page: "billing",
   isAuthenticated: localStorage.getItem("medhub_authenticated") === "true",
   user: {
+    username: localStorage.getItem("medhub_username") || "",
     email: localStorage.getItem("medhub_current_user") || "admin@mededuhub.com",
     role: localStorage.getItem("medhub_user_role") || "admin",
-    name: localStorage.getItem("medhub_user_name") || "Dr. Anil Kumar"
+    name: localStorage.getItem("medhub_user_name") || "Dr. Anil Kumar",
+    store_id: localStorage.getItem("medhub_store_id") ? (Number(localStorage.getItem("medhub_store_id")) || localStorage.getItem("medhub_store_id")) : null
   },
   store: storedStore || MedHub.defaultStore,
   cart: [],

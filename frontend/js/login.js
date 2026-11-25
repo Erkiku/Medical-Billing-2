@@ -383,7 +383,7 @@ MedHub.login = {
         // Fetch store settings for THIS specific user / store
         let existingStore = authResult.store;
         if (!existingStore) {
-          existingStore = await MedHub.api.getStoreSettings(verifiedUser);
+          existingStore = await MedHub.api.getStoreSettings(verifiedUser, { allowFallback: false });
         }
 
         // CHECK IF STORE PROFILE HAS ALREADY BEEN SET UP OR USER IS REGISTERED:
@@ -475,21 +475,29 @@ MedHub.login = {
         };
 
         // 1. Persist store settings to Supabase Database & LocalStorage under this user's email
-        await MedHub.api.saveStoreSettings(storePayload, email);
+        const savedStore = await MedHub.api.saveStoreSettings(storePayload, email);
+        const resolvedStore = (savedStore && typeof savedStore === "object") ? savedStore : storePayload;
 
-        // 2. Persist authorized user record with name & password
+        // 2. Persist authorized user record with name, password, and linked store_id
         if (self.tempAuth && self.tempAuth.password) {
-          await MedHub.api.createAuthorizedUser({
+          const authUserSaved = await MedHub.api.createAuthorizedUser({
             username: self.tempAuth.username,
             email: email,
             password: self.tempAuth.password,
             full_name: pharmacistName,
-            role: self.tempAuth.role || "admin"
+            role: self.tempAuth.role || "admin",
+            store_id: resolvedStore.id || null,
+            store_name: resolvedStore.store_name || storePayload.store_name
           });
+          if (authUserSaved && authUserSaved.store_id) {
+            self.tempAuth.store_id = authUserSaved.store_id;
+          } else if (resolvedStore.id) {
+            self.tempAuth.store_id = resolvedStore.id;
+          }
         }
 
         // 3. Complete login and launch Dashboard immediately!
-        self.completeLogin(self.tempAuth, storePayload);
+        self.completeLogin(self.tempAuth, resolvedStore);
       });
     }
   },
@@ -500,41 +508,67 @@ MedHub.login = {
   // --------------------------------------------------------------------------
   completeLogin(user, storePayload) {
     const email = (user.email || user.username || "").toLowerCase().trim();
+    const username = (user.username || (email.includes("@") ? email.split("@")[0] : email)).toLowerCase().trim();
+    const storeId = storePayload?.id || user.store_id || null;
     const pharmacistName =
       storePayload.pharmacist_name ||
       user.name ||
       user.full_name ||
       "Pharmacist Admin";
 
+    // Clear stale local data caches if switching to a different store or user
+    try {
+      const prevStoreId = localStorage.getItem("medhub_store_id");
+      const prevUser = localStorage.getItem("medhub_current_user");
+      const switchedStore = (storeId && prevStoreId && String(prevStoreId) !== String(storeId)) ||
+        (prevUser && email && prevUser.toLowerCase().trim() !== email);
+      if (switchedStore) {
+        [
+          "medhub_medicines",
+          "medhub_batches",
+          "medhub_bills",
+          "medhub_purchases",
+          "medhub_suppliers"
+        ].forEach(k => localStorage.removeItem(k));
+      }
+    } catch (e) {}
+
     // 1. Update in-memory store state
-    MedHub.state.store = { ...storePayload };
+    MedHub.state.store = { ...storePayload, id: storeId || storePayload?.id };
 
     // 2. Update topbar store header in real time
     if (typeof MedHub.updateStoreHeader === "function") {
-      MedHub.updateStoreHeader(storePayload);
+      MedHub.updateStoreHeader(MedHub.state.store);
     }
 
     // 3. Authenticate user & update application state
     MedHub.state.isAuthenticated = true;
+    MedHub.state.isSuperAdmin = false;
     MedHub.state.user = {
-      username: user.username,
-      email: email,
+      username,
+      email,
       role: user.role || "admin",
-      name: pharmacistName
+      name: pharmacistName,
+      store_id: storeId
     };
 
     try {
       localStorage.setItem("medhub_authenticated", "true");
       localStorage.setItem("medhub_current_user", email);
+      localStorage.setItem("medhub_username", username);
+      if (storeId) localStorage.setItem("medhub_store_id", String(storeId));
+      else localStorage.removeItem("medhub_store_id");
       localStorage.setItem("medhub_user_name", pharmacistName);
       localStorage.setItem("medhub_user_role", user.role || "admin");
+      localStorage.setItem("medhub_store_settings", JSON.stringify(MedHub.state.store));
+      localStorage.setItem("mededuhub_store_settings", JSON.stringify(MedHub.state.store));
     } catch (err) {}
 
     // Persist real-time active store settings to Supabase
     if (MedHub.supabaseClient && storePayload) {
       MedHub.api.saveStoreSettings({
-        ...storePayload,
-        last_login_user: user.username,
+        ...MedHub.state.store,
+        last_login_user: username,
         last_login_at: new Date().toISOString()
       }, email).catch(err => console.warn("Background store sync error:", err));
     }

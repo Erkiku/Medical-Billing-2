@@ -252,6 +252,8 @@ MedHub.router = {
     try {
       localStorage.setItem("medhub_authenticated", "false");
       localStorage.removeItem("medhub_current_user");
+      localStorage.removeItem("medhub_username");
+      localStorage.removeItem("medhub_store_id");
       localStorage.removeItem("medhub_user_role");
       localStorage.removeItem("medhub_impersonated_store");
     } catch (e) {}
@@ -284,6 +286,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     await MedHub.loadConfig();
   } else {
     MedHub.initSupabaseClient();
+  }
+  if (MedHub.state.isAuthenticated && !MedHub.state.isSuperAdmin && MedHub.state.user?.role !== "superadmin" && MedHub.api?.getStoreSettings) {
+    try {
+      const freshStore = await MedHub.api.getStoreSettings(MedHub.state.user);
+      if (freshStore) {
+        MedHub.state.store = freshStore;
+        if (freshStore.id && MedHub.state.user) {
+          MedHub.state.user.store_id = freshStore.id;
+        }
+      }
+    } catch (e) {}
   }
   MedHub.router.init();
 });
