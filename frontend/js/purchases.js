@@ -190,6 +190,67 @@ MedHub.purchases = {
     });
   },
 
+  calculatePurchaseItem({ qty, rate, discPct, gstPct }) {
+    const q = Math.max(0, Number(qty) || 0);
+    const r = Math.max(0, Number(rate) || 0);
+    const dPct = Math.min(100, Math.max(0, Number(discPct) || 0));
+    const gPct = Math.max(0, Number(gstPct) || 0);
+    const gross = q * r;
+    const discAmt = (gross * dPct) / 100;
+    const taxable = Math.max(0, gross - discAmt);
+    const gstAmt = (taxable * gPct) / 100;
+    const lineTotal = taxable + gstAmt;
+    return { gross, discPct: dPct, discAmt, taxable, gstPct: gPct, gstAmt, lineTotal };
+  },
+
+  calculatePurchaseSummary(rowsData, billDiscountVal = 0, billDiscountType = "AMOUNT") {
+    let totalQty = 0;
+    let rawTaxable = 0;
+    let itemDiscTotal = 0;
+    let itemCount = 0;
+    const computedRows = [];
+
+    (rowsData || []).forEach(row => {
+      const hasContent = (row.name && String(row.name).trim()) || Number(row.qty) > 0 || Number(row.rate) > 0;
+      if (!hasContent) return;
+      itemCount++;
+      const q = Math.max(0, Number(row.qty) || 0);
+      totalQty += q;
+      const calc = this.calculatePurchaseItem({
+        qty: q,
+        rate: row.rate,
+        discPct: row.discPct,
+        gstPct: row.gstPct
+      });
+      rawTaxable += calc.taxable;
+      itemDiscTotal += calc.discAmt;
+      computedRows.push(calc);
+    });
+
+    const rawBillVal = Math.max(0, Number(billDiscountVal) || 0);
+    const extraDisc = billDiscountType === "PERCENT"
+      ? (rawTaxable * Math.min(100, rawBillVal)) / 100
+      : Math.min(rawTaxable, rawBillVal);
+
+    const factor = rawTaxable > 0 ? Math.max(0, (rawTaxable - extraDisc) / rawTaxable) : 1;
+    const finalTaxable = Math.max(0, rawTaxable - extraDisc);
+    const finalGst = computedRows.reduce((sum, r) => sum + ((r.taxable * factor * r.gstPct) / 100), 0);
+    const totalDiscount = itemDiscTotal + extraDisc;
+    const netTotal = finalTaxable + finalGst;
+
+    return {
+      itemCount,
+      totalQty,
+      rawTaxable,
+      itemDiscTotal,
+      extraDisc,
+      totalDiscount,
+      finalTaxable,
+      finalGst,
+      netTotal
+    };
+  },
+
   // --------------------------------------------------------------------------
   // MODAL 1: RECORD NEW PURCHASE (WITH MEDICINE-WISE BREAKDOWN)
   // --------------------------------------------------------------------------
@@ -203,12 +264,12 @@ MedHub.purchases = {
     const todayStr = new Date().toISOString().slice(0, 10);
 
     modalWrap.innerHTML = `
-      <div class="modal-overlay">
+      <div class="modal-overlay purchase-modal-overlay">
         <div class="modal-box purchase-modal-box">
-          <div class="modal-header-dialog" style="padding: 16px 24px; border-bottom: 1.5px solid var(--cream-border); display: flex; justify-content: space-between; align-items: center;">
+          <div class="modal-header-dialog" style="padding: 16px 28px; border-bottom: 1.5px solid var(--cream-border); display: flex; justify-content: space-between; align-items: center;">
             <div>
               <h3 class="modal-dialog-title" style="margin: 0; font-size: 18px; color: var(--black-deep);">Record Supplier Purchase & Stock Inward</h3>
-              <p style="margin: 3px 0 0; font-size: 12px; color: var(--black-soft);">Add purchased medicines, batch numbers, purchase rates & auto-inward stock</p>
+              <p style="margin: 3px 0 0; font-size: 12px; color: var(--black-soft);">Add purchased medicines, batch numbers, purchase rates, discounts & auto-inward stock</p>
             </div>
             <button type="button" class="btn-dialog-close" id="btn-close-pur-modal">${MedHub.icons.close}</button>
           </div>
@@ -254,7 +315,7 @@ MedHub.purchases = {
               <div class="pur-section-title">
                 <span>📦 Purchased Medicines & Rates Breakdown</span>
                 <div style="display: flex; align-items: center; gap: 12px;">
-                  <span style="font-size: 11.5px; color: var(--black-soft); font-weight: 600;">⌨️ ENTER ↵ switches box • Empty Medicine + Enter ➔ Payment</span>
+                  <span style="font-size: 11.5px; color: var(--black-soft); font-weight: 600;">⌨️ ENTER ↵ switches box • Empty Medicine + Enter ➔ Discount / Payment</span>
                   <button type="button" class="btn-outline-sm" id="btn-add-pur-item" style="font-size: 12px; font-weight: 700;">
                     + Add Medicine Item
                   </button>
@@ -278,6 +339,7 @@ MedHub.purchases = {
                       <th style="min-width: 82px;">Qty *</th>
                       <th style="min-width: 108px;">Pur. Rate (₹) *</th>
                       <th style="min-width: 100px;">MRP (₹)</th>
+                      <th style="min-width: 84px;">Dis %</th>
                       <th style="min-width: 92px;">GST %</th>
                       <th style="min-width: 115px;">Total (₹)</th>
                       <th style="width: 46px; text-align: center;">✕</th>
@@ -290,7 +352,7 @@ MedHub.purchases = {
               </div>
             </div>
 
-            <!-- 3. LIVE TOTALS & PAYMENT DETAILS -->
+            <!-- 3. LIVE TOTALS, DISCOUNT & PAYMENT DETAILS -->
             <div class="pur-summary-banner">
               <div class="pur-summary-stat">
                 <span class="pur-stat-label">Total Medicines</span>
@@ -305,12 +367,26 @@ MedHub.purchases = {
                 <span class="pur-stat-val" id="pur-taxable-amount-display">₹0.00</span>
               </div>
               <div class="pur-summary-stat">
+                <span class="pur-stat-label">Total Discount</span>
+                <span class="pur-stat-val" style="color: #16a34a;" id="pur-total-discount-display">-₹0.00</span>
+              </div>
+              <div class="pur-summary-stat">
                 <span class="pur-stat-label">GST Tax Total</span>
                 <span class="pur-stat-val" id="pur-gst-amount-display">₹0.00</span>
               </div>
               <div class="pur-summary-stat">
                 <span class="pur-stat-label">Net Purchase Total</span>
                 <span class="pur-stat-val" style="color: #0f766e;" id="pur-total-amount-display">₹0.00</span>
+              </div>
+              <div class="pur-summary-stat">
+                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 3px;">
+                  <span class="pur-stat-label">Extra Discount</span>
+                  <div class="disc-type-toggle" id="pur-discount-type-toggle">
+                    <button type="button" class="disc-type-btn pur-disc-type-btn active" data-type="AMOUNT" title="Discount in Rupees (₹)">₹</button>
+                    <button type="button" class="disc-type-btn pur-disc-type-btn" data-type="PERCENT" title="Discount in Percentage (%)">%</button>
+                  </div>
+                </div>
+                <input type="number" step="0.01" min="0" id="pur-bill-discount" class="input-field" style="width: 105px; padding: 4px 8px; font-size: 14px; font-weight: 700; text-align: right;" value="0" />
               </div>
               <div class="pur-summary-stat">
                 <span class="pur-stat-label">Payment Mode</span>
@@ -330,7 +406,7 @@ MedHub.purchases = {
             <!-- 4. MODAL FOOTER -->
             <div class="modal-dialog-footer" style="margin-top: 22px; display: flex; justify-content: flex-end; gap: 12px;">
               <button type="button" class="btn-dialog-cancel" id="btn-cancel-pur-modal">Cancel</button>
-              <button type="submit" class="btn-dialog-save" style="background: #0f766e !important; color: #ffffff !important; font-weight: 700;">
+              <button type="submit" id="btn-save-pur-modal" class="btn-dialog-save" style="background: #0f766e !important; color: #ffffff !important; font-weight: 700;">
                 💾 Save Purchase & Inward Stock
               </button>
             </div>
@@ -444,6 +520,18 @@ MedHub.purchases = {
           />
         </td>
         <td>
+          <input 
+            type="number" 
+            class="pur-item-disc" 
+            min="0" 
+            max="100" 
+            step="0.1" 
+            placeholder="0" 
+            value="${prefill?.discount_percent ?? 0}" 
+            style="text-align: center; font-weight: 700;" 
+          />
+        </td>
+        <td>
           <select class="pur-item-gst" style="padding: 6px 6px; border-radius: 6px; border: 1.5px solid var(--cream-border-dark); font-size: 13px; font-weight: 700; width: 100%; min-width: 82px; background: #ffffff;">
             <option value="12" ${prefill?.gst_percent === 12 || (!prefill && prefill?.gst_percent === undefined) ? 'selected' : ''}>12%</option>
             <option value="0" ${prefill?.gst_percent === 0 ? 'selected' : ''}>0%</option>
@@ -478,6 +566,7 @@ MedHub.purchases = {
       const qtyInput = tr.querySelector(".pur-item-qty");
       const rateInput = tr.querySelector(".pur-item-rate");
       const mrpInput = tr.querySelector(".pur-item-mrp");
+      const discInput = tr.querySelector(".pur-item-disc");
       const gstInput = tr.querySelector(".pur-item-gst");
       const totalInput = tr.querySelector(".pur-item-total");
       const delBtn = tr.querySelector(".pur-del-btn");
@@ -508,18 +597,25 @@ MedHub.purchases = {
       nameInput.addEventListener("change", applyCatalogMatch);
 
       const calcRow = () => {
-        const qty = Number(qtyInput.value) || 0;
-        const rate = Number(rateInput.value) || 0;
-        const gst = Number(gstInput.value) || 0;
-        const taxable = qty * rate;
-        const taxAmt = (taxable * gst) / 100;
-        const lineTot = taxable + taxAmt;
-        totalInput.value = lineTot.toFixed(2);
+        let dPct = Number(discInput?.value) || 0;
+        if (dPct < 0) dPct = 0;
+        if (dPct > 100) {
+          dPct = 100;
+          if (discInput) discInput.value = "100";
+        }
+        const calc = self.calculatePurchaseItem({
+          qty: qtyInput.value,
+          rate: rateInput.value,
+          discPct: dPct,
+          gstPct: gstInput.value
+        });
+        totalInput.value = calc.lineTotal.toFixed(2);
         recalcSummary();
       };
 
       qtyInput.addEventListener("input", calcRow);
       rateInput.addEventListener("input", calcRow);
+      discInput?.addEventListener("input", calcRow);
       gstInput.addEventListener("change", calcRow);
 
       delBtn.addEventListener("click", () => {
@@ -534,51 +630,76 @@ MedHub.purchases = {
       calcRow();
     };
 
-    // Calculate Summary Totals (Taxable, GST, Net Total)
-    const recalcSummary = () => {
-      const rows = tbody.querySelectorAll("tr");
-      let totalQty = 0;
-      let totalTaxable = 0;
-      let totalGst = 0;
-      let totalAmt = 0;
-      let itemCount = 0;
+    let billDiscountType = "AMOUNT";
+    const billDiscInput = document.getElementById("pur-bill-discount");
+    const billDiscTypeBtns = document.querySelectorAll(".pur-disc-type-btn");
 
-      rows.forEach(tr => {
-        const name = tr.querySelector(".pur-item-name")?.value.trim();
-        const qty = Number(tr.querySelector(".pur-item-qty")?.value) || 0;
-        const rate = Number(tr.querySelector(".pur-item-rate")?.value) || 0;
-        const gst = Number(tr.querySelector(".pur-item-gst")?.value) || 0;
-        if (name || qty > 0 || rate > 0) {
-          itemCount++;
-          totalQty += qty;
-          const taxable = qty * rate;
-          const tax = (taxable * gst) / 100;
-          totalTaxable += taxable;
-          totalGst += tax;
-          totalAmt += (taxable + tax);
-        }
-      });
+    // Calculate Summary Totals (Taxable, Discount, GST, Net Total)
+    const recalcSummary = () => {
+      const rowsData = Array.from(tbody.querySelectorAll("tr")).map(tr => ({
+        name: tr.querySelector(".pur-item-name")?.value.trim() || "",
+        qty: Number(tr.querySelector(".pur-item-qty")?.value) || 0,
+        rate: Number(tr.querySelector(".pur-item-rate")?.value) || 0,
+        discPct: Number(tr.querySelector(".pur-item-disc")?.value) || 0,
+        gstPct: Number(tr.querySelector(".pur-item-gst")?.value) || 0
+      }));
+
+      let billDiscVal = Number(billDiscInput?.value) || 0;
+      if (billDiscVal < 0) {
+        billDiscVal = 0;
+        if (billDiscInput) billDiscInput.value = "0";
+      }
+      if (billDiscountType === "PERCENT" && billDiscVal > 100) {
+        billDiscVal = 100;
+        if (billDiscInput) billDiscInput.value = "100";
+      }
+
+      const summary = self.calculatePurchaseSummary(rowsData, billDiscVal, billDiscountType);
 
       const elItems = document.getElementById("pur-total-items-count");
-      if (elItems) elItems.innerText = `${itemCount} Medicines`;
+      if (elItems) elItems.innerText = `${summary.itemCount} Medicines`;
 
       const elQty = document.getElementById("pur-total-qty-count");
-      if (elQty) elQty.innerText = `${totalQty} Units/Packs`;
+      if (elQty) elQty.innerText = `${summary.totalQty} Units/Packs`;
 
       const elTaxable = document.getElementById("pur-taxable-amount-display");
-      if (elTaxable) elTaxable.innerText = `₹${totalTaxable.toFixed(2)}`;
+      if (elTaxable) elTaxable.innerText = `₹${summary.finalTaxable.toFixed(2)}`;
+
+      const elDisc = document.getElementById("pur-total-discount-display");
+      if (elDisc) elDisc.innerText = `-₹${summary.totalDiscount.toFixed(2)}`;
 
       const elGst = document.getElementById("pur-gst-amount-display");
-      if (elGst) elGst.innerText = `₹${totalGst.toFixed(2)}`;
+      if (elGst) elGst.innerText = `₹${summary.finalGst.toFixed(2)}`;
 
       const elTotal = document.getElementById("pur-total-amount-display");
-      if (elTotal) elTotal.innerText = `₹${totalAmt.toFixed(2)}`;
+      if (elTotal) elTotal.innerText = `₹${summary.netTotal.toFixed(2)}`;
 
       const paidInput = document.getElementById("pur-paid-amount");
-      if (paidInput && (!paidInput.dataset.touched || Number(paidInput.value) === 0)) {
-        paidInput.value = totalAmt.toFixed(2);
+      if (paidInput && !paidInput.dataset.touched) {
+        paidInput.value = summary.netTotal.toFixed(2);
       }
+
+      return summary;
     };
+
+    billDiscTypeBtns.forEach(btn => {
+      btn.addEventListener("click", () => {
+        billDiscTypeBtns.forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        billDiscountType = btn.dataset.type === "PERCENT" ? "PERCENT" : "AMOUNT";
+        if (billDiscInput) {
+          if (billDiscountType === "PERCENT") {
+            billDiscInput.setAttribute("max", "100");
+            if (Number(billDiscInput.value) > 100) billDiscInput.value = "100";
+          } else {
+            billDiscInput.removeAttribute("max");
+          }
+        }
+        recalcSummary();
+      });
+    });
+
+    billDiscInput?.addEventListener("input", recalcSummary);
 
     document.getElementById("pur-paid-amount")?.addEventListener("input", (e) => {
       e.target.dataset.touched = "true";
@@ -604,7 +725,7 @@ MedHub.purchases = {
             if (!target.value.trim() && hasOtherFilledRow) {
               e.preventDefault();
               e.stopPropagation();
-              focusField(document.getElementById("pur-payment-mode"));
+              focusField(document.getElementById("pur-bill-discount") || document.getElementById("pur-payment-mode"));
               return true;
             }
             return false;
@@ -653,7 +774,7 @@ MedHub.purchases = {
       // Extract all medicine rows
       const rows = tbody.querySelectorAll("tr");
       const items = [];
-      let totalAmount = 0;
+      const rowsForSummary = [];
 
       rows.forEach(tr => {
         const name = tr.querySelector(".pur-item-name")?.value.trim();
@@ -667,13 +788,17 @@ MedHub.purchases = {
         const qty = Number(tr.querySelector(".pur-item-qty")?.value) || 0;
         const purchaseRate = Number(tr.querySelector(".pur-item-rate")?.value) || 0;
         const mrp = Number(tr.querySelector(".pur-item-mrp")?.value) || purchaseRate;
+        const discPercent = Math.min(100, Math.max(0, Number(tr.querySelector(".pur-item-disc")?.value) || 0));
         const gstPercent = Number(tr.querySelector(".pur-item-gst")?.value) || 0;
 
         if (name && qty > 0) {
-          const taxable = qty * purchaseRate;
-          const gstAmt = (taxable * gstPercent) / 100;
-          const lineTotal = taxable + gstAmt;
-          totalAmount += lineTotal;
+          const calc = self.calculatePurchaseItem({
+            qty,
+            rate: purchaseRate,
+            discPct: discPercent,
+            gstPct: gstPercent
+          });
+          rowsForSummary.push({ name, qty, rate: purchaseRate, discPct: discPercent, gstPct: gstPercent });
           items.push({
             medicine_name: name,
             name: name,
@@ -683,10 +808,12 @@ MedHub.purchases = {
             quantity: qty,
             purchase_rate: purchaseRate,
             mrp: mrp,
+            discount_percent: discPercent,
+            discount_amount: Number(calc.discAmt.toFixed(2)),
             gst_percent: gstPercent,
-            taxable_amount: taxable,
-            gst_amount: gstAmt,
-            line_total: lineTotal
+            taxable_amount: Number(calc.taxable.toFixed(2)),
+            gst_amount: Number(calc.gstAmt.toFixed(2)),
+            line_total: Number(calc.lineTotal.toFixed(2))
           });
         }
       });
@@ -696,12 +823,22 @@ MedHub.purchases = {
         return;
       }
 
+      const finalSummary = self.calculatePurchaseSummary(
+        rowsForSummary,
+        Number(billDiscInput?.value) || 0,
+        billDiscountType
+      );
+      const totalAmount = Number(finalSummary.netTotal.toFixed(2));
       const status = paidAmount >= totalAmount ? "PAID" : (paidAmount > 0 ? "PARTIAL" : "DUE");
 
       const purchasePayload = {
         supplier_name: supplierName,
         invoice_no: invoiceNo,
         purchase_date: purchaseDate,
+        taxable_amount: Number(finalSummary.finalTaxable.toFixed(2)),
+        discount_amount: Number(finalSummary.totalDiscount.toFixed(2)),
+        extra_discount: Number(finalSummary.extraDisc.toFixed(2)),
+        gst_amount: Number(finalSummary.finalGst.toFixed(2)),
         total_amount: totalAmount,
         paid_amount: paidAmount,
         status: status,
@@ -783,6 +920,7 @@ MedHub.purchases = {
                     <th style="text-align: center;">Qty</th>
                     <th style="text-align: right;">Pur. Rate</th>
                     <th style="text-align: right;">MRP</th>
+                    <th style="text-align: center;">Dis %</th>
                     <th style="text-align: center;">GST %</th>
                     <th style="text-align: right;">Total Amount</th>
                   </tr>
@@ -798,22 +936,33 @@ MedHub.purchases = {
                       <td style="text-align: center; font-weight: 700;">${it.quantity}</td>
                       <td style="text-align: right;">₹${Number(it.purchase_rate || 0).toFixed(2)}</td>
                       <td style="text-align: right;">₹${Number(it.mrp || 0).toFixed(2)}</td>
+                      <td style="text-align: center;">${Number(it.discount_percent || 0)}%</td>
                       <td style="text-align: center;"><span class="badge-cat">${it.gst_percent !== undefined ? it.gst_percent + '%' : '12%'}</span></td>
                       <td style="text-align: right; font-weight: 700; color: #0f766e;">₹${Number(it.line_total || (it.quantity * it.purchase_rate) || 0).toFixed(2)}</td>
                     </tr>
                   `).join("") : `
                     <tr>
-                      <td colspan="10" style="text-align: center; color: #64748b; padding: 18px;">
+                      <td colspan="11" style="text-align: center; color: #64748b; padding: 18px;">
                         Is invoice ke specific medicine items logged nahi hain. Total Invoice Amount: ₹${Number(purchase.total_amount).toFixed(2)}
                       </td>
                     </tr>
                   `}
                 </tbody>
                 <tfoot>
+                  ${(Number(purchase.discount_amount) > 0 || Number(purchase.gst_amount) > 0) ? `
+                    <tr style="background: #ffffff; font-size: 12.5px; color: var(--black-soft);">
+                      <td colspan="10" style="text-align: right;">
+                        ${Number(purchase.taxable_amount) > 0 ? `Taxable: <strong>₹${Number(purchase.taxable_amount).toFixed(2)}</strong> &nbsp;|&nbsp; ` : ""}
+                        ${Number(purchase.discount_amount) > 0 ? `Total Discount: <strong style="color:#16a34a;">-₹${Number(purchase.discount_amount).toFixed(2)}</strong> &nbsp;|&nbsp; ` : ""}
+                        ${Number(purchase.gst_amount) > 0 ? `GST: <strong>₹${Number(purchase.gst_amount).toFixed(2)}</strong>` : ""}
+                      </td>
+                      <td></td>
+                    </tr>
+                  ` : ""}
                   <tr style="background: #f8fafc; font-weight: 800; font-size: 14px;">
                     <td colspan="5">Grand Total:</td>
                     <td style="text-align: center;">${totalQty}</td>
-                    <td colspan="3"></td>
+                    <td colspan="4"></td>
                     <td style="text-align: right; color: #0f766e;">₹${Number(purchase.total_amount).toFixed(2)}</td>
                   </tr>
                 </tfoot>

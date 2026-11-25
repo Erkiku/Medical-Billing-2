@@ -3687,17 +3687,26 @@ button {
 /* ============================================================================
    ENHANCED PURCHASES MODAL & MEDICINES ITEM TABLE
    ============================================================================ */
+.purchase-modal-overlay {
+  padding: 0 !important;
+  align-items: stretch !important;
+  justify-content: stretch !important;
+}
 .purchase-modal-box {
-  max-width: 1180px !important;
-  width: 96vw !important;
-  max-height: 92vh !important;
+  max-width: 100vw !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
   display: flex !important;
   flex-direction: column !important;
 }
 .purchase-modal-body {
+  flex: 1 1 auto !important;
   overflow-y: auto !important;
-  max-height: calc(92vh - 130px) !important;
-  padding: 18px 24px !important;
+  max-height: none !important;
+  padding: 20px 28px !important;
 }
 .pur-section-title {
   font-size: 14px;
@@ -3710,7 +3719,7 @@ button {
 }
 .pur-items-table {
   width: 100%;
-  min-width: 1100px;
+  min-width: 1180px;
   border-collapse: collapse;
   margin-top: 8px;
   background: #ffffff;
@@ -3743,7 +3752,7 @@ button {
   box-sizing: border-box;
 }
 .pur-items-table .pur-item-name {
-  min-width: 195px;
+  min-width: 210px;
 }
 .pur-items-table .pur-item-batch {
   min-width: 108px;
@@ -3756,6 +3765,10 @@ button {
 .pur-items-table .pur-item-mrp {
   min-width: 90px;
   padding: 6px 8px !important;
+}
+.pur-items-table .pur-item-disc {
+  min-width: 74px;
+  padding: 6px 6px !important;
 }
 .pur-items-table .pur-item-gst {
   min-width: 82px !important;

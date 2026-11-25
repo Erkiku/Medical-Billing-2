@@ -2529,13 +2529,31 @@ MedHub.api = {
 
     if (MedHub.supabaseClient) {
       try {
-        const { data, error } = await MedHub.supabaseClient
+        let res = await MedHub.supabaseClient
           .from("purchases")
           .insert(purchaseData)
           .select()
           .maybeSingle();
-        if (!error && data) {
-          newPur.id = data.id || newPur.id;
+        if (res.error) {
+          // Fallback with base schema columns in case extra discount/tax columns are absent in DB
+          const basePurchaseData = {
+            supplier_name: purchaseData.supplier_name,
+            invoice_no: purchaseData.invoice_no,
+            purchase_date: purchaseData.purchase_date,
+            total_amount: purchaseData.total_amount,
+            paid_amount: purchaseData.paid_amount,
+            status: purchaseData.status,
+            payment_mode: purchaseData.payment_mode,
+            items: purchaseData.items
+          };
+          res = await MedHub.supabaseClient
+            .from("purchases")
+            .insert(basePurchaseData)
+            .select()
+            .maybeSingle();
+        }
+        if (!res.error && res.data) {
+          newPur.id = res.data.id || newPur.id;
         }
       } catch (e) {
         console.warn("createPurchase Supabase error, stored locally:", e);
