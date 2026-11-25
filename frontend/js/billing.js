@@ -104,12 +104,8 @@ MedHub.billing = {
               <input type="number" id="marg-prod-qty" class="marg-input" value="1" min="1" />
             </div>
             <div class="marg-cell marg-cell-rate">
-              <label class="marg-lbl" for="marg-prod-rate">RATE (₹) *</label>
+              <label class="marg-lbl" for="marg-prod-rate">MRP (₹) *</label>
               <input type="number" step="0.01" id="marg-prod-rate" class="marg-input" placeholder="0.00" />
-            </div>
-            <div class="marg-cell marg-cell-dis">
-              <label class="marg-lbl" for="marg-prod-dis">DIS %</label>
-              <input type="number" step="0.1" id="marg-prod-dis" class="marg-input" value="0" min="0" max="100" />
             </div>
             <div class="marg-cell marg-cell-amount">
               <label class="marg-lbl" for="marg-prod-amount">AMOUNT (₹)</label>
@@ -145,8 +141,7 @@ MedHub.billing = {
                     <th>BATCH</th>
                     <th>EXPIRY</th>
                     <th>QTY</th>
-                    <th>RATE (₹)</th>
-                    <th>DIS %</th>
+                    <th>MRP (₹)</th>
                     <th>AMOUNT (₹)</th>
                     <th style="width: 44px;"></th>
                   </tr>
@@ -171,9 +166,24 @@ MedHub.billing = {
                 <span id="summary-subtotal" class="summary-val">${MedHub.rupee(this.calculateSubtotal())}</span>
               </div>
               <div class="summary-row">
-                <span>Discount (₹):</span>
-                <input type="number" id="bill-discount" class="input-inline" min="0" 
-                  value="${MedHub.state.discount || 0}" style="width: 80px; text-align: right;" />
+                <div class="discount-label-wrap">
+                  <span>Discount:</span>
+                  <div class="disc-type-toggle" id="bill-discount-type-toggle">
+                    <button type="button" class="disc-type-btn ${(MedHub.state.discountType || 'AMOUNT') === 'AMOUNT' ? 'active' : ''}" data-type="AMOUNT" title="Discount in Rupees (₹)">₹</button>
+                    <button type="button" class="disc-type-btn ${MedHub.state.discountType === 'PERCENT' ? 'active' : ''}" data-type="PERCENT" title="Discount in Percentage (%)">%</button>
+                  </div>
+                </div>
+                <input type="number" id="bill-discount" class="input-inline" min="0" step="0.01"
+                  ${MedHub.state.discountType === 'PERCENT' ? 'max="100"' : ''}
+                  value="${MedHub.state.discount || 0}" style="width: 84px; text-align: right;" />
+              </div>
+              <div class="summary-row discount-preview-row" id="summary-discount-preview-row" style="${this.calculateDiscountAmount() > 0 ? '' : 'display:none;'}">
+                <span id="summary-discount-label" style="font-size: 11.5px; color: #16a34a; font-weight: 600;">
+                  Discount Applied${MedHub.state.discountType === 'PERCENT' ? ` (${Math.min(100, Number(MedHub.state.discount || 0))}%)` : ''}:
+                </span>
+                <span id="summary-discount-applied" style="font-size: 12px; font-weight: 700; color: #16a34a;">
+                  -${MedHub.rupee(this.calculateDiscountAmount())}
+                </span>
               </div>
               <div class="summary-row divider-row">
                 <span class="total-label">Grand Total:</span>
@@ -227,10 +237,20 @@ MedHub.billing = {
     return MedHub.state.cart.reduce((sum, item) => sum + (item.line_total || 0), 0);
   },
 
+  calculateDiscountAmount() {
+    const sub = this.calculateSubtotal();
+    const rawVal = Math.max(0, Number(MedHub.state.discount || 0));
+    if (MedHub.state.discountType === "PERCENT") {
+      const pct = Math.min(100, rawVal);
+      return Math.min(sub, Number(((sub * pct) / 100).toFixed(2)));
+    }
+    return Math.min(sub, Number(rawVal.toFixed(2)));
+  },
+
   calculateGrandTotal() {
     const sub = this.calculateSubtotal();
-    const disc = Number(MedHub.state.discount || 0);
-    return Math.max(0, sub - disc);
+    const disc = this.calculateDiscountAmount();
+    return Math.max(0, Number((sub - disc).toFixed(2)));
   },
 
   renderCartRows() {
@@ -252,8 +272,7 @@ MedHub.billing = {
             <input type="number" class="cart-qty-input" min="1" max="${it.max_stock || 999}" 
               value="${it.quantity}" data-index="${idx}" style="width: 60px;" />
           </td>
-          <td>₹${Number(it.rate).toFixed(2)}</td>
-          <td>${Number(it.discount_percent || 0)}%</td>
+          <td>₹${Number(it.mrp ?? it.rate).toFixed(2)}</td>
           <td><strong>₹${Number(it.line_total).toFixed(2)}</strong></td>
           <td>
             <button type="button" class="btn-icon-danger btn-remove-item" data-index="${idx}" title="Remove">
@@ -307,8 +326,35 @@ MedHub.billing = {
 
     // Discount & Received bindings
     const discInput = container.querySelector("#bill-discount");
+    const discTypeBtns = container.querySelectorAll(".disc-type-btn");
+    discTypeBtns.forEach(btn => {
+      btn.addEventListener("click", () => {
+        discTypeBtns.forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        const nextType = btn.dataset.type === "PERCENT" ? "PERCENT" : "AMOUNT";
+        MedHub.state.discountType = nextType;
+        if (discInput) {
+          if (nextType === "PERCENT") {
+            discInput.setAttribute("max", "100");
+            if (Number(discInput.value) > 100) {
+              discInput.value = "100";
+              MedHub.state.discount = 100;
+            }
+          } else {
+            discInput.removeAttribute("max");
+          }
+        }
+        self.updateTotals();
+      });
+    });
+
     discInput?.addEventListener("input", (e) => {
-      MedHub.state.discount = Number(e.target.value) || 0;
+      let val = Math.max(0, Number(e.target.value) || 0);
+      if (MedHub.state.discountType === "PERCENT" && val > 100) {
+        val = 100;
+        e.target.value = "100";
+      }
+      MedHub.state.discount = val;
       self.updateTotals();
     });
 
@@ -351,7 +397,6 @@ MedHub.billing = {
     const expInput = container.querySelector("#marg-prod-exp");
     const qtyInput = container.querySelector("#marg-prod-qty");
     const rateInput = container.querySelector("#marg-prod-rate");
-    const disInput = container.querySelector("#marg-prod-dis");
     const amountInput = container.querySelector("#marg-prod-amount");
     const addBtn = container.querySelector("#btn-marg-add");
     const prodDropdown = container.querySelector("#marg-prod-dropdown");
@@ -364,15 +409,12 @@ MedHub.billing = {
     const recalcMargAmount = () => {
       const q = parseFloat(qtyInput?.value) || 0;
       const r = parseFloat(rateInput?.value) || 0;
-      const d = parseFloat(disInput?.value) || 0;
-      const gross = q * r;
-      const net = Math.max(0, gross - (gross * (d / 100)));
+      const net = Math.max(0, q * r);
       if (amountInput) amountInput.value = net.toFixed(2);
     };
 
     qtyInput?.addEventListener("input", recalcMargAmount);
     rateInput?.addEventListener("input", recalcMargAmount);
-    disInput?.addEventListener("input", recalcMargAmount);
 
     // Live Search for Marg Product
     const searchMargProducts = MedHub.debounce(async (val) => {
@@ -454,13 +496,12 @@ MedHub.billing = {
         expInput.value = MedHub.formatExpiry(rawExp);
       }
 
-      // Rate
-      const selRate = Number(med.selling_rate || (chosenBatch ? chosenBatch.selling_price : med.mrp) || 0);
-      if (rateInput) rateInput.value = selRate.toFixed(2);
+      // MRP
+      const selMrp = Number(med.mrp || med.selling_rate || (chosenBatch ? chosenBatch.selling_price : 0) || 0);
+      if (rateInput) rateInput.value = selMrp.toFixed(2);
 
-      // Qty & Discount
+      // Qty
       if (qtyInput) qtyInput.value = 1;
-      if (disInput) disInput.value = 0;
 
       recalcMargAmount();
 
@@ -512,7 +553,7 @@ MedHub.billing = {
       }
     });
 
-    // Enter Key Chain within Marg Entry Row: Pack -> Batch -> Exp -> Qty -> Free -> Rate -> Dis% -> Add
+    // Enter Key Chain within Marg Entry Row: Pack -> Batch -> Exp -> Qty -> MRP -> Add
     packInput?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
@@ -541,12 +582,6 @@ MedHub.billing = {
     rateInput?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        disInput?.focus();
-      }
-    });
-    disInput?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
         commitMargItem();
       }
     });
@@ -562,12 +597,10 @@ MedHub.billing = {
 
       const q = parseFloat(qtyInput?.value) || 1;
       const r = parseFloat(rateInput?.value) || 0;
-      const d = parseFloat(disInput?.value) || 0;
       const pack = packInput?.value?.trim() || "1x10";
       const batch = batchInput?.value?.trim() || "BT-DEFAULT";
       const exp = expInput?.value?.trim() || "11/28";
-      const gross = q * r;
-      const net = Math.max(0, gross - (gross * (d / 100)));
+      const net = Math.max(0, q * r);
 
       const medId = currentSelectedMed ? currentSelectedMed.id : ("m-" + Date.now());
       const batchId = currentSelectedMed?.chosenBatch?.id || null;
@@ -579,10 +612,10 @@ MedHub.billing = {
       const existing = MedHub.state.cart.find(it => it.medicine_id === medId && it.batch_no === batch);
       if (existing) {
         existing.quantity += q;
+        existing.mrp = r;
         existing.rate = r;
-        existing.discount_percent = d;
-        const exGross = existing.quantity * existing.rate;
-        existing.line_total = Math.max(0, exGross - (exGross * (existing.discount_percent / 100)));
+        existing.discount_percent = 0;
+        existing.line_total = Math.max(0, existing.quantity * existing.rate);
       } else {
         MedHub.state.cart.push({
           medicine_id: medId,
@@ -594,9 +627,10 @@ MedHub.billing = {
           batch_id: batchId,
           batch_no: batch,
           expiry_date: exp,
+          mrp: r,
           rate: r,
           quantity: q,
-          discount_percent: d,
+          discount_percent: 0,
           line_total: net,
           max_stock: maxStock
         });
@@ -615,7 +649,6 @@ MedHub.billing = {
       if (expInput) expInput.value = "";
       if (qtyInput) qtyInput.value = 1;
       if (rateInput) rateInput.value = "";
-      if (disInput) disInput.value = 0;
       if (amountInput) amountInput.value = "";
       currentSelectedMed = null;
       currentSearchResults = [];
@@ -642,8 +675,7 @@ MedHub.billing = {
         if (isNaN(newQty) || newQty <= 0) newQty = 1;
         const it = MedHub.state.cart[idx];
         it.quantity = newQty;
-        const gross = newQty * it.rate;
-        it.line_total = Math.max(0, gross - (gross * ((it.discount_percent || 0) / 100)));
+        it.line_total = Math.max(0, newQty * (Number(it.rate) || 0));
         self.updateCartUI();
       }
     });
@@ -683,7 +715,7 @@ MedHub.billing = {
     const batches = await MedHub.api.getBatches(med.id);
     const chosenBatch = (batches && batches.length) ? batches[0] : null;
 
-    const rate = Number(med.selling_rate || (chosenBatch ? chosenBatch.selling_price : med.mrp));
+    const rate = Number(med.mrp || med.selling_rate || (chosenBatch ? chosenBatch.selling_price : 0) || 0);
     const batchNo = chosenBatch ? chosenBatch.batch_no : "BT-" + (med.barcode || "001");
     const expiry = chosenBatch ? chosenBatch.expiry_date : (med.nearest_expiry || "2028-11");
     const batchId = chosenBatch ? chosenBatch.id : null;
@@ -703,6 +735,7 @@ MedHub.billing = {
         batch_id: batchId,
         batch_no: batchNo,
         expiry_date: expiry,
+        mrp: rate,
         rate: rate,
         quantity: 1,
         free_qty: 0,
@@ -735,13 +768,24 @@ MedHub.billing = {
 
   updateTotals() {
     const subtotalEl = document.getElementById("summary-subtotal");
+    const discRowEl = document.getElementById("summary-discount-preview-row");
+    const discLabelEl = document.getElementById("summary-discount-label");
+    const discAppliedEl = document.getElementById("summary-discount-applied");
     const grandTotalEl = document.getElementById("summary-grand-total");
     const amtReceivedInput = document.getElementById("amt-received");
 
     const sub = this.calculateSubtotal();
+    const discAmt = this.calculateDiscountAmount();
     const grand = this.calculateGrandTotal();
 
     if (subtotalEl) subtotalEl.innerText = MedHub.rupee(sub);
+    if (discRowEl) discRowEl.style.display = discAmt > 0 ? "flex" : "none";
+    if (discLabelEl) {
+      discLabelEl.innerText = MedHub.state.discountType === "PERCENT"
+        ? `Discount Applied (${Math.min(100, Number(MedHub.state.discount || 0))}%):`
+        : "Discount Applied:";
+    }
+    if (discAppliedEl) discAppliedEl.innerText = `-${MedHub.rupee(discAmt)}`;
     if (grandTotalEl) grandTotalEl.innerText = MedHub.rupee(grand);
     if (amtReceivedInput && MedHub.state.amountReceived === "") {
       amtReceivedInput.placeholder = `₹${grand.toFixed(2)}`;
@@ -755,6 +799,10 @@ MedHub.billing = {
     }
 
     const subtotal = this.calculateSubtotal();
+    const discountAmt = this.calculateDiscountAmount();
+    const discountPctApplied = MedHub.state.discountType === "PERCENT"
+      ? Math.min(100, Math.max(0, Number(MedHub.state.discount || 0)))
+      : 0;
     const grandTotal = this.calculateGrandTotal();
     const paidAmount = MedHub.state.paymentMode === "CREDIT" ? 0 : (Number(MedHub.state.amountReceived) || grandTotal);
 
@@ -765,7 +813,7 @@ MedHub.billing = {
       doctor_name: MedHub.state.doctor.name || "",
       doctor_hospital: "",
       subtotal: subtotal,
-      discount: Number(MedHub.state.discount || 0),
+      discount: discountAmt,
       grand_total: grandTotal,
       paid_amount: paidAmount,
       payment_mode: MedHub.state.paymentMode,
@@ -774,6 +822,9 @@ MedHub.billing = {
 
     const savedBill = await MedHub.api.createBill(billPayload);
     if (savedBill) {
+      if (discountPctApplied > 0) {
+        savedBill.discount_percent_applied = discountPctApplied;
+      }
       MedHub.toast(`Bill #${savedBill.bill_no} successfully generated!`, "success");
       
       // Show Invoice Preview / Print Modal
@@ -784,6 +835,7 @@ MedHub.billing = {
       MedHub.state.customer = { name: "", mobile: "", address: "" };
       MedHub.state.doctor = { name: "", hospital: "" };
       MedHub.state.discount = 0;
+      MedHub.state.discountType = "AMOUNT";
       MedHub.state.amountReceived = "";
       this.render(document.getElementById("page-content"));
     } else {
@@ -843,8 +895,9 @@ MedHub.billing = {
       `Patient: ${bill.customer_name || "Walk-in Customer"}\n` +
       `Doctor: ${bill.doctor_name || "Self"}\n\n` +
       `*Items:*\n` +
-      items.map(it => `• ${it.medicine_name || it.name || "Item"} (${it.quantity} qty) - ₹${Number(it.line_total || (it.quantity * it.rate) || 0).toFixed(2)}`).join("\n") +
-      `\n\n*Total Amount:* ₹${Number(bill.grand_total).toFixed(2)}\n` +
+      items.map(it => `• ${it.medicine_name || it.name || "Item"} (${it.quantity} qty @ MRP ₹${Number(it.mrp ?? it.rate ?? 0).toFixed(2)}) - ₹${Number(it.line_total || (it.quantity * it.rate) || 0).toFixed(2)}`).join("\n") +
+      (Number(bill.discount) > 0 ? `\n\nSubtotal: ₹${Number(bill.subtotal || 0).toFixed(2)}\nDiscount${bill.discount_percent_applied ? ` (${bill.discount_percent_applied}%)` : ""}: -₹${Number(bill.discount).toFixed(2)}` : "\n") +
+      `\n*Total Amount:* ₹${Number(bill.grand_total).toFixed(2)}\n` +
       `*Status:* ${isPaid ? "PAID" : `DUE (₹${dueAmt.toFixed(2)} Pending)`}\n\n` +
       `Thank you for choosing ${store.store_name}! Get well soon.`
     );
@@ -935,7 +988,7 @@ MedHub.billing = {
                     ${items.map((it, i) => {
                       const expFormatted = MedHub.formatExpiry(it.expiry_date);
                       const oldMrpVal = Number(it.old_mrp || 0).toFixed(2);
-                      const rateVal = Number(it.rate || it.mrp || 0).toFixed(2);
+                      const rateVal = Number(it.mrp ?? it.rate ?? 0).toFixed(2);
                       const qtyVal = Number(it.quantity || 1).toFixed(2);
                       const totalVal = Number(it.line_total || (it.quantity * it.rate) || 0).toFixed(2);
                       return `
@@ -972,11 +1025,29 @@ MedHub.billing = {
 
                 <!-- TOTAL & AMOUNT IN WORDS -->
                 ${(Number(bill.discount) > 0 || Number(bill.gst_amount) > 0 || !isPaid) ? `
-                  <div style="font-size: 11px; border-top: 1px dashed #666; padding: 6px 0 4px; display: flex; justify-content: flex-end; gap: 18px; flex-wrap: wrap;">
-                    ${Number(bill.subtotal) > 0 ? `<span>Subtotal: <strong>${Number(bill.subtotal).toFixed(2)}</strong></span>` : ""}
-                    ${Number(bill.discount) > 0 ? `<span>Discount: <strong>-${Number(bill.discount).toFixed(2)}</strong></span>` : ""}
-                    ${Number(bill.gst_amount) > 0 ? `<span>GST: <strong>+${Number(bill.gst_amount).toFixed(2)}</strong></span>` : ""}
-                    ${!isPaid ? `<span>Paid: <strong>${Number(bill.paid_amount || 0).toFixed(2)}</strong> | Due: <strong>${dueAmt.toFixed(2)}</strong></span>` : ""}
+                  <div class="classic-summary-breakdown">
+                    <div class="classic-summary-line">
+                      <span>Items Subtotal</span>
+                      <strong>₹${Number(bill.subtotal || 0).toFixed(2)}</strong>
+                    </div>
+                    ${Number(bill.discount) > 0 ? `
+                      <div class="classic-summary-line classic-discount-line">
+                        <span>Discount${bill.discount_percent_applied ? ` (${bill.discount_percent_applied}%)` : ""}</span>
+                        <strong>- ₹${Number(bill.discount).toFixed(2)}</strong>
+                      </div>
+                    ` : ""}
+                    ${Number(bill.gst_amount) > 0 ? `
+                      <div class="classic-summary-line">
+                        <span>GST Amount</span>
+                        <strong>+ ₹${Number(bill.gst_amount).toFixed(2)}</strong>
+                      </div>
+                    ` : ""}
+                    ${!isPaid ? `
+                      <div class="classic-summary-line">
+                        <span>Paid / Balance Due</span>
+                        <strong>₹${Number(bill.paid_amount || 0).toFixed(2)} / Due: ₹${dueAmt.toFixed(2)}</strong>
+                      </div>
+                    ` : ""}
                   </div>
                 ` : ""}
                 <div class="classic-total-row">
@@ -1029,12 +1100,33 @@ MedHub.billing = {
                     <div class="digital-item-row">
                       <div>
                         <div class="digital-item-name">${it.medicine_name || it.name || "Medicine"}</div>
-                        <div class="digital-item-meta">Qty: ${it.quantity} | Batch: ${it.batch_no || "BT-01"} | Exp: ${MedHub.formatExpiry(it.expiry_date)}</div>
+                        <div class="digital-item-meta">Qty: ${it.quantity} | MRP: ₹${Number(it.mrp ?? it.rate ?? 0).toFixed(2)} | Batch: ${it.batch_no || "BT-01"} | Exp: ${MedHub.formatExpiry(it.expiry_date)}</div>
                       </div>
                       <div class="digital-item-price">₹${Number(it.line_total || (it.quantity * it.rate) || 0).toFixed(2)}</div>
                     </div>
                   `).join("")}
                 </div>
+
+                ${(Number(bill.discount) > 0 || Number(bill.gst_amount) > 0) ? `
+                  <div class="digital-summary-box">
+                    <div class="digital-summary-row">
+                      <span>Items Subtotal:</span>
+                      <strong>₹${Number(bill.subtotal || 0).toFixed(2)}</strong>
+                    </div>
+                    ${Number(bill.discount) > 0 ? `
+                      <div class="digital-summary-row digital-discount-row">
+                        <span>Discount${bill.discount_percent_applied ? ` (${bill.discount_percent_applied}%)` : ""}:</span>
+                        <span>-₹${Number(bill.discount).toFixed(2)}</span>
+                      </div>
+                    ` : ""}
+                    ${Number(bill.gst_amount) > 0 ? `
+                      <div class="digital-summary-row">
+                        <span>GST Amount:</span>
+                        <span>+₹${Number(bill.gst_amount).toFixed(2)}</span>
+                      </div>
+                    ` : ""}
+                  </div>
+                ` : ""}
 
                 <div class="digital-total-banner">
                   <div class="total-txt">Grand Total:</div>

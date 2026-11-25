@@ -150,6 +150,7 @@ MedHub.state = {
   paymentMode: "CASH",
   amountReceived: "",
   discount: 0,
+  discountType: "AMOUNT",
   notes: "",
   inventoryTab: "all",
   searchSelectedIndex: -1,

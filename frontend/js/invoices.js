@@ -330,7 +330,7 @@ MedHub.invoices = {
                     <th>Batch</th>
                     <th>Exp</th>
                     <th style="width: 75px;">Qty</th>
-                    <th style="width: 95px;">Rate (₹)</th>
+                    <th style="width: 95px;">MRP (₹)</th>
                     <th style="width: 72px;">Dis %</th>
                     <th style="width: 72px;">GST %</th>
                     <th style="text-align: right;">Total (₹)</th>
