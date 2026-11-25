@@ -670,7 +670,8 @@ MedHub.api = {
     }
 
     const cleanInput = usernameOrEmail.trim().toLowerCase();
-    const cleanPass = password.trim();
+    const rawPass = String(password);
+    const cleanPass = rawPass.trim();
     const cleanEmail = cleanInput.includes("@") ? cleanInput : `${cleanInput}@mededuhub.com`;
 
     // 1. CHECK MASTER ADMIN CREDENTIALS
@@ -717,38 +718,93 @@ MedHub.api = {
       };
     }
 
-    // 2. CHECK IF STORE ACCOUNT IS SUSPENDED
-    const allStores = this._getAllLocalStores();
-    const matchedStore = allStores.find(s => 
-      s.user_email?.toLowerCase() === cleanEmail || 
-      s.user_email?.toLowerCase() === cleanInput ||
-      s.username?.toLowerCase() === cleanInput
-    );
-    if (matchedStore && matchedStore.status === "suspended") {
-      return {
-        success: false,
-        message: `🚫 Store Suspended: Your store account "${matchedStore.store_name || cleanInput}" has been suspended by the Master Administrator. Contact support.`
-      };
+    // Ensure Supabase client is initialized (handles late loadConfig or transient startup errors)
+    if (!MedHub.supabaseClient && typeof MedHub.ensureSupabaseClient === "function") {
+      try {
+        await MedHub.ensureSupabaseClient();
+      } catch (e) {}
     }
 
-    // 3. Check Supabase Database for Store Pharmacist
+    const passwordMatches = (storedPassword) => {
+      if (storedPassword === undefined || storedPassword === null) return false;
+      const storedStr = String(storedPassword);
+      return storedStr === rawPass || storedStr.trim() === cleanPass;
+    };
+
+    const pickBestUserRow = (rows) => {
+      if (!Array.isArray(rows) || rows.length === 0) return null;
+      const exactUserMatch = rows.find(u =>
+        String(u.username || "").trim().toLowerCase() === cleanInput && passwordMatches(u.password)
+      );
+      if (exactUserMatch) return exactUserMatch;
+      const anyPassMatch = rows.find(u => passwordMatches(u.password));
+      if (anyPassMatch) return anyPassMatch;
+      const byUsername = rows.find(u => String(u.username || "").trim().toLowerCase() === cleanInput);
+      return byUsername || rows[0];
+    };
+
+    // 2. Check Supabase Database for Store Pharmacist
+    let supabaseAuthError = null;
     if (MedHub.supabaseClient) {
       try {
-        const { data: userRows, error } = await MedHub.supabaseClient
+        let userRows = [];
+        const byUsername = await MedHub.supabaseClient
           .from("authorized_users")
           .select("*")
-          .or(`username.ilike.${cleanInput},email.ilike.${cleanInput}`)
-          .limit(1);
+          .ilike("username", cleanInput)
+          .limit(10);
 
-        const data = (!error && Array.isArray(userRows) && userRows.length > 0) ? userRows[0] : null;
+        if (byUsername.error) {
+          supabaseAuthError = byUsername.error;
+        } else if (Array.isArray(byUsername.data) && byUsername.data.length > 0) {
+          userRows = byUsername.data;
+        }
+
+        if (userRows.length === 0 && !supabaseAuthError) {
+          const byEmail = await MedHub.supabaseClient
+            .from("authorized_users")
+            .select("*")
+            .ilike("email", cleanInput)
+            .limit(10);
+          if (byEmail.error) {
+            supabaseAuthError = byEmail.error;
+          } else if (Array.isArray(byEmail.data) && byEmail.data.length > 0) {
+            userRows = byEmail.data;
+          }
+        }
+
+        // Resilient scan fallback (handles trailing spaces in manually entered DB rows or .ilike edge cases)
+        if (userRows.length === 0) {
+          const allRes = await MedHub.supabaseClient
+            .from("authorized_users")
+            .select("*")
+            .limit(200);
+          if (!allRes.error && Array.isArray(allRes.data)) {
+            supabaseAuthError = null;
+            userRows = allRes.data.filter(u =>
+              String(u.username || "").trim().toLowerCase() === cleanInput ||
+              String(u.email || "").trim().toLowerCase() === cleanInput
+            );
+          } else if (allRes.error && !supabaseAuthError) {
+            supabaseAuthError = allRes.error;
+          }
+        }
+
+        const data = pickBestUserRow(userRows);
         if (data) {
-          if (data.status === "suspended") {
+          const cleanStatus = String(data.status || "active").trim().toLowerCase();
+          if (cleanStatus === "suspended") {
             return {
               success: false,
               message: "🚫 Store Suspended: Your store account has been deactivated by the Master Administrator."
             };
           }
-          if (data.password === cleanPass) {
+          if (passwordMatches(data.password)) {
+            const trimmedUsername = String(data.username || cleanInput).trim();
+            const trimmedEmail = String(data.email || "").trim();
+            const trimmedRole = String(data.role || "admin").trim() || "admin";
+            const trimmedFullName = String(data.full_name || trimmedUsername).trim();
+
             // Find associated store in Supabase store_settings
             let matchedStore = null;
             if (data.store_id) {
@@ -759,11 +815,11 @@ MedHub.api = {
                 .limit(1);
               if (stById && stById.length) matchedStore = stById[0];
             }
-            if (!matchedStore && data.email) {
+            if (!matchedStore && trimmedEmail) {
               const { data: stByEmail } = await MedHub.supabaseClient
                 .from("store_settings")
                 .select("*")
-                .ilike("user_email", data.email.trim())
+                .ilike("user_email", trimmedEmail)
                 .limit(1);
               if (stByEmail && stByEmail.length) matchedStore = stByEmail[0];
             }
@@ -771,7 +827,7 @@ MedHub.api = {
               const { data: stByUsername } = await MedHub.supabaseClient
                 .from("store_settings")
                 .select("*")
-                .or(`user_email.ilike.%${data.username}%,pharmacist_name.ilike.%${data.full_name || data.username}%`)
+                .or(`user_email.ilike.%${trimmedUsername}%,pharmacist_name.ilike.%${trimmedFullName || trimmedUsername}%`)
                 .limit(1);
               if (stByUsername && stByUsername.length) matchedStore = stByUsername[0];
             }
@@ -779,11 +835,11 @@ MedHub.api = {
               const { data: stByName } = await MedHub.supabaseClient
                 .from("store_settings")
                 .select("*")
-                .ilike("store_name", data.store_name.trim())
+                .ilike("store_name", String(data.store_name).trim())
                 .limit(1);
               if (stByName && stByName.length) matchedStore = stByName[0];
             }
-            if (!matchedStore && (data.username === "admin" || data.email === "admin@mededuhub.com")) {
+            if (!matchedStore && (trimmedUsername.toLowerCase() === "admin" || trimmedEmail.toLowerCase() === "admin@mededuhub.com")) {
               const { data: stFallback } = await MedHub.supabaseClient
                 .from("store_settings")
                 .select("*")
@@ -791,6 +847,35 @@ MedHub.api = {
                 .limit(1);
               if (stFallback && stFallback.length) matchedStore = stFallback[0];
             }
+
+            if (matchedStore && String(matchedStore.status || "").trim().toLowerCase() === "suspended") {
+              return {
+                success: false,
+                message: `🚫 Store Suspended: Your store account "${matchedStore.store_name || trimmedUsername}" has been suspended by the Master Administrator.`
+              };
+            }
+
+            // Cache verified DB user locally for seamless offline fallback (without deleting existing cache)
+            try {
+              const localUsers = this._getLocalUsers();
+              const cachedUser = {
+                id: data.id,
+                username: trimmedUsername.toLowerCase(),
+                email: (trimmedEmail || (matchedStore ? matchedStore.user_email : cleanEmail)).toLowerCase(),
+                password: String(data.password ?? cleanPass),
+                full_name: trimmedFullName,
+                role: trimmedRole,
+                status: cleanStatus || "active",
+                store_id: matchedStore ? matchedStore.id : data.store_id,
+                store_name: matchedStore ? matchedStore.store_name : data.store_name
+              };
+              const lIdx = localUsers.findIndex(u =>
+                String(u.username || "").trim().toLowerCase() === cachedUser.username
+              );
+              if (lIdx >= 0) localUsers[lIdx] = { ...localUsers[lIdx], ...cachedUser };
+              else localUsers.push(cachedUser);
+              this._saveLocalUsers(localUsers);
+            } catch (e) {}
 
             // Real-time update last_login_at (and link store_id if missing) in Supabase authorized_users
             try {
@@ -814,7 +899,7 @@ MedHub.api = {
                 await MedHub.supabaseClient
                   .from("store_settings")
                   .update({
-                    last_login_user: data.username,
+                    last_login_user: trimmedUsername,
                     last_login_at: new Date().toISOString()
                   })
                   .eq("id", matchedStore.id);
@@ -826,10 +911,10 @@ MedHub.api = {
               isNew: !matchedStore,
               user: {
                 id: data.id,
-                username: data.username,
-                email: data.email || (matchedStore ? matchedStore.user_email : cleanEmail),
-                name: data.full_name || data.username,
-                role: data.role || "admin",
+                username: trimmedUsername,
+                email: trimmedEmail || (matchedStore ? matchedStore.user_email : cleanEmail),
+                name: trimmedFullName || trimmedUsername,
+                role: trimmedRole,
                 store_id: matchedStore ? matchedStore.id : data.store_id,
                 store_name: matchedStore ? matchedStore.store_name : data.store_name
               },
@@ -844,13 +929,30 @@ MedHub.api = {
         }
       } catch (e) {
         console.warn("Supabase auth check error:", e);
+        supabaseAuthError = e;
       }
+    }
+
+    // 3. Check local users cache & suspension ONLY if not found/offline
+    const allStores = this._getAllLocalStores();
+    const matchedLocalSuspended = allStores.find(s =>
+      (s.user_email?.toLowerCase() === cleanEmail ||
+      s.user_email?.toLowerCase() === cleanInput ||
+      s.username?.toLowerCase() === cleanInput) &&
+      s.status === "suspended"
+    );
+    if (matchedLocalSuspended) {
+      return {
+        success: false,
+        message: `🚫 Store Suspended: Your store account "${matchedLocalSuspended.store_name || cleanInput}" has been suspended by the Master Administrator. Contact support.`
+      };
     }
 
     // 4. Check local users cache
     const localUsers = this._getLocalUsers();
     const existingLocal = localUsers.find(
-      u => u.username?.toLowerCase() === cleanInput || u.email?.toLowerCase() === cleanInput
+      u => String(u.username || "").trim().toLowerCase() === cleanInput ||
+           String(u.email || "").trim().toLowerCase() === cleanInput
     );
 
     if (existingLocal) {
@@ -861,10 +963,11 @@ MedHub.api = {
         };
       }
       if (
-        existingLocal.password === cleanPass ||
+        passwordMatches(existingLocal.password) ||
         (cleanInput === "admin" && (cleanPass === "123456" || cleanPass === "admin123"))
       ) {
         const localMatchedStore = this._getAllLocalStores().find(s => 
+          (existingLocal.store_id && String(s.id) === String(existingLocal.store_id)) ||
           s.user_email?.toLowerCase() === existingLocal.email?.toLowerCase() || 
           s.username?.toLowerCase() === existingLocal.username?.toLowerCase()
         ) || this._getAllLocalStores()[0];
@@ -878,8 +981,8 @@ MedHub.api = {
             email: existingLocal.email || cleanEmail,
             name: existingLocal.full_name || existingLocal.username,
             role: existingLocal.role || "admin",
-            store_id: localMatchedStore ? localMatchedStore.id : null,
-            store_name: localMatchedStore ? localMatchedStore.store_name : null
+            store_id: existingLocal.store_id || (localMatchedStore ? localMatchedStore.id : null),
+            store_name: existingLocal.store_name || (localMatchedStore ? localMatchedStore.store_name : null)
           },
           store: localMatchedStore
         };
@@ -889,6 +992,14 @@ MedHub.api = {
           message: `Incorrect password for user "${cleanInput}". Please check your password.`
         };
       }
+    }
+
+    // If Supabase failed with an explicit query/network error, do NOT treat existing user as a brand new signup
+    if (supabaseAuthError) {
+      return {
+        success: false,
+        message: `Database connection error (${supabaseAuthError.message || "network error"}). Please check internet / Supabase config and retry.`
+      };
     }
 
     // 5. Root admin credentials fallback
@@ -905,6 +1016,16 @@ MedHub.api = {
           name: "Dr. Anil Kumar",
           role: "admin"
         }
+      };
+    }
+
+    // If Cloud DB is NOT connected at all on this device (e.g. local static server without /api/config),
+    // avoid falsely creating an empty offline store for a registered cloud user unless they connect DB or confirm.
+    if (!MedHub.supabaseClient) {
+      return {
+        success: false,
+        offlineUnconfigured: true,
+        message: "Cloud Database (Supabase) connected nahi hai! Online URL kholein ya neeche 'Connect Cloud Database' me Supabase URL & Key dalein."
       };
     }
 

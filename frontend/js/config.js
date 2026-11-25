@@ -12,49 +12,80 @@ MedHub.supabaseAnonKey = "";
 MedHub.supabaseClient = null;
 MedHub.isLiveSupabase = false;
 
-MedHub.loadConfig = async function () {
-  let url = "";
-  let key = "";
+MedHub._configLoadPromise = null;
 
-  // Priority 1: Fetch from Vercel Serverless Function (/api/config)
-  try {
-    const res = await fetch("/api/config", { cache: "no-store" });
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.supabaseUrl && data.supabaseAnonKey) {
-        url = data.supabaseUrl;
-        key = data.supabaseAnonKey;
-        try {
-          localStorage.setItem("supabase_url", url);
-          localStorage.setItem("supabase_anon_key", key);
-        } catch (e) {}
+MedHub.loadConfig = async function () {
+  if (MedHub._configLoadPromise) {
+    return MedHub._configLoadPromise;
+  }
+
+  MedHub._configLoadPromise = (async () => {
+    let url = "";
+    let key = "";
+
+    // Priority 1: Fetch from Vercel Serverless Function (/api/config or relative paths)
+    const configEndpoints = ["/api/config", "./api/config", "../api/config"];
+    for (const endpoint of configEndpoints) {
+      try {
+        const res = await fetch(endpoint, { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          const fetchedUrl = data && (data.supabaseUrl || data.SUPABASE_URL || data.NEXT_PUBLIC_SUPABASE_URL || data.VITE_SUPABASE_URL || "");
+          const fetchedKey = data && (data.supabaseAnonKey || data.supabasePublishableKey || data.SUPABASE_ANON_KEY || data.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || data.NEXT_PUBLIC_SUPABASE_ANON_KEY || data.VITE_SUPABASE_ANON_KEY || "");
+          if (fetchedUrl && fetchedKey) {
+            url = String(fetchedUrl).trim();
+            key = String(fetchedKey).trim();
+            try {
+              localStorage.setItem("supabase_url", url);
+              localStorage.setItem("supabase_anon_key", key);
+            } catch (e) {}
+            break;
+          }
+        }
+      } catch (err) {
+        // Expected when running locally without Vercel serverless runtime
       }
     }
-  } catch (err) {
-    // Expected when running offline or without backend server
-  }
 
-  // Priority 2: Injected window.__ENV__ (if present)
-  if (!url && window.__ENV__ && window.__ENV__.SUPABASE_URL) {
-    url = window.__ENV__.SUPABASE_URL;
-    key = window.__ENV__.SUPABASE_ANON_KEY || window.__ENV__.SUPABASE_PUBLISHABLE_KEY || "";
-  }
+    // Priority 2: Injected window.__ENV__ (if present)
+    if (!url && window.__ENV__) {
+      url = window.__ENV__.SUPABASE_URL || window.__ENV__.NEXT_PUBLIC_SUPABASE_URL || window.__ENV__.VITE_SUPABASE_URL || "";
+      key = window.__ENV__.SUPABASE_ANON_KEY || window.__ENV__.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || window.__ENV__.NEXT_PUBLIC_SUPABASE_ANON_KEY || window.__ENV__.VITE_SUPABASE_ANON_KEY || "";
+    }
 
-  // Priority 3: LocalStorage fallback (if cached from prior load or set manually)
-  if (!url) {
-    url = localStorage.getItem("supabase_url") || "";
-    key = localStorage.getItem("supabase_anon_key") || "";
-  }
+    // Priority 3: LocalStorage fallback (if cached from prior load or set manually)
+    if (!url || !key) {
+      url = url || localStorage.getItem("supabase_url") || localStorage.getItem("NEXT_PUBLIC_SUPABASE_URL") || "";
+      key = key || localStorage.getItem("supabase_anon_key") || localStorage.getItem("supabase_publishable_key") || localStorage.getItem("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") || "";
+    }
 
-  if (url && key) {
-    MedHub.supabaseUrl = url;
-    MedHub.supabaseAnonKey = key;
-    MedHub.initSupabaseClient(url, key);
-  } else {
-    MedHub.supabaseClient = null;
-    MedHub.isLiveSupabase = false;
-    MedHub.state.isLiveSupabase = false;
+    if (url && key) {
+      MedHub.supabaseUrl = url;
+      MedHub.supabaseAnonKey = key;
+      MedHub.initSupabaseClient(url, key);
+    } else {
+      MedHub.supabaseClient = null;
+      MedHub.isLiveSupabase = false;
+      if (MedHub.state) MedHub.state.isLiveSupabase = false;
+    }
+    return Boolean(MedHub.supabaseClient);
+  })();
+
+  try {
+    return await MedHub._configLoadPromise;
+  } finally {
+    MedHub._configLoadPromise = null;
   }
+};
+
+MedHub.ensureSupabaseClient = async function () {
+  if (MedHub.supabaseClient) return MedHub.supabaseClient;
+  if (MedHub.supabaseUrl && MedHub.supabaseAnonKey) {
+    MedHub.initSupabaseClient(MedHub.supabaseUrl, MedHub.supabaseAnonKey);
+    if (MedHub.supabaseClient) return MedHub.supabaseClient;
+  }
+  await MedHub.loadConfig();
+  return MedHub.supabaseClient;
 };
 
 MedHub.initSupabaseClient = function (customUrl, customKey) {

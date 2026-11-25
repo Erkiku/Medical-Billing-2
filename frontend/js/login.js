@@ -12,6 +12,7 @@ MedHub.login = {
   currentStep: 1, // 1 = Auth credentials, 2 = Store details
   portalMode: "store", // "store" (Pharmacist) or "superadmin" (Master Admin)
   isNewStore: false,
+  showCloudConfig: false,
   storeData: null,
   authError: null,
   tempAuth: {
@@ -158,6 +159,20 @@ MedHub.login = {
           <span>${isSuper ? 'Unlock Master Admin Panel 🛡️' : 'Sign In to Pharma OS'}</span>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </button>
+
+        ${(!MedHub.supabaseClient && !isSuper) ? `
+          <div style="margin-top: 14px; background: rgba(15, 23, 42, 0.38); border: 1px solid rgba(255,255,255,0.22); border-radius: 10px; padding: 10px 12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+              <span style="font-size: 11px; color: #fde68a; font-weight: 700;">⚠️ Cloud Database Offline (Local Mode)</span>
+              <button type="button" id="btn-toggle-cloud-config" style="background: rgba(255,255,255,0.16); color: #ffffff; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 3px 8px; font-size: 11px; font-weight: 700; cursor: pointer;">Connect Cloud DB</button>
+            </div>
+            <div id="cloud-config-drawer" style="display: ${this.showCloudConfig ? 'block' : 'none'}; margin-top: 10px;">
+              <input type="text" id="cloud-sb-url" class="template-field-input" style="height: 36px; font-size: 12px; margin-bottom: 6px;" placeholder="Supabase URL (https://xxx.supabase.co)" value="${MedHub.supabaseUrl || localStorage.getItem('supabase_url') || ''}" />
+              <input type="text" id="cloud-sb-key" class="template-field-input" style="height: 36px; font-size: 12px; margin-bottom: 8px;" placeholder="Supabase Publishable / Anon Key" value="${MedHub.supabaseAnonKey || localStorage.getItem('supabase_anon_key') || ''}" />
+              <button type="button" id="btn-save-cloud-config" style="width: 100%; background: #2563eb; color: #ffffff; border: none; border-radius: 8px; padding: 7px; font-size: 12px; font-weight: 700; cursor: pointer;">Save & Connect Supabase</button>
+            </div>
+          </div>
+        ` : ""}
       </form>
     `;
   },
@@ -326,99 +341,141 @@ MedHub.login = {
           return;
         }
 
+        self.tempAuth.username = userInput;
+
         const submitBtn = container.querySelector("#btn-submit-step1");
         if (submitBtn) {
           submitBtn.disabled = true;
           submitBtn.innerText = "Verifying Credentials...";
         }
 
-        // STRICT AUTHENTICATION (STORE ACCOUNT vs MASTER ADMIN PORTAL)
-        const authResult = await MedHub.api.authenticateUser(userInput, passwordInput, self.portalMode);
+        try {
+          // STRICT AUTHENTICATION (STORE ACCOUNT vs MASTER ADMIN PORTAL)
+          const authResult = await MedHub.api.authenticateUser(userInput, passwordInput, self.portalMode);
 
-        if (!authResult.success) {
-          self.authError = authResult.message || "Invalid credentials! Please check your username and password.";
-          self.tempAuth.password = "";
-          MedHub.toast(self.authError, "danger");
-          self.render(container);
-          return;
-        }
+          if (!authResult || !authResult.success) {
+            self.authError = (authResult && authResult.message) || "Invalid credentials! Please check your username and password.";
+            if (authResult && authResult.offlineUnconfigured) {
+              self.showCloudConfig = true;
+            }
+            self.tempAuth.password = "";
+            MedHub.toast(self.authError, "danger");
+            self.render(container);
+            return;
+          }
 
-        // 1. MASTER ADMIN PORTAL DIRECT LOGIN
-        if (authResult.isSuperAdmin || authResult.user?.role === "superadmin") {
+          // 1. MASTER ADMIN PORTAL DIRECT LOGIN
+          if (authResult.isSuperAdmin || authResult.user?.role === "superadmin") {
+            self.authError = null;
+            MedHub.state.isAuthenticated = true;
+            MedHub.state.isSuperAdmin = true;
+            MedHub.state.user = {
+              id: authResult.user.id || "superadmin",
+              username: authResult.user.username,
+              email: authResult.user.email,
+              role: "superadmin",
+              name: authResult.user.name || "Platform Master Administrator"
+            };
+
+            try {
+              localStorage.setItem("medhub_authenticated", "true");
+              localStorage.setItem("medhub_current_user", authResult.user.email);
+              localStorage.setItem("medhub_user_name", MedHub.state.user.name);
+              localStorage.setItem("medhub_user_role", "superadmin");
+            } catch (e) {}
+
+            MedHub.toast("Master Administrator authenticated! Welcome to Control Center.", "success");
+            MedHub.router.currentPage = "admin";
+            MedHub.router.init();
+            return;
+          }
+
+          // 2. STORE PHARMACIST LOGIN
           self.authError = null;
-          MedHub.state.isAuthenticated = true;
-          MedHub.state.isSuperAdmin = true;
-          MedHub.state.user = {
-            id: authResult.user.id || "superadmin",
-            username: authResult.user.username,
-            email: authResult.user.email,
-            role: "superadmin",
-            name: authResult.user.name || "Platform Master Administrator"
-          };
+          const verifiedUser = authResult.user;
+          self.tempAuth.username = verifiedUser.username;
+          self.tempAuth.email = verifiedUser.email || verifiedUser.username;
+          self.tempAuth.name = verifiedUser.name || verifiedUser.full_name || verifiedUser.username;
+          self.tempAuth.role = verifiedUser.role || "admin";
+          self.tempAuth.password = passwordInput;
+          self.tempAuth.store_id = verifiedUser.store_id;
+          self.tempAuth.store_name = verifiedUser.store_name;
 
-          try {
-            localStorage.setItem("medhub_authenticated", "true");
-            localStorage.setItem("medhub_current_user", authResult.user.email);
-            localStorage.setItem("medhub_user_name", MedHub.state.user.name);
-            localStorage.setItem("medhub_user_role", "superadmin");
-          } catch (e) {}
+          // Fetch store settings for THIS specific user / store
+          let existingStore = authResult.store;
+          if (!existingStore) {
+            existingStore = await MedHub.api.getStoreSettings(verifiedUser, { allowFallback: false });
+          }
 
-          MedHub.toast("Master Administrator authenticated! Welcome to Control Center.", "success");
-          MedHub.router.currentPage = "admin";
-          MedHub.router.init();
-          return;
-        }
+          // CHECK IF STORE PROFILE HAS ALREADY BEEN SET UP OR USER IS REGISTERED:
+          // Once a store is registered in Supabase or local, NEVER ask for Step 2 again! DIRECT LOGIN!
+          if (existingStore || !authResult.isNew) {
+            const finalStore = existingStore || {
+              id: verifiedUser.store_id || undefined,
+              store_name: verifiedUser.store_name || "Pharmacy Store",
+              pharmacist_name: verifiedUser.name || "Dr. Anil Kumar",
+              user_email: verifiedUser.email || `${verifiedUser.username}@mededuhub.com`,
+              phone: "",
+              address: "",
+              gstin: "",
+              dl_no_20b: ""
+            };
+            self.completeLogin(verifiedUser, finalStore);
+            return;
+          }
 
-        // 2. STORE PHARMACIST LOGIN
-        self.authError = null;
-        const verifiedUser = authResult.user;
-        self.tempAuth.username = verifiedUser.username;
-        self.tempAuth.email = verifiedUser.email || verifiedUser.username;
-        self.tempAuth.name = verifiedUser.name || verifiedUser.full_name || verifiedUser.username;
-        self.tempAuth.role = verifiedUser.role || "admin";
-        self.tempAuth.password = passwordInput;
-        self.tempAuth.store_id = verifiedUser.store_id;
-        self.tempAuth.store_name = verifiedUser.store_name;
-
-        // Fetch store settings for THIS specific user / store
-        let existingStore = authResult.store;
-        if (!existingStore) {
-          existingStore = await MedHub.api.getStoreSettings(verifiedUser, { allowFallback: false });
-        }
-
-        // CHECK IF STORE PROFILE HAS ALREADY BEEN SET UP OR USER IS REGISTERED:
-        // Once a store is registered in Supabase or local, NEVER ask for Step 2 again! DIRECT LOGIN!
-        if (existingStore || !authResult.isNew) {
-          const finalStore = existingStore || {
-            store_name: verifiedUser.store_name || "Pharmacy Store",
-            pharmacist_name: verifiedUser.name || "Dr. Anil Kumar",
-            user_email: verifiedUser.email || `${verifiedUser.username}@mededuhub.com`,
+          // NEW USER / UNREGISTERED:
+          // Ask for store profile ONLY on the very first fresh signup
+          self.isNewStore = true;
+          self.storeData = {
+            pharmacist_name: verifiedUser.username === "admin" ? "Dr. Anil Kumar" : (verifiedUser.name || ""),
+            store_name: "",
             phone: "",
             address: "",
             gstin: "",
-            dl_no_20b: ""
+            dl_no_20b: "",
+            dl_no_21b: "",
+            fssai_no: "",
+            upi_id: ""
           };
-          self.completeLogin(verifiedUser, finalStore);
+
+          self.currentStep = 2; // Transition to Step 2 for 1st time setup only
+          self.render(container);
+        } catch (err) {
+          console.error("Login error:", err);
+          self.authError = err?.message || "Login failed unexpectedly. Please try again.";
+          MedHub.toast(self.authError, "danger");
+          self.render(container);
+        }
+      });
+
+      // Cloud DB Manual Connection Drawer (when running offline/local without /api/config)
+      container.querySelector("#btn-toggle-cloud-config")?.addEventListener("click", () => {
+        const drawer = container.querySelector("#cloud-config-drawer");
+        self.showCloudConfig = !self.showCloudConfig;
+        if (drawer) drawer.style.display = self.showCloudConfig ? "block" : "none";
+      });
+
+      container.querySelector("#btn-save-cloud-config")?.addEventListener("click", () => {
+        const sbUrl = container.querySelector("#cloud-sb-url")?.value.trim();
+        const sbKey = container.querySelector("#cloud-sb-key")?.value.trim();
+        if (!sbUrl || !sbKey) {
+          MedHub.toast("Please enter both Supabase URL and Key.", "warning");
           return;
         }
-
-        // NEW USER / UNREGISTERED:
-        // Ask for store profile ONLY on the very first fresh signup
-        self.isNewStore = true;
-        self.storeData = {
-          pharmacist_name: verifiedUser.username === "admin" ? "Dr. Anil Kumar" : (verifiedUser.name || ""),
-          store_name: "",
-          phone: "",
-          address: "",
-          gstin: "",
-          dl_no_20b: "",
-          dl_no_21b: "",
-          fssai_no: "",
-          upi_id: ""
-        };
-
-        self.currentStep = 2; // Transition to Step 2 for 1st time setup only
-        self.render(container);
+        try {
+          localStorage.setItem("supabase_url", sbUrl);
+          localStorage.setItem("supabase_anon_key", sbKey);
+        } catch (e) {}
+        MedHub.initSupabaseClient(sbUrl, sbKey);
+        if (MedHub.supabaseClient) {
+          self.showCloudConfig = false;
+          self.authError = null;
+          MedHub.toast("Supabase Cloud DB connected! Ab username aur password se Sign In karein.", "success");
+          self.render(container);
+        } else {
+          MedHub.toast("Invalid Supabase URL or Key, or Supabase JS SDK not loaded.", "danger");
+        }
       });
 
       // Toggle Password Visibility (Eye Button)
@@ -564,8 +621,18 @@ MedHub.login = {
       localStorage.setItem("mededuhub_store_settings", JSON.stringify(MedHub.state.store));
     } catch (err) {}
 
-    // Persist real-time active store settings to Supabase
-    if (MedHub.supabaseClient && storePayload) {
+    // Persist only activity timestamps in Supabase if existing store already has an id (never overwrite existing profile fields)
+    if (MedHub.supabaseClient && storeId && typeof storeId === "number") {
+      Promise.resolve(
+        MedHub.supabaseClient
+          .from("store_settings")
+          .update({
+            last_login_user: username,
+            last_login_at: new Date().toISOString()
+          })
+          .eq("id", storeId)
+      ).catch(err => console.warn("Background store sync error:", err));
+    } else if (MedHub.supabaseClient && storePayload) {
       MedHub.api.saveStoreSettings({
         ...MedHub.state.store,
         last_login_user: username,

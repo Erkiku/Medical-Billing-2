@@ -282,7 +282,9 @@ MedHub.router = {
 
 // Application entrypoint on DOM load
 document.addEventListener("DOMContentLoaded", async () => {
-  if (typeof MedHub.loadConfig === "function") {
+  if (typeof MedHub.ensureSupabaseClient === "function") {
+    await MedHub.ensureSupabaseClient();
+  } else if (typeof MedHub.loadConfig === "function") {
     await MedHub.loadConfig();
   } else {
     MedHub.initSupabaseClient();
