@@ -267,17 +267,17 @@ MedHub.purchases = {
                 <table class="pur-items-table" id="pur-items-table">
                   <thead>
                     <tr>
-                      <th style="width: 30px;">#</th>
-                      <th style="min-width: 190px;">Medicine Name *</th>
-                      <th style="width: 110px;">Batch No *</th>
-                      <th style="width: 115px;">Expiry *</th>
-                      <th style="width: 110px;">Pack</th>
-                      <th style="width: 75px;">Qty *</th>
-                      <th style="width: 95px;">Pur. Rate (₹) *</th>
-                      <th style="width: 90px;">MRP (₹)</th>
-                      <th style="width: 85px;">GST %</th>
-                      <th style="width: 105px;">Total (₹)</th>
-                      <th style="width: 38px; text-align: center;">✕</th>
+                      <th style="width: 36px; text-align: center;">#</th>
+                      <th style="min-width: 210px;">Medicine Name *</th>
+                      <th style="min-width: 120px;">Batch No *</th>
+                      <th style="min-width: 130px;">Expiry *</th>
+                      <th style="min-width: 112px;">Pack</th>
+                      <th style="min-width: 82px;">Qty *</th>
+                      <th style="min-width: 108px;">Pur. Rate (₹) *</th>
+                      <th style="min-width: 100px;">MRP (₹)</th>
+                      <th style="min-width: 92px;">GST %</th>
+                      <th style="min-width: 115px;">Total (₹)</th>
+                      <th style="width: 46px; text-align: center;">✕</th>
                     </tr>
                   </thead>
                   <tbody id="pur-items-tbody">
@@ -441,7 +441,7 @@ MedHub.purchases = {
           />
         </td>
         <td>
-          <select class="pur-item-gst" style="padding: 4px 6px; border-radius: 4px; border: 1.5px solid var(--cream-border); font-size: 13px; font-weight: 700; width: 75px; background: #ffffff;">
+          <select class="pur-item-gst" style="padding: 6px 6px; border-radius: 6px; border: 1.5px solid var(--cream-border-dark); font-size: 13px; font-weight: 700; width: 100%; min-width: 82px; background: #ffffff;">
             <option value="12" ${prefill?.gst_percent === 12 || (!prefill && prefill?.gst_percent === undefined) ? 'selected' : ''}>12%</option>
             <option value="0" ${prefill?.gst_percent === 0 ? 'selected' : ''}>0%</option>
             <option value="5" ${prefill?.gst_percent === 5 ? 'selected' : ''}>5%</option>

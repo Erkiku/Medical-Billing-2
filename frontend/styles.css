@@ -3603,8 +3603,8 @@ button {
    ENHANCED PURCHASES MODAL & MEDICINES ITEM TABLE
    ============================================================================ */
 .purchase-modal-box {
-  max-width: 980px !important;
-  width: 95vw !important;
+  max-width: 1180px !important;
+  width: 96vw !important;
   max-height: 92vh !important;
   display: flex !important;
   flex-direction: column !important;
@@ -3625,12 +3625,12 @@ button {
 }
 .pur-items-table {
   width: 100%;
+  min-width: 1100px;
   border-collapse: collapse;
   margin-top: 8px;
   background: #ffffff;
   border: 1px solid var(--cream-border);
   border-radius: 8px;
-  overflow: hidden;
 }
 .pur-items-table th {
   background: #f8fafc;
@@ -3638,22 +3638,46 @@ button {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  padding: 8px 10px;
+  padding: 9px 10px;
   border-bottom: 1.5px solid var(--cream-border);
+  white-space: nowrap;
 }
 .pur-items-table td {
-  padding: 6px 8px;
+  padding: 7px 7px;
   border-bottom: 1px solid #f1f5f9;
   vertical-align: middle;
 }
 .pur-items-table input,
 .pur-items-table select {
   width: 100%;
+  min-width: 0;
   padding: 6px 8px;
   font-size: 13px;
   border: 1px solid var(--cream-border-dark);
   border-radius: 6px;
   box-sizing: border-box;
+}
+.pur-items-table .pur-item-name {
+  min-width: 195px;
+}
+.pur-items-table .pur-item-batch {
+  min-width: 108px;
+}
+.pur-items-table .pur-item-qty {
+  min-width: 72px;
+  padding: 6px 6px !important;
+}
+.pur-items-table .pur-item-rate,
+.pur-items-table .pur-item-mrp {
+  min-width: 90px;
+  padding: 6px 8px !important;
+}
+.pur-items-table .pur-item-gst {
+  min-width: 82px !important;
+  width: 100% !important;
+}
+.pur-items-table .pur-item-total {
+  min-width: 98px;
 }
 .pur-items-table input:focus {
   border-color: #0d9488;

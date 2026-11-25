@@ -1403,7 +1403,7 @@ MedHub.api = {
 
         if (!error && data) {
           createdMed = data;
-          if (initialBatch && initialBatch.batch_no && Number(initialBatch.quantity) > 0) {
+          if (initialBatch && initialBatch.batch_no) {
             const normExp = this._normalizeDateForPg(initialBatch.expiry_date) || new Date(Date.now() + 365*86400000).toISOString().slice(0, 10);
             await MedHub.supabaseClient.from("medicine_batches").insert({
               medicine_id: createdMed.id,
@@ -1411,7 +1411,7 @@ MedHub.api = {
               expiry_date: normExp,
               purchase_price: Number(medData.purchase_price) || 0,
               selling_price: Number(medData.selling_rate) || Number(medData.mrp) || 0,
-              quantity: Number(initialBatch.quantity)
+              quantity: Math.max(0, Number(initialBatch.quantity) || 0)
             });
           }
         }
@@ -1436,7 +1436,7 @@ MedHub.api = {
     localMeds.unshift(finalMed);
     this._saveLocalMedicines(localMeds);
 
-    if (initialBatch && initialBatch.batch_no && qty > 0) {
+    if (initialBatch && initialBatch.batch_no) {
       const localBatches = this._getLocalBatches();
       localBatches.push({
         id: "b-" + Date.now(),

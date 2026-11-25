@@ -657,28 +657,10 @@ MedHub.inventory = {
               </div>
             </div>
 
-            <!-- ROW 4: Pricing & GST -->
-            <div class="form-row-2" style="margin-top: 14px;">
-              <div class="form-group">
-                <label class="form-label">Purchase Price (₹)</label>
-                <input type="number" step="0.01" id="m-purchase-price" class="input-field" placeholder="25.00" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">GST Rate (%)</label>
-                <select id="m-gst" class="input-field select-field">
-                  <option value="12">12%</option>
-                  <option value="0">0%</option>
-                  <option value="5">5%</option>
-                  <option value="18">18%</option>
-                  <option value="28">28%</option>
-                </select>
-              </div>
-            </div>
-
-            <!-- SUB-CARD: OPTIONAL INITIAL BATCH STOCK -->
+            <!-- SUB-CARD: OPTIONAL INITIAL BATCH DETAILS -->
             <div class="modal-subcard-batch" style="margin-top: 18px;">
-              <h4 class="subcard-title">Optional: Add Initial Batch Stock</h4>
-              <div class="form-row-3" style="margin-top: 10px;">
+              <h4 class="subcard-title">Optional: Initial Batch & Expiry</h4>
+              <div class="form-row-2" style="margin-top: 10px;">
                 <div class="form-group">
                   <label class="form-label">Batch Number</label>
                   <input type="text" id="m-batch-no" class="input-field" placeholder="e.g. B-998" />
@@ -686,10 +668,6 @@ MedHub.inventory = {
                 <div class="form-group">
                   <label class="form-label">Expiry (Month & Year only)</label>
                   ${MedHub.renderMonthYearPicker("m-exp", "")}
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Quantity</label>
-                  <input type="number" id="m-quantity" class="input-field" placeholder="e.g. 100" />
                 </div>
               </div>
             </div>
@@ -766,17 +744,18 @@ MedHub.inventory = {
       const selling_rate = sellingRateInput ? (Number(sellingRateInput.value) || mrp) : mrp;
       const gst_percent = document.getElementById("m-gst")?.value;
 
-      // Initial batch fields
-      const batch_no = document.getElementById("m-batch-no").value.trim();
+      // Initial batch fields (Purchase Price, GST Rate & Quantity removed from Add Medicine modal)
+      const batch_no = document.getElementById("m-batch-no")?.value.trim() || "";
       const expiry_date = MedHub.readMonthYearValue("m-exp");
-      const quantity = document.getElementById("m-quantity").value;
+      const qtyInputVal = document.getElementById("m-quantity")?.value;
+      const quantityNum = qtyInputVal ? Number(qtyInputVal) : 0;
 
       let initialBatch = null;
-      if (batch_no && Number(quantity) > 0) {
+      if (batch_no) {
         initialBatch = {
           batch_no: batch_no,
           expiry_date: expiry_date || new Date(Date.now() + 365*86400000).toISOString().slice(0, 10),
-          quantity: Number(quantity)
+          quantity: quantityNum
         };
       }
 
