@@ -793,7 +793,18 @@ MedHub.billing = {
 
   async showInvoiceModal(bill) {
     const apiStore = await MedHub.api.getStoreSettings();
-    const store = { ...MedHub.defaultStore, ...MedHub.state.store, ...apiStore };
+    const store = MedHub.resolveActiveStore
+      ? MedHub.resolveActiveStore(apiStore)
+      : { ...MedHub.defaultStore, ...MedHub.state.store, ...apiStore };
+    const lic = MedHub.formatStoreLicenses
+      ? MedHub.formatStoreLicenses(store)
+      : {
+          gstin: (store.gstin || "").trim().toUpperCase(),
+          dl20: (store.dl_no_20b || store.drug_license_no || "").trim(),
+          dl21: (store.dl_no_21b || "").trim(),
+          dlDisplay: [store.dl_no_20b || store.drug_license_no, store.dl_no_21b].filter(Boolean).join(", ")
+        };
+
     let modalWrap = document.getElementById("invoice-modal-container");
     if (!modalWrap) {
       modalWrap = document.createElement("div");
@@ -803,15 +814,17 @@ MedHub.billing = {
 
     document.body.classList.add("modal-open");
 
-    const isPaid = bill.paid_amount >= bill.grand_total;
+    const isPaid = Number(bill.paid_amount) >= Number(bill.grand_total);
+    const dueAmt = Math.max(0, Number(bill.grand_total || 0) - Number(bill.paid_amount || 0));
     const amountInWords = MedHub.numberToWords(bill.grand_total);
-    const invoiceDateStr = new Date(bill.bill_date).toLocaleDateString("en-IN", {
+    const invoiceDateStr = new Date(bill.bill_date || Date.now()).toLocaleDateString("en-IN", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric"
     }).replace(/\//g, "-");
 
     const items = (bill.items && bill.items.length) ? bill.items : (bill.bill_items || []);
+    const fullAddressLine = [store.address, store.city, store.state].filter(Boolean).join(", ") + (store.pincode ? ` - ${store.pincode}` : "");
 
     // Store Payment QR Resolution: Use store's custom uploaded QR or dynamic UPI QR
     const upiId = store.upi_id || "sagarstore@upi";
@@ -824,13 +837,15 @@ MedHub.billing = {
     // WhatsApp Message Text
     const waText = encodeURIComponent(
       `🧾 *TAX INVOICE - ${store.store_name}*\n` +
+      (lic.gstin ? `GSTIN: ${lic.gstin}\n` : "") +
+      (lic.dlDisplay ? `D.L. No: ${lic.dlDisplay}\n` : "") +
       `Bill No: #${bill.bill_no} | Date: ${invoiceDateStr}\n` +
-      `Patient: ${bill.customer_name || "Customer"}\n` +
+      `Patient: ${bill.customer_name || "Walk-in Customer"}\n` +
       `Doctor: ${bill.doctor_name || "Self"}\n\n` +
       `*Items:*\n` +
       items.map(it => `• ${it.medicine_name || it.name || "Item"} (${it.quantity} qty) - ₹${Number(it.line_total || (it.quantity * it.rate) || 0).toFixed(2)}`).join("\n") +
       `\n\n*Total Amount:* ₹${Number(bill.grand_total).toFixed(2)}\n` +
-      `*Status:* ${isPaid ? "PAID" : "DUE (Balance Pending)"}\n\n` +
+      `*Status:* ${isPaid ? "PAID" : `DUE (₹${dueAmt.toFixed(2)} Pending)`}\n\n` +
       `Thank you for choosing ${store.store_name}! Get well soon.`
     );
 
@@ -880,18 +895,19 @@ MedHub.billing = {
 
                 <!-- STORE HEADER -->
                 <div class="classic-receipt-header">
-                  <h2 class="classic-store-title">${store.store_name || "R & A MEDICAL STORE"}</h2>
-                  <p class="classic-store-address">${store.address || "TUBEWELL COLONY, DEORIA UTTAR PRADESH"}${store.city ? `, ${store.city}` : ""}</p>
-                  <p class="classic-store-reg">GSTIN : ${store.gstin || "09ABJFR1588A1Z3"}</p>
-                  <p class="classic-store-reg">D.L. No : ${store.dl_no_20b || store.drug_license_no || "UP52210001216"}, ${store.dl_no_21b || "UP52200001216"}</p>
+                  <h2 class="classic-store-title">${store.store_name || "MEDICAL STORE"}</h2>
+                  ${fullAddressLine ? `<p class="classic-store-address">${fullAddressLine}</p>` : ""}
+                  ${store.phone ? `<p class="classic-store-reg">Ph : ${store.phone}</p>` : ""}
+                  ${lic.gstin ? `<p class="classic-store-reg">GSTIN : ${lic.gstin}</p>` : ""}
+                  ${lic.dlDisplay ? `<p class="classic-store-reg">D.L. No : ${lic.dlDisplay}</p>` : ""}
                 </div>
 
                 <!-- PATIENT & DOCTOR TWO-COLUMN METADATA -->
                 <div class="classic-meta-grid">
                   <div>
-                    <p><strong>Patient Name :</strong> ${(bill.customer_name || "VIKASH").toUpperCase()}</p>
+                    <p><strong>Patient Name :</strong> ${(bill.customer_name || "Walk-in Customer").toUpperCase()}</p>
                     <p><strong>Patient Address :</strong> ${bill.patient_address || ""}</p>
-                    <p><strong>Doctor Name :</strong> ${(bill.doctor_name || "DR. DAWOOD ANSARI").toUpperCase()}</p>
+                    <p><strong>Doctor Name :</strong> ${(bill.doctor_name || "Self").toUpperCase()}</p>
                     <p><strong>Doctor Address :</strong> ${bill.doctor_hospital || ""}</p>
                   </div>
                   <div style="text-align: right;">
@@ -955,6 +971,14 @@ MedHub.billing = {
                 </div>
 
                 <!-- TOTAL & AMOUNT IN WORDS -->
+                ${(Number(bill.discount) > 0 || Number(bill.gst_amount) > 0 || !isPaid) ? `
+                  <div style="font-size: 11px; border-top: 1px dashed #666; padding: 6px 0 4px; display: flex; justify-content: flex-end; gap: 18px; flex-wrap: wrap;">
+                    ${Number(bill.subtotal) > 0 ? `<span>Subtotal: <strong>${Number(bill.subtotal).toFixed(2)}</strong></span>` : ""}
+                    ${Number(bill.discount) > 0 ? `<span>Discount: <strong>-${Number(bill.discount).toFixed(2)}</strong></span>` : ""}
+                    ${Number(bill.gst_amount) > 0 ? `<span>GST: <strong>+${Number(bill.gst_amount).toFixed(2)}</strong></span>` : ""}
+                    ${!isPaid ? `<span>Paid: <strong>${Number(bill.paid_amount || 0).toFixed(2)}</strong> | Due: <strong>${dueAmt.toFixed(2)}</strong></span>` : ""}
+                  </div>
+                ` : ""}
                 <div class="classic-total-row">
                   <span>Total -</span>
                   <span>${Number(bill.grand_total).toFixed(2)}</span>
@@ -965,7 +989,7 @@ MedHub.billing = {
 
                 <!-- FOOTER -->
                 <div class="classic-footer-brand">
-                  ${store.store_name || "R & A MEDICAL STORE"}
+                  ${store.store_name || "MEDICAL STORE"}
                 </div>
               </div>
             </div>
@@ -977,6 +1001,12 @@ MedHub.billing = {
                   <div>
                     <h3 class="digital-store-name">${store.store_name}</h3>
                     <p style="font-size:12px;color:var(--black-soft);">${store.tagline || "Retail & Wholesale Chemists"}</p>
+                    ${fullAddressLine ? `<p style="font-size:11px;color:#475569;margin-top:2px;">${fullAddressLine}</p>` : ""}
+                    ${(lic.gstin || lic.dlDisplay) ? `
+                      <p style="font-size:11px;font-weight:700;color:#0f172a;margin-top:3px;">
+                        ${lic.gstin ? `GSTIN: ${lic.gstin}` : ""}${(lic.gstin && lic.dlDisplay) ? " &nbsp;|&nbsp; " : ""}${lic.dlDisplay ? `D.L. No: ${lic.dlDisplay}` : ""}
+                      </p>
+                    ` : ""}
                   </div>
                   <span class="digital-verified-pill">✓ Verified E-Receipt</span>
                 </div>

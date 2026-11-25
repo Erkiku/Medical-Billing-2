@@ -167,8 +167,10 @@ MedHub.api = {
     if (found) {
       if (targetEmail) {
         try {
-          localStorage.setItem("medhub_store_" + targetEmail, JSON.stringify(found));
-          localStorage.setItem("mededuhub_store_settings", JSON.stringify(found));
+          const json = JSON.stringify(found);
+          localStorage.setItem("medhub_store_" + targetEmail, json);
+          localStorage.setItem("medhub_store_settings", json);
+          localStorage.setItem("mededuhub_store_settings", json);
         } catch (e) {}
       }
       MedHub.state.store = found;
@@ -187,11 +189,23 @@ MedHub.api = {
       user_email: email,
       updated_at: new Date().toISOString()
     };
+    if (merged.gstin !== undefined) {
+      merged.gstin = String(merged.gstin || "").trim().toUpperCase();
+    }
+    if (merged.dl_no_20b !== undefined) {
+      merged.dl_no_20b = String(merged.dl_no_20b || "").trim();
+      merged.drug_license_no = merged.dl_no_20b;
+    }
+    if (merged.dl_no_21b !== undefined) {
+      merged.dl_no_21b = String(merged.dl_no_21b || "").trim();
+    }
 
     // 1. Save to local per-store and active cache
     try {
-      localStorage.setItem("medhub_store_" + email, JSON.stringify(merged));
-      localStorage.setItem("mededuhub_store_settings", JSON.stringify(merged));
+      const json = JSON.stringify(merged);
+      localStorage.setItem("medhub_store_" + email, json);
+      localStorage.setItem("medhub_store_settings", json);
+      localStorage.setItem("mededuhub_store_settings", json);
       localStorage.setItem("medhub_current_user", email);
 
       // Sync to all stores directory for Master Admin
@@ -1009,6 +1023,169 @@ MedHub.api = {
     return newCat;
   },
 
+  // 2.5. COMPANIES / MANUFACTURERS & DRUG SCHEDULES MASTER LISTS
+  _getLocalCompanies() {
+    try {
+      const ls = localStorage.getItem("medhub_companies");
+      if (ls) {
+        const parsed = JSON.parse(ls);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return MedHub.state.companies || [];
+  },
+
+  _saveLocalCompanies(list) {
+    try {
+      MedHub.state.companies = list;
+      localStorage.setItem("medhub_companies", JSON.stringify(list));
+    } catch (e) {}
+  },
+
+  async getCompanies() {
+    let cloudList = [];
+    if (MedHub.supabaseClient) {
+      try {
+        const { data, error } = await MedHub.supabaseClient
+          .from("companies")
+          .select("*")
+          .order("name", { ascending: true });
+        if (!error && data && data.length > 0) {
+          cloudList = data;
+        }
+      } catch (e) {}
+    }
+
+    const baseList = this._getLocalCompanies();
+    const merged = [];
+    const seen = new Set();
+    const addUnique = (item) => {
+      const name = (typeof item === "string" ? item : item?.name || "").trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(typeof item === "string" ? { id: "co-" + key, name } : { ...item, name });
+      }
+    };
+
+    cloudList.forEach(addUnique);
+    baseList.forEach(addUnique);
+    (this._getLocalMedicines() || []).forEach(m => {
+      if (m.company) addUnique(m.company);
+    });
+
+    merged.sort((a, b) => a.name.localeCompare(b.name));
+    this._saveLocalCompanies(merged);
+    return merged;
+  },
+
+  async createCompany(name) {
+    if (!name || !name.trim()) return null;
+    const cleanName = name.trim();
+    const existing = this._getLocalCompanies().find(c => c.name.toLowerCase() === cleanName.toLowerCase());
+    if (existing) return existing;
+
+    let created = null;
+    if (MedHub.supabaseClient) {
+      try {
+        const { data, error } = await MedHub.supabaseClient
+          .from("companies")
+          .upsert({ name: cleanName }, { onConflict: "name" })
+          .select()
+          .maybeSingle();
+        if (!error && data) created = data;
+      } catch (e) {}
+    }
+
+    const newCompany = created || { id: "co-" + Date.now(), name: cleanName };
+    const list = this._getLocalCompanies();
+    list.push(newCompany);
+    list.sort((a, b) => a.name.localeCompare(b.name));
+    this._saveLocalCompanies(list);
+    return newCompany;
+  },
+
+  _getLocalDrugSchedules() {
+    try {
+      const ls = localStorage.getItem("medhub_drug_schedules");
+      if (ls) {
+        const parsed = JSON.parse(ls);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return MedHub.state.drugSchedules || [];
+  },
+
+  _saveLocalDrugSchedules(list) {
+    try {
+      MedHub.state.drugSchedules = list;
+      localStorage.setItem("medhub_drug_schedules", JSON.stringify(list));
+    } catch (e) {}
+  },
+
+  async getDrugSchedules() {
+    let cloudList = [];
+    if (MedHub.supabaseClient) {
+      try {
+        const { data, error } = await MedHub.supabaseClient
+          .from("drug_schedules")
+          .select("*")
+          .order("name", { ascending: true });
+        if (!error && data && data.length > 0) {
+          cloudList = data;
+        }
+      } catch (e) {}
+    }
+
+    const baseList = this._getLocalDrugSchedules();
+    const merged = [];
+    const seen = new Set();
+    const addUnique = (item) => {
+      const name = (typeof item === "string" ? item : item?.name || "").trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(typeof item === "string" ? { id: "ds-" + key, name } : { ...item, name });
+      }
+    };
+
+    cloudList.forEach(addUnique);
+    baseList.forEach(addUnique);
+    (this._getLocalMedicines() || []).forEach(m => {
+      if (m.drug_schedule) addUnique(m.drug_schedule);
+    });
+
+    this._saveLocalDrugSchedules(merged);
+    return merged;
+  },
+
+  async createDrugSchedule(name, description = "") {
+    if (!name || !name.trim()) return null;
+    const cleanName = name.trim();
+    const existing = this._getLocalDrugSchedules().find(s => s.name.toLowerCase() === cleanName.toLowerCase());
+    if (existing) return existing;
+
+    let created = null;
+    if (MedHub.supabaseClient) {
+      try {
+        const { data, error } = await MedHub.supabaseClient
+          .from("drug_schedules")
+          .upsert({ name: cleanName, description: description || null }, { onConflict: "name" })
+          .select()
+          .maybeSingle();
+        if (!error && data) created = data;
+      } catch (e) {}
+    }
+
+    const newSchedule = created || { id: "ds-" + Date.now(), name: cleanName, description };
+    const list = this._getLocalDrugSchedules();
+    list.push(newSchedule);
+    this._saveLocalDrugSchedules(list);
+    return newSchedule;
+  },
+
   // 3. MEDICINES & PERSISTENCE
   _getLocalMedicines() {
     try {
@@ -1495,112 +1672,226 @@ MedHub.api = {
   },
 
   // 4. BILLS & SALES
+  _isUuid(val) {
+    return typeof val === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim());
+  },
+
+  _normalizeDateForPg(dateStr) {
+    if (!dateStr || dateStr === "—") return null;
+    const s = String(dateStr).trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    if (/^\d{4}-\d{2}$/.test(s)) return `${s}-01`;
+    if (/^\d{1,2}\/\d{2}$/.test(s)) {
+      const [mm, yy] = s.split("/");
+      return `20${yy}-${mm.padStart(2, "0")}-01`;
+    }
+    if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(s)) {
+      const [dd, mm, yyyy] = s.split("-");
+      return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
+    }
+    return null;
+  },
+
+  _getLocalBills() {
+    try {
+      const saved = localStorage.getItem("medhub_bills");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return mockBills;
+  },
+
+  _saveLocalBills(list) {
+    try {
+      mockBills = list;
+      localStorage.setItem("medhub_bills", JSON.stringify(list));
+    } catch (e) {}
+  },
+
   async getBills() {
     if (MedHub.supabaseClient) {
       try {
         const { data, error } = await MedHub.supabaseClient
           .from("bills")
-          .select("*, bill_items(*)")
+          .select("*, bill_items(*), customers(name, mobile, address)")
           .order("bill_no", { ascending: false })
           .limit(100);
-        if (!error && data && data.length) {
-          return data.map(b => ({
+        if (!error && data) {
+          const mapped = data.map(b => ({
             ...b,
+            customer_name: b.customer_name || b.customers?.name || "Walk-in Customer",
+            customer_mobile: b.customer_mobile || b.customers?.mobile || "",
+            patient_address: b.patient_address || b.customers?.address || "",
             items: b.items || b.bill_items || []
           }));
+          this._saveLocalBills(mapped);
+          return mapped;
         }
       } catch (e) {
         console.warn("Bills query fallback:", e);
       }
     }
-    return mockBills.map(b => ({
+    return this._getLocalBills().map(b => ({
       ...b,
       items: b.items || b.bill_items || []
     }));
   },
 
+  async _upsertCustomerForBill(billData) {
+    if (!MedHub.supabaseClient) return null;
+    const mobile = (billData.customer_mobile || "").trim();
+    const name = (billData.customer_name || "").trim();
+    const address = (billData.patient_address || "").trim();
+    if (!/^[0-9]{10}$/.test(mobile)) return null;
+
+    try {
+      const { data: cust } = await MedHub.supabaseClient
+        .from("customers")
+        .select("id")
+        .eq("mobile", mobile)
+        .maybeSingle();
+
+      if (cust && cust.id) {
+        if (name || address) {
+          const upd = {};
+          if (name) upd.name = name;
+          if (address) upd.address = address;
+          await MedHub.supabaseClient.from("customers").update(upd).eq("id", cust.id);
+        }
+        return cust.id;
+      }
+
+      if (name) {
+        const { data: newCust } = await MedHub.supabaseClient
+          .from("customers")
+          .insert({ name, mobile, address })
+          .select("id")
+          .maybeSingle();
+        if (newCust) return newCust.id;
+      }
+    } catch (e) {}
+    return null;
+  },
+
   async createBill(billData) {
     let savedBill = null;
     const nowIso = new Date().toISOString();
+    const payMode = (billData.payment_mode || "CASH").toUpperCase();
+    const safePayMode = ["CASH", "UPI", "CARD"].includes(payMode) ? payMode : "CASH";
 
     if (MedHub.supabaseClient) {
       try {
-        // Customer handling
-        let customerId = null;
-        if (billData.customer_mobile && billData.customer_mobile.length === 10) {
-          const { data: cust } = await MedHub.supabaseClient
-            .from("customers")
-            .select("id")
-            .eq("mobile", billData.customer_mobile)
-            .maybeSingle();
+        const customerId = await this._upsertCustomerForBill(billData);
 
-          if (cust) {
-            customerId = cust.id;
-          } else if (billData.customer_name) {
-            const { data: newCust } = await MedHub.supabaseClient
-              .from("customers")
-              .insert({
-                name: billData.customer_name,
-                mobile: billData.customer_mobile,
-                address: billData.patient_address || ""
-              })
-              .select("id")
-              .maybeSingle();
-            if (newCust) customerId = newCust.id;
-          }
-        }
-
-        // Insert Bill
-        const billPayload = {
+        const baseBillPayload = {
           customer_id: customerId,
           doctor_name: billData.doctor_name || "",
           doctor_hospital: billData.doctor_hospital || "",
           patient_address: billData.patient_address || "",
-          subtotal: billData.subtotal,
-          discount: billData.discount || 0,
-          grand_total: billData.grand_total,
-          paid_amount: billData.paid_amount,
+          subtotal: Number(billData.subtotal) || 0,
+          discount: Number(billData.discount) || 0,
+          gst_amount: Number(billData.gst_amount) || 0,
+          grand_total: Number(billData.grand_total) || 0,
+          paid_amount: Number(billData.paid_amount) || 0,
           notes: billData.notes || ""
         };
 
-        const { data: bData, error: bErr } = await MedHub.supabaseClient
+        const extendedBillPayload = {
+          ...baseBillPayload,
+          customer_name: billData.customer_name || "Walk-in Customer",
+          customer_mobile: billData.customer_mobile || "",
+          payment_mode: payMode
+        };
+
+        let { data: bData, error: bErr } = await MedHub.supabaseClient
           .from("bills")
-          .insert(billPayload)
+          .insert(extendedBillPayload)
           .select()
           .single();
 
+        if (bErr) {
+          const retry = await MedHub.supabaseClient
+            .from("bills")
+            .insert(baseBillPayload)
+            .select()
+            .single();
+          bData = retry.data;
+          bErr = retry.error;
+        }
+
         if (!bErr && bData) {
-          savedBill = bData;
-          // Insert Bill Items
+          savedBill = {
+            ...bData,
+            customer_name: bData.customer_name || billData.customer_name || "Walk-in Customer",
+            customer_mobile: bData.customer_mobile || billData.customer_mobile || "",
+            payment_mode: bData.payment_mode || payMode
+          };
+
           for (const item of billData.items) {
-            await MedHub.supabaseClient.from("bill_items").insert({
+            const medIdValid = this._isUuid(item.medicine_id) ? item.medicine_id : null;
+            const batchIdValid = this._isUuid(item.batch_id) ? item.batch_id : null;
+            const expPg = this._normalizeDateForPg(item.expiry_date);
+
+            const baseItem = {
               bill_id: savedBill.id,
-              medicine_id: item.medicine_id,
-              batch_id: item.batch_id,
-              medicine_name: item.name,
-              batch_no: item.batch_no,
-              expiry_date: item.expiry_date,
-              quantity: item.quantity,
-              rate: item.rate,
-              line_total: item.line_total
-            });
-            // Decrement batch stock
-            if (item.batch_id) {
-              await MedHub.supabaseClient.rpc("decrement_batch_qty", {
-                b_id: item.batch_id,
-                qty: item.quantity
-              }).catch(() => {});
+              medicine_id: medIdValid,
+              batch_id: batchIdValid,
+              medicine_name: item.name || item.medicine_name || "Medicine",
+              batch_no: item.batch_no || "",
+              expiry_date: expPg,
+              quantity: Math.max(1, Number(item.quantity) || 1),
+              rate: Number(item.rate) || 0,
+              discount: Number(item.discount_percent || item.discount || 0),
+              gst_percent: Number(item.gst_percent || 0),
+              line_total: Number(item.line_total) || 0
+            };
+
+            const extItem = {
+              ...baseItem,
+              pack_size: item.pack_size || "1x10",
+              drug_schedule: item.drug_schedule || "General (OTC / Non-Rx)",
+              salt_composition: item.salt_composition || null
+            };
+
+            const { error: iErr } = await MedHub.supabaseClient.from("bill_items").insert(extItem);
+            if (iErr && medIdValid && batchIdValid) {
+              await MedHub.supabaseClient.from("bill_items").insert(baseItem);
+            }
+
+            if (batchIdValid) {
+              const { error: rpcErr } = await MedHub.supabaseClient.rpc("decrement_batch_qty", {
+                b_id: batchIdValid,
+                qty: Number(item.quantity) || 1
+              });
+              if (rpcErr) {
+                const { data: curB } = await MedHub.supabaseClient
+                  .from("medicine_batches")
+                  .select("quantity")
+                  .eq("id", batchIdValid)
+                  .maybeSingle();
+                if (curB) {
+                  await MedHub.supabaseClient
+                    .from("medicine_batches")
+                    .update({ quantity: Math.max(0, (Number(curB.quantity) || 0) - (Number(item.quantity) || 1)) })
+                    .eq("id", batchIdValid);
+                }
+              }
             }
           }
-          // Insert Payment Record
-          if (billData.paid_amount > 0) {
+
+          if (Number(billData.paid_amount) > 0) {
             await MedHub.supabaseClient.from("payments").insert({
               bill_id: savedBill.id,
-              amount: billData.paid_amount,
-              mode: billData.payment_mode || "CASH"
+              amount: Number(billData.paid_amount),
+              mode: safePayMode
             });
           }
           savedBill.items = billData.items;
+          const localList = this._getLocalBills();
+          localList.unshift(savedBill);
+          this._saveLocalBills(localList);
           return savedBill;
         }
       } catch (e) {
@@ -1609,7 +1900,8 @@ MedHub.api = {
     }
 
     // Local / In-memory fallback
-    const billNo = mockBills.length ? (mockBills[0].bill_no + 1) : 101;
+    const localList = this._getLocalBills();
+    const billNo = localList.length ? (Math.max(...localList.map(b => Number(b.bill_no) || 0)) + 1) : 101;
     savedBill = {
       id: "bill-" + Date.now(),
       bill_no: billNo,
@@ -1619,32 +1911,276 @@ MedHub.api = {
       patient_address: billData.patient_address || "",
       doctor_name: billData.doctor_name || "",
       doctor_hospital: billData.doctor_hospital || "",
-      subtotal: billData.subtotal,
-      discount: billData.discount || 0,
-      grand_total: billData.grand_total,
-      paid_amount: billData.paid_amount,
-      due_amount: Math.max(0, billData.grand_total - billData.paid_amount),
-      payment_status: billData.paid_amount >= billData.grand_total ? "PAID" : (billData.paid_amount > 0 ? "PARTIAL" : "UNPAID"),
-      payment_mode: billData.payment_mode || "CASH",
+      subtotal: Number(billData.subtotal) || 0,
+      discount: Number(billData.discount) || 0,
+      gst_amount: Number(billData.gst_amount) || 0,
+      grand_total: Number(billData.grand_total) || 0,
+      paid_amount: Number(billData.paid_amount) || 0,
+      due_amount: Math.max(0, (Number(billData.grand_total) || 0) - (Number(billData.paid_amount) || 0)),
+      payment_status: Number(billData.paid_amount) >= Number(billData.grand_total) ? "PAID" : (Number(billData.paid_amount) > 0 ? "PARTIAL" : "UNPAID"),
+      payment_mode: payMode,
+      notes: billData.notes || "",
       is_cancelled: false,
       items: billData.items
     };
 
-    // Deduct stock from mock medicines
+    const localMeds = this._getLocalMedicines();
+    const localBatches = this._getLocalBatches();
     billData.items.forEach(it => {
-      const med = mockMedicines.find(m => m.id === it.medicine_id);
+      const med = localMeds.find(m => String(m.id) === String(it.medicine_id));
       if (med) {
-        med.available_qty = Math.max(0, (med.available_qty || 0) - it.quantity);
-        med.status = med.available_qty === 0 ? "out" : (med.available_qty <= 10 ? "low" : "in");
+        med.available_qty = Math.max(0, (Number(med.available_qty) || 0) - Number(it.quantity));
+        med.status = med.available_qty === 0 ? "out" : (med.available_qty <= (Number(med.reorder_level) || 10) ? "low" : "in");
       }
-      const b = mockBatches.find(bat => bat.id === it.batch_id);
+      const b = localBatches.find(bat => String(bat.id) === String(it.batch_id));
       if (b) {
-        b.quantity = Math.max(0, b.quantity - it.quantity);
+        b.quantity = Math.max(0, (Number(b.quantity) || 0) - Number(it.quantity));
       }
     });
+    this._saveLocalMedicines(localMeds);
+    this._saveLocalBatches(localBatches);
 
-    mockBills.unshift(savedBill);
+    localList.unshift(savedBill);
+    this._saveLocalBills(localList);
     return savedBill;
+  },
+
+  async updateBill(billIdOrNo, billData) {
+    const subtotal = Number(billData.subtotal) || 0;
+    const discount = Number(billData.discount) || 0;
+    const gstAmount = Number(billData.gst_amount) || 0;
+    const grandTotal = Number(billData.grand_total) || 0;
+    const paidAmount = Math.max(0, Number(billData.paid_amount) || 0);
+    const dueAmount = Math.max(0, grandTotal - paidAmount);
+    const payStatus = paidAmount >= grandTotal ? "PAID" : (paidAmount > 0 ? "PARTIAL" : "UNPAID");
+    const payMode = (billData.payment_mode || "CASH").toUpperCase();
+    const safePayMode = ["CASH", "UPI", "CARD"].includes(payMode) ? payMode : "CASH";
+    const items = Array.isArray(billData.items) ? billData.items : [];
+
+    let updatedCloudBill = null;
+
+    if (MedHub.supabaseClient && this._isUuid(String(billIdOrNo))) {
+      try {
+        // 1. Attempt transactional RPC update_bill first
+        const rpcPayload = {
+          customer_name: billData.customer_name || "Walk-in Customer",
+          customer_mobile: billData.customer_mobile || "",
+          patient_address: billData.patient_address || "",
+          doctor_name: billData.doctor_name || "",
+          doctor_hospital: billData.doctor_hospital || "",
+          subtotal,
+          discount,
+          gst_amount: gstAmount,
+          round_off: Number(billData.round_off) || 0,
+          grand_total: grandTotal,
+          paid_amount: paidAmount,
+          payment_mode: payMode,
+          notes: billData.notes || "",
+          items: items.map(it => ({
+            medicine_id: it.medicine_id || null,
+            batch_id: it.batch_id || null,
+            medicine_name: it.medicine_name || it.name || "Medicine",
+            name: it.medicine_name || it.name || "Medicine",
+            batch_no: it.batch_no || "",
+            expiry_date: this._normalizeDateForPg(it.expiry_date) || it.expiry_date || "",
+            pack_size: it.pack_size || "1x10",
+            drug_schedule: it.drug_schedule || "General (OTC / Non-Rx)",
+            salt_composition: it.salt_composition || "",
+            old_mrp: Number(it.old_mrp) || 0,
+            quantity: Math.max(1, Number(it.quantity) || 1),
+            rate: Number(it.rate) || 0,
+            discount_percent: Number(it.discount_percent ?? it.discount ?? 0),
+            gst_percent: Number(it.gst_percent) || 0,
+            line_total: Number(it.line_total) || 0
+          }))
+        };
+
+        const { data: rpcData, error: rpcErr } = await MedHub.supabaseClient.rpc("update_bill", {
+          p_bill_id: billIdOrNo,
+          p_payload: rpcPayload
+        });
+
+        if (!rpcErr && rpcData) {
+          updatedCloudBill = {
+            ...rpcData,
+            items: (rpcData.items && rpcData.items.length) ? rpcData.items : items
+          };
+        } else {
+          // 2. Graceful REST fallback if RPC migration hasn't been applied yet
+          const { data: oldItems } = await MedHub.supabaseClient
+            .from("bill_items")
+            .select("batch_id, quantity")
+            .eq("bill_id", billIdOrNo);
+
+          if (oldItems && oldItems.length) {
+            for (const oi of oldItems) {
+              if (this._isUuid(oi.batch_id)) {
+                const { data: curB } = await MedHub.supabaseClient
+                  .from("medicine_batches")
+                  .select("quantity")
+                  .eq("id", oi.batch_id)
+                  .maybeSingle();
+                if (curB) {
+                  await MedHub.supabaseClient
+                    .from("medicine_batches")
+                    .update({ quantity: (Number(curB.quantity) || 0) + (Number(oi.quantity) || 0) })
+                    .eq("id", oi.batch_id);
+                }
+              }
+            }
+          }
+
+          await MedHub.supabaseClient.from("bill_items").delete().eq("bill_id", billIdOrNo);
+
+          const customerId = await this._upsertCustomerForBill(billData);
+          const baseUpd = {
+            doctor_name: billData.doctor_name || "",
+            doctor_hospital: billData.doctor_hospital || "",
+            patient_address: billData.patient_address || "",
+            subtotal,
+            discount,
+            gst_amount: gstAmount,
+            grand_total: grandTotal,
+            notes: billData.notes || ""
+          };
+          if (customerId) baseUpd.customer_id = customerId;
+
+          const extUpd = {
+            ...baseUpd,
+            customer_name: billData.customer_name || "Walk-in Customer",
+            customer_mobile: billData.customer_mobile || "",
+            payment_mode: payMode
+          };
+
+          let { error: uErr } = await MedHub.supabaseClient.from("bills").update(extUpd).eq("id", billIdOrNo);
+          if (uErr) {
+            await MedHub.supabaseClient.from("bills").update(baseUpd).eq("id", billIdOrNo);
+          }
+
+          for (const it of items) {
+            const medIdValid = this._isUuid(it.medicine_id) ? it.medicine_id : null;
+            const batchIdValid = this._isUuid(it.batch_id) ? it.batch_id : null;
+            const qty = Math.max(1, Number(it.quantity) || 1);
+
+            if (batchIdValid) {
+              const { data: curB } = await MedHub.supabaseClient
+                .from("medicine_batches")
+                .select("quantity")
+                .eq("id", batchIdValid)
+                .maybeSingle();
+              if (curB) {
+                await MedHub.supabaseClient
+                  .from("medicine_batches")
+                  .update({ quantity: Math.max(0, (Number(curB.quantity) || 0) - qty) })
+                  .eq("id", batchIdValid);
+              }
+            }
+
+            if (medIdValid && batchIdValid) {
+              await MedHub.supabaseClient.from("bill_items").insert({
+                bill_id: billIdOrNo,
+                medicine_id: medIdValid,
+                batch_id: batchIdValid,
+                medicine_name: it.medicine_name || it.name || "Medicine",
+                batch_no: it.batch_no || "",
+                expiry_date: this._normalizeDateForPg(it.expiry_date),
+                quantity: qty,
+                rate: Number(it.rate) || 0,
+                discount: Number(it.discount_percent ?? it.discount ?? 0),
+                gst_percent: Number(it.gst_percent) || 0,
+                line_total: Number(it.line_total) || 0
+              });
+            }
+          }
+
+          // Reconcile payments so trg_sync_paid updates bills.paid_amount / due_amount / payment_status
+          await MedHub.supabaseClient.from("payments").delete().eq("bill_id", billIdOrNo);
+          if (paidAmount > 0) {
+            await MedHub.supabaseClient.from("payments").insert({
+              bill_id: billIdOrNo,
+              amount: paidAmount,
+              mode: safePayMode
+            });
+          } else {
+            await MedHub.supabaseClient.from("bills").update({ paid_amount: 0 }).eq("id", billIdOrNo);
+          }
+
+          const { data: freshBill } = await MedHub.supabaseClient
+            .from("bills")
+            .select("*, bill_items(*), customers(name, mobile, address)")
+            .eq("id", billIdOrNo)
+            .maybeSingle();
+
+          if (freshBill) {
+            updatedCloudBill = {
+              ...freshBill,
+              customer_name: freshBill.customer_name || billData.customer_name || freshBill.customers?.name || "Walk-in Customer",
+              customer_mobile: freshBill.customer_mobile || billData.customer_mobile || freshBill.customers?.mobile || "",
+              patient_address: freshBill.patient_address || billData.patient_address || freshBill.customers?.address || "",
+              payment_mode: freshBill.payment_mode || payMode,
+              items: (freshBill.bill_items && freshBill.bill_items.length) ? freshBill.bill_items : items
+            };
+          }
+        }
+      } catch (e) {
+        console.warn("updateBill Supabase error:", e);
+      }
+    }
+
+    // Always synchronize local cache (and offline stock quantities)
+    const localList = this._getLocalBills();
+    const idx = localList.findIndex(b => String(b.id) === String(billIdOrNo) || String(b.bill_no) === String(billIdOrNo));
+    const oldBill = idx >= 0 ? localList[idx] : null;
+
+    if (!updatedCloudBill && oldBill) {
+      // Reconcile local mock stock offline
+      const localMeds = this._getLocalMedicines();
+      const localBatches = this._getLocalBatches();
+      (oldBill.items || []).forEach(oi => {
+        const med = localMeds.find(m => String(m.id) === String(oi.medicine_id));
+        if (med) med.available_qty = (Number(med.available_qty) || 0) + (Number(oi.quantity) || 0);
+        const bat = localBatches.find(b => String(b.id) === String(oi.batch_id));
+        if (bat) bat.quantity = (Number(bat.quantity) || 0) + (Number(oi.quantity) || 0);
+      });
+      items.forEach(ni => {
+        const med = localMeds.find(m => String(m.id) === String(ni.medicine_id));
+        if (med) {
+          med.available_qty = Math.max(0, (Number(med.available_qty) || 0) - (Number(ni.quantity) || 0));
+          med.status = med.available_qty === 0 ? "out" : (med.available_qty <= (Number(med.reorder_level) || 10) ? "low" : "in");
+        }
+        const bat = localBatches.find(b => String(b.id) === String(ni.batch_id));
+        if (bat) bat.quantity = Math.max(0, (Number(bat.quantity) || 0) - (Number(ni.quantity) || 0));
+      });
+      this._saveLocalMedicines(localMeds);
+      this._saveLocalBatches(localBatches);
+    }
+
+    const mergedLocal = updatedCloudBill || {
+      ...(oldBill || {}),
+      customer_name: billData.customer_name || "Walk-in Customer",
+      customer_mobile: billData.customer_mobile || "",
+      patient_address: billData.patient_address || "",
+      doctor_name: billData.doctor_name || "",
+      doctor_hospital: billData.doctor_hospital || "",
+      subtotal,
+      discount,
+      gst_amount: gstAmount,
+      grand_total: grandTotal,
+      paid_amount: paidAmount,
+      due_amount: dueAmount,
+      payment_status: payStatus,
+      payment_mode: payMode,
+      notes: billData.notes || "",
+      items
+    };
+
+    if (idx >= 0) {
+      localList[idx] = mergedLocal;
+    } else {
+      localList.unshift(mergedLocal);
+    }
+    this._saveLocalBills(localList);
+    return mergedLocal;
   },
 
   // 5. SUPPLIERS (With full edit, delete & local persistence)

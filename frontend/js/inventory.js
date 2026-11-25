@@ -13,7 +13,11 @@ MedHub.inventory = {
 
   async render(container) {
     this.medicinesList = await MedHub.api.getMedicines();
-    await MedHub.api.getCategories();
+    await Promise.all([
+      MedHub.api.getCategories(),
+      MedHub.api.getCompanies ? MedHub.api.getCompanies() : Promise.resolve(),
+      MedHub.api.getDrugSchedules ? MedHub.api.getDrugSchedules() : Promise.resolve()
+    ]);
 
     const totalSkus = this.medicinesList.length;
     const lowStockCount = this.medicinesList.filter(m => m.status === "low").length;
@@ -366,7 +370,8 @@ MedHub.inventory = {
 
   async exportFormalStockPdf() {
     const apiStore = await MedHub.api.getStoreSettings();
-    const store = { ...MedHub.defaultStore, ...MedHub.state.store, ...apiStore };
+    const store = MedHub.resolveActiveStore ? MedHub.resolveActiveStore(apiStore) : { ...MedHub.defaultStore, ...MedHub.state.store, ...apiStore };
+    const lic = MedHub.formatStoreLicenses ? MedHub.formatStoreLicenses(store) : { gstin: store.gstin || "", dl20: store.dl_no_20b || store.drug_license_no || "", dl21: store.dl_no_21b || "" };
     const list = this.getFilteredMedicines();
 
     const totalUnits = list.reduce((sum, m) => sum + (Number(m.available_qty) || 0), 0);
@@ -385,13 +390,13 @@ MedHub.inventory = {
         <div class="invoice-formal-header">
           <div class="formal-header-top">
             <div class="formal-store-info">
-              <h1 class="formal-store-name">${store.store_name || "SAGAR MEDICAL STORE"}</h1>
+              <h1 class="formal-store-name">${store.store_name || "MEDICAL STORE"}</h1>
               <p class="formal-store-tagline">${store.tagline || "Retail & Wholesale Chemists"}</p>
               <p class="formal-store-address">
-                ${store.address || "Shop 4, Medical Plaza, Main Road"}${store.city ? `, ${store.city}` : ""}${store.state ? `, ${store.state}` : ""}${store.pincode ? ` - ${store.pincode}` : ""}
+                ${store.address || ""}${store.city ? `, ${store.city}` : ""}${store.state ? `, ${store.state}` : ""}${store.pincode ? ` - ${store.pincode}` : ""}
               </p>
               <p class="formal-store-contact">
-                <span><strong>Phone:</strong> ${store.phone || "9876543210"}</span>
+                <span><strong>Phone:</strong> ${store.phone || "—"}</span>
                 ${store.upi_id ? `<span> | <strong>UPI:</strong> ${store.upi_id}</span>` : ""}
               </p>
             </div>
@@ -402,9 +407,9 @@ MedHub.inventory = {
           </div>
 
           <div class="formal-regulatory-bar">
-            <div class="reg-item"><strong>GSTIN:</strong> ${store.gstin || "07AAAAA0000A1Z5"}</div>
-            <div class="reg-item"><strong>D.L. No. (20B):</strong> ${store.dl_no_20b || store.drug_license_no || "DL-20B-123456"}</div>
-            <div class="reg-item"><strong>D.L. No. (21B):</strong> ${store.dl_no_21b || "DL-21B-654321"}</div>
+            ${lic.gstin ? `<div class="reg-item"><strong>GSTIN:</strong> ${lic.gstin}</div>` : ""}
+            ${lic.dl20 ? `<div class="reg-item"><strong>D.L. No. (20B):</strong> ${lic.dl20}</div>` : ""}
+            ${lic.dl21 ? `<div class="reg-item"><strong>D.L. No. (21B):</strong> ${lic.dl21}</div>` : ""}
             ${store.fssai_no ? `<div class="reg-item"><strong>FSSAI:</strong> ${store.fssai_no}</div>` : ""}
           </div>
         </div>
@@ -478,12 +483,81 @@ MedHub.inventory = {
     MedHub.exportToPdf("formal-inventory-report-sheet", `${(store.store_name || "Pharmacy").replace(/[^a-zA-Z0-9]/g, '_')}_Stock_Report`);
   },
 
+  // Reusable helper to bind inline quick-add (+ Add) controls for Company, Category, Drug Schedule
+  _bindQuickAddControl({ btnId, wrapId, inputId, saveBtnId, cancelBtnId, selectId, createFn, labelName }) {
+    const btn = document.getElementById(btnId);
+    const wrap = document.getElementById(wrapId);
+    const input = document.getElementById(inputId);
+    const saveBtn = document.getElementById(saveBtnId);
+    const cancelBtn = document.getElementById(cancelBtnId);
+    const select = document.getElementById(selectId);
+
+    const hideWrap = () => {
+      if (wrap) wrap.style.display = "none";
+      if (input) input.value = "";
+    };
+
+    btn?.addEventListener("click", () => {
+      if (!wrap) return;
+      const isHidden = wrap.style.display === "none" || !wrap.style.display;
+      wrap.style.display = isHidden ? "flex" : "none";
+      if (isHidden) {
+        input?.focus();
+      }
+    });
+
+    cancelBtn?.addEventListener("click", hideWrap);
+
+    const commit = async () => {
+      const val = (input?.value || "").trim();
+      if (!val) {
+        MedHub.toast(`Kripya ${labelName} ka naam darj karein`, "warning");
+        input?.focus();
+        return;
+      }
+      if (saveBtn) saveBtn.disabled = true;
+      const created = await createFn(val);
+      if (saveBtn) saveBtn.disabled = false;
+
+      const finalName = created?.name || val;
+      if (select) {
+        let existingOpt = Array.from(select.options).find(o => o.value.toLowerCase() === finalName.toLowerCase());
+        if (!existingOpt) {
+          existingOpt = document.createElement("option");
+          existingOpt.value = finalName;
+          existingOpt.textContent = finalName;
+          select.appendChild(existingOpt);
+        }
+        select.value = existingOpt.value;
+      }
+      hideWrap();
+      MedHub.toast(`${labelName} "${finalName}" add aur select ho gaya!`, "success");
+    };
+
+    saveBtn?.addEventListener("click", commit);
+    input?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        commit();
+      } else if (e.key === "Escape") {
+        hideWrap();
+      }
+    });
+  },
+
   // ==========================================================================
   // EXACT MODAL DIALOG MATCHING IMAGE 2: "Add New Medicine to Catalog"
   // ==========================================================================
-  openAddMedicineModal() {
+  async openAddMedicineModal() {
     const modalWrap = document.getElementById("add-medicine-modal-wrap");
     if (!modalWrap) return;
+
+    const [categoriesList, companiesList, schedulesList] = await Promise.all([
+      MedHub.api.getCategories(),
+      MedHub.api.getCompanies ? MedHub.api.getCompanies() : (MedHub.state.companies || []),
+      MedHub.api.getDrugSchedules ? MedHub.api.getDrugSchedules() : (MedHub.state.drugSchedules || [])
+    ]);
 
     modalWrap.innerHTML = `
       <div class="modal-overlay">
@@ -496,15 +570,26 @@ MedHub.inventory = {
 
           <!-- MODAL BODY FORM -->
           <form id="add-medicine-form" class="modal-dialog-body">
-            <!-- ROW 1: Medicine Name & Company -->
+            <!-- ROW 1: Medicine Name & Company (with + Add Company) -->
             <div class="form-row-2">
               <div class="form-group">
                 <label class="form-label">Medicine Name <span class="req">*</span></label>
                 <input type="text" id="m-name" class="input-field" placeholder="e.g. Dolo 650 Tablet" required />
               </div>
               <div class="form-group">
-                <label class="form-label">Company / Manufacturer <span class="req">*</span></label>
-                <input type="text" id="m-company" class="input-field" placeholder="e.g. Micro Labs Ltd" required />
+                <div class="label-flex">
+                  <label class="form-label">Company / Manufacturer <span class="req">*</span></label>
+                  <button type="button" class="btn-cat-mini" id="btn-add-company" title="Add new pharma company">+ Add Company</button>
+                </div>
+                <select id="m-company" class="input-field select-field" required>
+                  <option value="">Select Company / Manufacturer</option>
+                  ${(companiesList || []).map(c => `<option value="${c.name}">${c.name}</option>`).join("")}
+                </select>
+                <div id="inline-add-company-wrap" class="inline-quick-add" style="display: none; gap: 6px; margin-top: 6px; align-items: center;">
+                  <input type="text" id="inline-new-company-input" class="input-field" placeholder="New company (e.g. Mankind Pharma)" style="flex: 1;" />
+                  <button type="button" class="btn-primary-sm" id="btn-save-inline-company">Save</button>
+                  <button type="button" class="btn-outline-sm" id="btn-cancel-inline-company">✕</button>
+                </div>
               </div>
             </div>
 
@@ -520,7 +605,7 @@ MedHub.inventory = {
               </div>
             </div>
 
-            <!-- ROW 3: Category, Drug Schedule, Pack Size, Barcode -->
+            <!-- ROW 3: Category, Drug Schedule (+ Add), Pack Size, Barcode -->
             <div class="form-row-medicine-specs" style="margin-top: 14px;">
               <!-- Category -->
               <div class="form-group">
@@ -530,23 +615,29 @@ MedHub.inventory = {
                 </div>
                 <select id="m-category" class="input-field select-field">
                   <option value="">Select Category</option>
-                  ${MedHub.state.categories.map(c => `<option value="${c.name}">${c.name}</option>`).join("")}
+                  ${(categoriesList || []).map(c => `<option value="${c.name}">${c.name}</option>`).join("")}
                 </select>
+                <div id="inline-add-cat-wrap" class="inline-quick-add" style="display: none; gap: 4px; margin-top: 6px; align-items: center;">
+                  <input type="text" id="inline-new-cat-input" class="input-field" placeholder="New category..." style="flex: 1;" />
+                  <button type="button" class="btn-primary-sm" id="btn-save-inline-cat">Save</button>
+                  <button type="button" class="btn-outline-sm" id="btn-cancel-inline-cat">✕</button>
+                </div>
               </div>
 
-              <!-- Drug Schedule -->
+              <!-- Drug Schedule (with + Add Schedule) -->
               <div class="form-group">
                 <div class="label-flex">
                   <label class="form-label">Drug Schedule</label>
-                  <span class="label-badge-hint">(H, H1, C, X)</span>
+                  <button type="button" class="btn-cat-mini" id="btn-add-schedule" title="Add new drug schedule">+ Add</button>
                 </div>
                 <select id="m-schedule" class="input-field select-field">
-                  <option value="General (OTC / Non-Rx)">General (OTC / Non-Rx)</option>
-                  <option value="Schedule H">Schedule H</option>
-                  <option value="Schedule H1">Schedule H1</option>
-                  <option value="Schedule C">Schedule C</option>
-                  <option value="Schedule X">Schedule X</option>
+                  ${(schedulesList || []).map(s => `<option value="${s.name}">${s.name}</option>`).join("")}
                 </select>
+                <div id="inline-add-schedule-wrap" class="inline-quick-add" style="display: none; gap: 4px; margin-top: 6px; align-items: center;">
+                  <input type="text" id="inline-new-schedule-input" class="input-field" placeholder="e.g. Schedule H2" style="flex: 1;" />
+                  <button type="button" class="btn-primary-sm" id="btn-save-inline-schedule">Save</button>
+                  <button type="button" class="btn-outline-sm" id="btn-cancel-inline-schedule">✕</button>
+                </div>
               </div>
 
               <!-- Pack Size ("X" is always between for pack) -->
@@ -566,7 +657,7 @@ MedHub.inventory = {
               </div>
             </div>
 
-            <!-- ROW 4: Pricing & GST (Adjusted: MRP & Selling Rate removed) -->
+            <!-- ROW 4: Pricing & GST -->
             <div class="form-row-2" style="margin-top: 14px;">
               <div class="form-group">
                 <label class="form-label">Purchase Price (₹)</label>
@@ -618,25 +709,39 @@ MedHub.inventory = {
     document.getElementById("btn-close-med-modal")?.addEventListener("click", closeModal);
     document.getElementById("btn-cancel-modal")?.addEventListener("click", closeModal);
 
-    // Category Quick Add / Add & select handlers
-    const catSelect = document.getElementById("m-category");
-    const handleAddCategory = async (autoSelect = false) => {
-      const newCatName = prompt("Nayi category ka naam darj karein (e.g. Inhaler, Syrup):");
-      if (!newCatName || !newCatName.trim()) return;
-      const created = await MedHub.api.createCategory(newCatName.trim());
-      if (created) {
-        const opt = document.createElement("option");
-        opt.value = created.name;
-        opt.innerText = created.name;
-        catSelect.appendChild(opt);
-        if (autoSelect) {
-          catSelect.value = created.name;
-        }
-        MedHub.toast(`Category "${created.name}" add ho gayi!`, "success");
-      }
-    };
+    // Quick-Add bindings for Company, Category & Drug Schedule
+    this._bindQuickAddControl({
+      btnId: "btn-add-company",
+      wrapId: "inline-add-company-wrap",
+      inputId: "inline-new-company-input",
+      saveBtnId: "btn-save-inline-company",
+      cancelBtnId: "btn-cancel-inline-company",
+      selectId: "m-company",
+      createFn: (val) => MedHub.api.createCompany(val),
+      labelName: "Company"
+    });
 
-    document.getElementById("btn-add-cat")?.addEventListener("click", () => handleAddCategory(true));
+    this._bindQuickAddControl({
+      btnId: "btn-add-cat",
+      wrapId: "inline-add-cat-wrap",
+      inputId: "inline-new-cat-input",
+      saveBtnId: "btn-save-inline-cat",
+      cancelBtnId: "btn-cancel-inline-cat",
+      selectId: "m-category",
+      createFn: (val) => MedHub.api.createCategory(val),
+      labelName: "Category"
+    });
+
+    this._bindQuickAddControl({
+      btnId: "btn-add-schedule",
+      wrapId: "inline-add-schedule-wrap",
+      inputId: "inline-new-schedule-input",
+      saveBtnId: "btn-save-inline-schedule",
+      cancelBtnId: "btn-cancel-inline-schedule",
+      selectId: "m-schedule",
+      createFn: (val) => MedHub.api.createDrugSchedule(val),
+      labelName: "Drug Schedule"
+    });
 
     // Form Submit: Save Medicine
     const form = document.getElementById("add-medicine-form");
@@ -810,9 +915,25 @@ MedHub.inventory = {
   // ==========================================================================
   // EDIT MEDICINE DETAILS MODAL
   // ==========================================================================
-  openEditMedicineModal(med) {
+  async openEditMedicineModal(med) {
     let modalWrap = document.getElementById("add-medicine-modal-wrap");
     if (!modalWrap) return;
+
+    const [categoriesList, companiesList, schedulesList] = await Promise.all([
+      MedHub.api.getCategories(),
+      MedHub.api.getCompanies ? MedHub.api.getCompanies() : (MedHub.state.companies || []),
+      MedHub.api.getDrugSchedules ? MedHub.api.getDrugSchedules() : (MedHub.state.drugSchedules || [])
+    ]);
+
+    const companyNames = (companiesList || []).map(c => c.name);
+    if (med.company && !companyNames.some(c => c.toLowerCase() === med.company.toLowerCase())) {
+      companyNames.unshift(med.company);
+    }
+
+    const scheduleNames = (schedulesList || []).map(s => s.name);
+    if (med.drug_schedule && !scheduleNames.some(s => s.toLowerCase() === med.drug_schedule.toLowerCase())) {
+      scheduleNames.push(med.drug_schedule);
+    }
 
     const packParts = (med.pack_size || "1 × 10").split(/×|x/i).map(s => s.trim());
     const stripVal = packParts[0] || "1";
@@ -833,8 +954,19 @@ MedHub.inventory = {
                 <input type="text" id="edit-m-name" class="input-field" value="${med.name || ''}" required />
               </div>
               <div class="form-group">
-                <label class="form-label">Company / Manufacturer <span class="req">*</span></label>
-                <input type="text" id="edit-m-company" class="input-field" value="${med.company || ''}" required />
+                <div class="label-flex">
+                  <label class="form-label">Company / Manufacturer <span class="req">*</span></label>
+                  <button type="button" class="btn-cat-mini" id="btn-edit-add-company" title="Add new company">+ Add Company</button>
+                </div>
+                <select id="edit-m-company" class="input-field select-field" required>
+                  <option value="">Select Company / Manufacturer</option>
+                  ${companyNames.map(c => `<option value="${c}" ${(med.company || '').toLowerCase() === c.toLowerCase() ? 'selected' : ''}>${c}</option>`).join("")}
+                </select>
+                <div id="inline-edit-company-wrap" class="inline-quick-add" style="display: none; gap: 6px; margin-top: 6px; align-items: center;">
+                  <input type="text" id="inline-edit-company-input" class="input-field" placeholder="New company..." style="flex: 1;" />
+                  <button type="button" class="btn-primary-sm" id="btn-save-edit-inline-company">Save</button>
+                  <button type="button" class="btn-outline-sm" id="btn-cancel-edit-inline-company">✕</button>
+                </div>
               </div>
             </div>
 
@@ -851,21 +983,33 @@ MedHub.inventory = {
 
             <div class="form-row-medicine-specs" style="margin-top: 14px;">
               <div class="form-group">
-                <label class="form-label">Category</label>
+                <div class="label-flex">
+                  <label class="form-label">Category</label>
+                  <button type="button" class="btn-cat-mini" id="btn-edit-add-cat" title="Add new category">+ Add</button>
+                </div>
                 <select id="edit-m-category" class="input-field select-field">
-                  ${MedHub.state.categories.map(c => `<option value="${c.name}" ${med.category === c.name ? 'selected' : ''}>${c.name}</option>`).join("")}
+                  ${(categoriesList || []).map(c => `<option value="${c.name}" ${med.category === c.name ? 'selected' : ''}>${c.name}</option>`).join("")}
                 </select>
+                <div id="inline-edit-cat-wrap" class="inline-quick-add" style="display: none; gap: 4px; margin-top: 6px; align-items: center;">
+                  <input type="text" id="inline-edit-cat-input" class="input-field" placeholder="New category..." style="flex: 1;" />
+                  <button type="button" class="btn-primary-sm" id="btn-save-edit-inline-cat">Save</button>
+                  <button type="button" class="btn-outline-sm" id="btn-cancel-edit-inline-cat">✕</button>
+                </div>
               </div>
 
               <div class="form-group">
-                <label class="form-label">Drug Schedule</label>
+                <div class="label-flex">
+                  <label class="form-label">Drug Schedule</label>
+                  <button type="button" class="btn-cat-mini" id="btn-edit-add-schedule" title="Add new drug schedule">+ Add</button>
+                </div>
                 <select id="edit-m-schedule" class="input-field select-field">
-                  <option value="General (OTC / Non-Rx)" ${med.drug_schedule === 'General (OTC / Non-Rx)' ? 'selected' : ''}>General (OTC / Non-Rx)</option>
-                  <option value="Schedule H" ${med.drug_schedule === 'Schedule H' ? 'selected' : ''}>Schedule H</option>
-                  <option value="Schedule H1" ${med.drug_schedule === 'Schedule H1' ? 'selected' : ''}>Schedule H1</option>
-                  <option value="Schedule C" ${med.drug_schedule === 'Schedule C' ? 'selected' : ''}>Schedule C</option>
-                  <option value="Schedule X" ${med.drug_schedule === 'Schedule X' ? 'selected' : ''}>Schedule X</option>
+                  ${scheduleNames.map(s => `<option value="${s}" ${(med.drug_schedule || 'General (OTC / Non-Rx)') === s ? 'selected' : ''}>${s}</option>`).join("")}
                 </select>
+                <div id="inline-edit-schedule-wrap" class="inline-quick-add" style="display: none; gap: 4px; margin-top: 6px; align-items: center;">
+                  <input type="text" id="inline-edit-schedule-input" class="input-field" placeholder="New schedule..." style="flex: 1;" />
+                  <button type="button" class="btn-primary-sm" id="btn-save-edit-inline-schedule">Save</button>
+                  <button type="button" class="btn-outline-sm" id="btn-cancel-edit-inline-schedule">✕</button>
+                </div>
               </div>
 
               <div class="form-group">
@@ -891,11 +1035,11 @@ MedHub.inventory = {
               <div class="form-group">
                 <label class="form-label">GST Rate (%)</label>
                 <select id="edit-m-gst" class="input-field select-field">
-                  <option value="12" ${med.gst_percent === 12 ? 'selected' : ''}>12%</option>
-                  <option value="0" ${med.gst_percent === 0 ? 'selected' : ''}>0%</option>
-                  <option value="5" ${med.gst_percent === 5 ? 'selected' : ''}>5%</option>
-                  <option value="18" ${med.gst_percent === 18 ? 'selected' : ''}>18%</option>
-                  <option value="28" ${med.gst_percent === 28 ? 'selected' : ''}>28%</option>
+                  <option value="12" ${Number(med.gst_percent) === 12 ? 'selected' : ''}>12%</option>
+                  <option value="0" ${Number(med.gst_percent) === 0 ? 'selected' : ''}>0%</option>
+                  <option value="5" ${Number(med.gst_percent) === 5 ? 'selected' : ''}>5%</option>
+                  <option value="18" ${Number(med.gst_percent) === 18 ? 'selected' : ''}>18%</option>
+                  <option value="28" ${Number(med.gst_percent) === 28 ? 'selected' : ''}>28%</option>
                 </select>
               </div>
             </div>
@@ -917,6 +1061,40 @@ MedHub.inventory = {
     const closeEditModal = () => { modalWrap.innerHTML = ""; };
     document.getElementById("btn-close-edit-modal")?.addEventListener("click", closeEditModal);
     document.getElementById("btn-cancel-edit-modal")?.addEventListener("click", closeEditModal);
+
+    // Quick-Add bindings for Edit modal
+    this._bindQuickAddControl({
+      btnId: "btn-edit-add-company",
+      wrapId: "inline-edit-company-wrap",
+      inputId: "inline-edit-company-input",
+      saveBtnId: "btn-save-edit-inline-company",
+      cancelBtnId: "btn-cancel-edit-inline-company",
+      selectId: "edit-m-company",
+      createFn: (val) => MedHub.api.createCompany(val),
+      labelName: "Company"
+    });
+
+    this._bindQuickAddControl({
+      btnId: "btn-edit-add-cat",
+      wrapId: "inline-edit-cat-wrap",
+      inputId: "inline-edit-cat-input",
+      saveBtnId: "btn-save-edit-inline-cat",
+      cancelBtnId: "btn-cancel-edit-inline-cat",
+      selectId: "edit-m-category",
+      createFn: (val) => MedHub.api.createCategory(val),
+      labelName: "Category"
+    });
+
+    this._bindQuickAddControl({
+      btnId: "btn-edit-add-schedule",
+      wrapId: "inline-edit-schedule-wrap",
+      inputId: "inline-edit-schedule-input",
+      saveBtnId: "btn-save-edit-inline-schedule",
+      cancelBtnId: "btn-cancel-edit-inline-schedule",
+      selectId: "edit-m-schedule",
+      createFn: (val) => MedHub.api.createDrugSchedule(val),
+      labelName: "Drug Schedule"
+    });
 
     const form = document.getElementById("edit-medicine-form");
     form?.addEventListener("submit", async (e) => {

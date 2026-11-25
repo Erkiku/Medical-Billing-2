@@ -110,7 +110,11 @@ MedHub.icons = {
 // 3. STORE PROFILE & REACTIVE STATE
 let storedStore = null;
 try {
-  storedStore = JSON.parse(localStorage.getItem("medhub_store_settings"));
+  storedStore = JSON.parse(
+    localStorage.getItem("medhub_store_settings") ||
+    localStorage.getItem("mededuhub_store_settings") ||
+    "null"
+  );
 } catch (e) {}
 
 MedHub.defaultStore = {
@@ -121,11 +125,11 @@ MedHub.defaultStore = {
   state: "Delhi",
   pincode: "110001",
   phone: "9876543210",
-  gstin: "07AAAAA0000A1Z5",
+  gstin: "",
   dl_no_20b: "DL-20B-123456",
   dl_no_21b: "DL-21B-654321",
   drug_license_no: "DL-20B-123456",
-  fssai_no: "10012345678901",
+  fssai_no: "",
   upi_id: "sagarmedical@upi",
   bill_terms: "Dawai wapas nahi hogi. Get well soon!",
   bill_footer: "Dawai wapas nahi hogi. Get well soon!"
@@ -162,7 +166,66 @@ MedHub.state = {
     { id: "c9", name: "Inhaler" },
     { id: "c10", name: "Device" }
   ],
+  companies: [
+    { id: "co1", name: "Cipla" },
+    { id: "co2", name: "Sun Pharma" },
+    { id: "co3", name: "Micro Labs Ltd" },
+    { id: "co4", name: "Abbott" },
+    { id: "co5", name: "Dr. Reddy's" },
+    { id: "co6", name: "Aristo" },
+    { id: "co7", name: "Alkem" },
+    { id: "co8", name: "Torrent" },
+    { id: "co9", name: "Mankind Pharma" },
+    { id: "co10", name: "Lupin" },
+    { id: "co11", name: "Zydus Cadila" },
+    { id: "co12", name: "Glenmark" },
+    { id: "co13", name: "Intas" },
+    { id: "co14", name: "GSK" },
+    { id: "co15", name: "Pfizer" }
+  ],
+  drugSchedules: [
+    { id: "ds1", name: "General (OTC / Non-Rx)" },
+    { id: "ds2", name: "Schedule H" },
+    { id: "ds3", name: "Schedule H1" },
+    { id: "ds4", name: "Schedule C" },
+    { id: "ds5", name: "Schedule C1" },
+    { id: "ds6", name: "Schedule G" },
+    { id: "ds7", name: "Schedule K" },
+    { id: "ds8", name: "Schedule X" }
+  ],
   isLiveSupabase: false
+};
+
+// Cleanly resolves the active store without overwriting explicitly empty optional fields with dummy defaults
+MedHub.resolveActiveStore = function (apiStore) {
+  const active = (apiStore && apiStore.store_name)
+    ? apiStore
+    : ((MedHub.state.store && MedHub.state.store.store_name) ? MedHub.state.store : MedHub.defaultStore);
+  return {
+    ...active,
+    store_name: (active.store_name || MedHub.defaultStore.store_name).trim(),
+    gstin: (active.gstin || "").trim().toUpperCase(),
+    dl_no_20b: (active.dl_no_20b || active.drug_license_no || "").trim(),
+    dl_no_21b: (active.dl_no_21b || "").trim(),
+    drug_license_no: (active.drug_license_no || active.dl_no_20b || "").trim()
+  };
+};
+
+// Formats store GSTIN & DL numbers accurately (no fake fallback values when omitted)
+MedHub.formatStoreLicenses = function (store) {
+  const s = store || {};
+  const gstin = (s.gstin || "").trim().toUpperCase();
+  const dl20 = (s.dl_no_20b || s.drug_license_no || "").trim();
+  const dl21 = (s.dl_no_21b || "").trim();
+  const dlParts = [];
+  if (dl20) dlParts.push(dl20);
+  if (dl21 && dl21.toLowerCase() !== dl20.toLowerCase()) dlParts.push(dl21);
+  return {
+    gstin,
+    dl20,
+    dl21,
+    dlDisplay: dlParts.join(", ")
+  };
 };
 
 // REAL-TIME STORE HEADER UPDATE (Screenshot 3 header banner)
@@ -185,16 +248,19 @@ MedHub.updateStoreHeader = function (storeData) {
   if (storeData) {
     MedHub.state.store = { ...MedHub.state.store, ...storeData };
     try {
-      localStorage.setItem("medhub_store_settings", JSON.stringify(MedHub.state.store));
+      const json = JSON.stringify(MedHub.state.store);
+      localStorage.setItem("medhub_store_settings", json);
+      localStorage.setItem("mededuhub_store_settings", json);
     } catch (e) {}
   }
   const s = MedHub.state.store;
+  const lic = MedHub.formatStoreLicenses(s);
   if (storeBadgeEl) {
     storeBadgeEl.innerHTML = `
       <span class="store-badge-icon">${MedHub.icons.store}</span>
       <span class="store-badge-name">${s.store_name || "SAGAR MEDICAL STORE"}</span>
-      <span class="store-badge-meta">GSTIN: ${s.gstin || "07AAAAA0000A1Z5"}</span>
-      <span class="store-badge-meta">D.L: ${s.dl_no_20b || s.drug_license_no || "DL-20B-123456"}</span>
+      ${lic.gstin ? `<span class="store-badge-meta">GSTIN: ${lic.gstin}</span>` : ""}
+      ${lic.dlDisplay ? `<span class="store-badge-meta">D.L: ${lic.dlDisplay}</span>` : ""}
     `;
   }
 };

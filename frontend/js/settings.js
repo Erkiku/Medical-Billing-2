@@ -83,7 +83,7 @@ MedHub.settings = {
             <div class="form-row-3">
               <div class="form-group">
                 <label class="form-label">GSTIN (15 Digits)</label>
-                <input type="text" id="st-gstin" class="input-field" placeholder="07AAAAA0000A1Z5 (Optional)" value="${s.gstin || ""}" />
+                <input type="text" id="st-gstin" class="input-field" placeholder="07AAAAA0000A1Z5 (Optional)" maxlength="15" style="text-transform: uppercase;" value="${s.gstin || ""}" />
               </div>
               <div class="form-group">
                 <label class="form-label">Drug License (DL No. 20B) <span class="req">*</span></label>
@@ -176,7 +176,11 @@ MedHub.settings = {
       const state = document.getElementById("st-state").value.trim();
       const pincode = document.getElementById("st-pincode").value.trim();
       const phone = document.getElementById("st-phone").value.trim();
-      const gstin = document.getElementById("st-gstin").value.trim();
+      const gstin = document.getElementById("st-gstin").value.trim().toUpperCase();
+      if (gstin && gstin.length !== 15) {
+        MedHub.toast("GSTIN 15 characters ka hona chahiye (ya khali chhod dein agar GST unregistered hai)", "warning");
+        return;
+      }
       const dl20 = document.getElementById("st-dl20").value.trim();
       const dl21 = document.getElementById("st-dl21").value.trim();
       const fssai = document.getElementById("st-fssai").value.trim();
@@ -277,12 +281,18 @@ MedHub.settings = {
 
     const stGstinInput = container.querySelector("#st-gstin");
     stGstinInput?.addEventListener("input", (e) => {
+      e.target.value = e.target.value.toUpperCase();
       MedHub.updateStoreHeader({ gstin: e.target.value.trim() });
     });
 
     const stDlInput = container.querySelector("#st-dl20");
     stDlInput?.addEventListener("input", (e) => {
       MedHub.updateStoreHeader({ dl_no_20b: e.target.value.trim(), drug_license_no: e.target.value.trim() });
+    });
+
+    const stDl21Input = container.querySelector("#st-dl21");
+    stDl21Input?.addEventListener("input", (e) => {
+      MedHub.updateStoreHeader({ dl_no_21b: e.target.value.trim() });
     });
 
     const stPharmaNameInput = container.querySelector("#st-pharmacist-name");

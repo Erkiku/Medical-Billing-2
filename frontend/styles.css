@@ -3828,5 +3828,25 @@ button {
   margin-top: 2px;
 }
 
+.inline-quick-add {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  margin-top: 6px;
+}
+.inline-quick-add .input-field {
+  min-width: 0;
+  flex: 1;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+.inline-quick-add .btn-primary-sm,
+.inline-quick-add .btn-outline-sm {
+  padding: 6px 9px;
+  font-size: 11.5px;
+  flex-shrink: 0;
+}
+
+
 
 
