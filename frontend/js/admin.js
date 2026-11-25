@@ -60,7 +60,7 @@ MedHub.admin = {
             <button type="button" class="btn-outline" id="btn-admin-change-pass">
               🔑 Security Settings
             </button>
-            <button type="button" class="btn-primary" id="btn-admin-add-store" style="background: #0f766e !important;">
+            <button type="button" class="btn-primary" id="btn-admin-add-store" style="background: #2563eb !important;">
               ${MedHub.icons.plus} + Provision New Store
             </button>
           </div>
@@ -94,10 +94,10 @@ MedHub.admin = {
 
         <!-- TOP CONSOLE TABS SWITCHER -->
         <div class="login-portal-switcher" style="display: flex; max-width: 520px; background: rgba(0, 0, 0, 0.06); border: 1.5px solid var(--cream-border); border-radius: 30px; padding: 4px; margin-top: 22px;">
-          <button type="button" class="portal-switch-btn ${this.activeView === 'logins' ? 'active' : ''}" id="tab-view-logins" style="flex: 1; padding: 10px 16px; border-radius: 25px; border: none; font-size: 13px; font-weight: 800; cursor: pointer; transition: all 0.2s; ${this.activeView === 'logins' ? 'background: #0f766e; color: #ffffff; box-shadow: 0 2px 8px rgba(15,118,110,0.3);' : 'background: transparent; color: #475569;'}">
+          <button type="button" class="portal-switch-btn ${this.activeView === 'logins' ? 'active' : ''}" id="tab-view-logins" style="flex: 1; padding: 10px 16px; border-radius: 25px; border: none; font-size: 13px; font-weight: 800; cursor: pointer; transition: all 0.2s; ${this.activeView === 'logins' ? 'background: #2563eb; color: #ffffff; box-shadow: 0 2px 8px rgba(37,99,235,0.3);' : 'background: transparent; color: #475569;'}">
             🕒 Stores & Login Monitor (${totalStores})
           </button>
-          <button type="button" class="portal-switch-btn ${this.activeView === 'stock' ? 'active' : ''}" id="tab-view-stock" style="flex: 1; padding: 10px 16px; border-radius: 25px; border: none; font-size: 13px; font-weight: 800; cursor: pointer; transition: all 0.2s; ${this.activeView === 'stock' ? 'background: #0f766e; color: #ffffff; box-shadow: 0 2px 8px rgba(15,118,110,0.3);' : 'background: transparent; color: #475569;'}">
+          <button type="button" class="portal-switch-btn ${this.activeView === 'stock' ? 'active' : ''}" id="tab-view-stock" style="flex: 1; padding: 10px 16px; border-radius: 25px; border: none; font-size: 13px; font-weight: 800; cursor: pointer; transition: all 0.2s; ${this.activeView === 'stock' ? 'background: #2563eb; color: #ffffff; box-shadow: 0 2px 8px rgba(37,99,235,0.3);' : 'background: transparent; color: #475569;'}">
             📦 Real-time Stock Monitor (${this.stocksList.length})
           </button>
         </div>
@@ -367,7 +367,7 @@ MedHub.admin = {
           <td>
             <span class="badge-code" style="font-family: monospace; font-weight: 700;">${b.batch_no || "BT-DEFAULT"}</span>
           </td>
-          <td class="cell-nowrap" style="font-weight: 700; color: #0f766e;">
+          <td class="cell-nowrap" style="font-weight: 700; color: #1d4ed8;">
             📅 ${expDisplay}
           </td>
           <td class="cell-nowrap" style="font-weight: 700;">₹${Number(b.mrp || b.selling_price || 0).toFixed(2)}</td>
@@ -585,7 +585,7 @@ MedHub.admin = {
 
             <div class="modal-dialog-footer" style="margin-top: 20px;">
               <button type="button" class="btn-dialog-cancel" id="btn-cancel-stock-modal">Cancel</button>
-              <button type="submit" class="btn-dialog-save" style="background: #0f766e !important;">Save to Supabase 🚀</button>
+              <button type="submit" class="btn-dialog-save" style="background: #2563eb !important;">Save to Supabase 🚀</button>
             </div>
           </form>
         </div>
@@ -689,7 +689,7 @@ MedHub.admin = {
 
             <div class="modal-dialog-footer" style="margin-top: 22px;">
               <button type="button" class="btn-dialog-cancel" id="btn-cancel-admin-modal">Cancel</button>
-              <button type="submit" class="btn-dialog-save" style="background: #0f766e !important;">Create & Authorize Store 🚀</button>
+              <button type="submit" class="btn-dialog-save" style="background: #2563eb !important;">Create & Authorize Store 🚀</button>
             </div>
           </form>
         </div>
@@ -792,7 +792,7 @@ MedHub.admin = {
 
             <div class="modal-dialog-footer" style="margin-top: 22px;">
               <button type="button" class="btn-dialog-cancel" id="btn-cancel-edit-modal">Cancel</button>
-              <button type="submit" class="btn-dialog-save" style="background: #0f766e !important;">Save Changes 💾</button>
+              <button type="submit" class="btn-dialog-save" style="background: #2563eb !important;">Save Changes 💾</button>
             </div>
           </form>
         </div>
@@ -844,7 +844,7 @@ MedHub.admin = {
             </div>
             <div class="modal-dialog-footer" style="margin-top: 18px;">
               <button type="button" class="btn-dialog-cancel" id="btn-cancel-pass-modal">Cancel</button>
-              <button type="submit" class="btn-dialog-save" style="background: #0f766e !important;">Reset Password</button>
+              <button type="submit" class="btn-dialog-save" style="background: #2563eb !important;">Reset Password</button>
             </div>
           </form>
         </div>
@@ -895,7 +895,7 @@ MedHub.admin = {
             </div>
             <div class="modal-dialog-footer" style="margin-top: 20px;">
               <button type="button" class="btn-dialog-cancel" id="btn-cancel-master-modal">Cancel</button>
-              <button type="submit" class="btn-dialog-save" style="background: #0f766e !important;">Save Security Keys</button>
+              <button type="submit" class="btn-dialog-save" style="background: #2563eb !important;">Save Security Keys</button>
             </div>
           </form>
         </div>

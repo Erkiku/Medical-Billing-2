@@ -91,7 +91,7 @@ MedHub.login = {
       <form id="step1-auth-form" class="template-auth-form">
         <!-- PORTAL SELECTOR: STORE PHARMACIST vs MASTER ADMIN -->
         <div class="login-portal-switcher" style="display: flex; background: rgba(0, 0, 0, 0.22); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 30px; padding: 4px; margin-bottom: 20px;">
-          <button type="button" class="portal-switch-btn ${!isSuper ? 'active' : ''}" data-mode="store" style="flex: 1; padding: 8px 10px; border-radius: 25px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; ${!isSuper ? 'background: #ffffff; color: #0f766e; box-shadow: 0 2px 8px rgba(0,0,0,0.15);' : 'background: transparent; color: #e2e8f0;'}">
+          <button type="button" class="portal-switch-btn ${!isSuper ? 'active' : ''}" data-mode="store" style="flex: 1; padding: 8px 10px; border-radius: 25px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; ${!isSuper ? 'background: #ffffff; color: #1d4ed8; box-shadow: 0 2px 8px rgba(0,0,0,0.15);' : 'background: transparent; color: #e2e8f0;'}">
             🏪 Store Login
           </button>
           <button type="button" class="portal-switch-btn ${isSuper ? 'active' : ''}" data-mode="superadmin" style="flex: 1; padding: 8px 10px; border-radius: 25px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; ${isSuper ? 'background: #fbbf24; color: #78350f; box-shadow: 0 2px 8px rgba(0,0,0,0.15);' : 'background: transparent; color: #e2e8f0;'}">

@@ -92,7 +92,7 @@ MedHub.purchases = {
                         `}
                       </td>
                       <td><strong>${MedHub.rupee(total)}</strong></td>
-                      <td><span style="color:#0f766e;font-weight:700;">${MedHub.rupee(paid)}</span></td>
+                      <td><span style="color:#1d4ed8;font-weight:700;">${MedHub.rupee(paid)}</span></td>
                       <td>
                         ${dues > 0 
                           ? `<span style="color:#dc2626;font-weight:800;background:#fee2e2;padding:2px 8px;border-radius:4px;">${MedHub.rupee(dues)}</span>`
@@ -397,7 +397,7 @@ MedHub.purchases = {
               </div>
               <div class="pur-summary-stat">
                 <span class="pur-stat-label">Net Purchase Total</span>
-                <span class="pur-stat-val" style="color: #0f766e;" id="pur-total-amount-display">₹0.00</span>
+                <span class="pur-stat-val" style="color: #1d4ed8;" id="pur-total-amount-display">₹0.00</span>
               </div>
               <div class="pur-summary-stat">
                 <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 3px;">
@@ -427,7 +427,7 @@ MedHub.purchases = {
             <!-- 4. MODAL FOOTER -->
             <div class="modal-dialog-footer" style="margin-top: 22px; display: flex; justify-content: flex-end; gap: 12px;">
               <button type="button" class="btn-dialog-cancel" id="btn-cancel-pur-modal">Cancel</button>
-              <button type="submit" id="btn-save-pur-modal" class="btn-dialog-save" style="background: #0f766e !important; color: #ffffff !important; font-weight: 700;">
+              <button type="submit" id="btn-save-pur-modal" class="btn-dialog-save" style="background: #2563eb !important; color: #ffffff !important; font-weight: 700;">
                 ${isEdit ? "💾 Update Purchase & Inward Stock" : "💾 Save Purchase & Inward Stock"}
               </button>
             </div>
@@ -568,7 +568,7 @@ MedHub.purchases = {
             class="pur-item-total" 
             readonly 
             value="0.00" 
-            style="background: #f8fafc; font-weight: 700; color: #0f766e; text-align: right;" 
+            style="background: #f8fafc; font-weight: 700; color: #1d4ed8; text-align: right;" 
           />
         </td>
         <td style="text-align: center;">
@@ -1044,7 +1044,7 @@ MedHub.purchases = {
                       <td style="text-align: right;">₹${Number(it.mrp || 0).toFixed(2)}</td>
                       <td style="text-align: center;">${Number(it.discount_percent || 0)}%</td>
                       <td style="text-align: center;"><span class="badge-cat">${it.gst_percent !== undefined ? it.gst_percent + '%' : '12%'}</span></td>
-                      <td style="text-align: right; font-weight: 700; color: #0f766e;">₹${Number(it.line_total || (it.quantity * it.purchase_rate) || 0).toFixed(2)}</td>
+                      <td style="text-align: right; font-weight: 700; color: #1d4ed8;">₹${Number(it.line_total || (it.quantity * it.purchase_rate) || 0).toFixed(2)}</td>
                     </tr>
                   `).join("") : `
                     <tr>
@@ -1069,7 +1069,7 @@ MedHub.purchases = {
                     <td colspan="5">Grand Total:</td>
                     <td style="text-align: center;">${totalQty}</td>
                     <td colspan="4"></td>
-                    <td style="text-align: right; color: #0f766e;">₹${Number(purchase.total_amount).toFixed(2)}</td>
+                    <td style="text-align: right; color: #1d4ed8;">₹${Number(purchase.total_amount).toFixed(2)}</td>
                   </tr>
                 </tfoot>
               </table>

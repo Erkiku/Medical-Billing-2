@@ -303,23 +303,23 @@ MedHub.updateUserBadge = function (name, role) {
 MedHub.renderLogo = function (size = 38) {
   return `
     <div class="brand-logo-emblem" style="width:${size}px;height:${size}px;flex-shrink:0;">
-      <svg width="${size}" height="${size}" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 4px 10px rgba(236, 72, 153, 0.4)); overflow: visible;">
+      <svg width="${size}" height="${size}" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 4px 10px rgba(37, 99, 235, 0.4)); overflow: visible;">
         <defs>
-          <linearGradient id="medPillPink" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#fb7185" />
-            <stop offset="50%" stop-color="#ec4899" />
-            <stop offset="100%" stop-color="#be185d" />
+          <linearGradient id="medPillBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#60a5fa" />
+            <stop offset="50%" stop-color="#2563eb" />
+            <stop offset="100%" stop-color="#1e40af" />
           </linearGradient>
           <linearGradient id="medPillWhite" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stop-color="#ffffff" />
-            <stop offset="65%" stop-color="#f1f5f9" />
-            <stop offset="100%" stop-color="#cbd5e1" />
+            <stop offset="65%" stop-color="#f8fafc" />
+            <stop offset="100%" stop-color="#e2e8f0" />
           </linearGradient>
         </defs>
         <!-- Slanted 3D Precision Capsule -->
         <g transform="rotate(-38 22 22)">
-          <!-- Top Cap (Vibrant Luxury Pink) -->
-          <path d="M13 12 C13 5.5 17 2 22 2 C27 2 31 5.5 31 12 L31 21 L13 21 Z" fill="url(#medPillPink)" />
+          <!-- Top Cap (Vibrant Royal Blue) -->
+          <path d="M13 12 C13 5.5 17 2 22 2 C27 2 31 5.5 31 12 L31 21 L13 21 Z" fill="url(#medPillBlue)" />
           <!-- Bottom Body (Pearl White) -->
           <path d="M13 23 L31 23 L31 32 C31 38.5 27 42 22 42 C17 42 13 38.5 13 32 Z" fill="url(#medPillWhite)" />
           <!-- Center Divider Band -->

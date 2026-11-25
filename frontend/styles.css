@@ -1,37 +1,45 @@
 /* ============================================================================
    MedEduHub Pharmacy Management System
-   Theme: Luxury Pink, Obsidian Black & Cream
+   Theme: Royal Blue, Crisp White & Warm Cream
    Palette:
-     - Pink: #ec4899 (hot pink), #db2777 (deep pink), #fdf2f8 (light pink tint)
-     - Black: #09090b (pure obsidian), #111113 (deep charcoal), #18181b (dark card)
-     - Cream: #fcf9f2 (warm cream body), #f5efe1 (soft creamy card), #e8dec8 (creamy border)
+     - Blue: #2563eb (royal blue), #1d4ed8 (deep blue), #eff6ff (soft blue tint)
+     - Navy: #0f2557 (sidebar deep blue), #0f172a (ink), #475569 (soft slate)
+     - Cream: #faf6ed (warm cream body), #fcf8ef (creamy card), #e5dccb (creamy border)
    ============================================================================ */
 
 :root {
-  /* Cream Shades */
-  --cream-bg: #f7f3e8;
-  --cream-surface: #fffdf8;
-  --cream-card: #fcf8ee;
-  --cream-hover: #f3ece0;
-  --cream-border: #e6dcce;
-  --cream-border-dark: #d5c8b5;
+  /* Cream & White Shades */
+  --cream-bg: #faf6ed;
+  --cream-surface: #ffffff;
+  --cream-card: #fcf8ef;
+  --cream-hover: #f3ede0;
+  --cream-border: #e5dccb;
+  --cream-border-dark: #d2c6b0;
 
-  /* Black / Charcoal Shades */
-  --black-deep: #09090b;
-  --black-sidebar: #111113;
-  --black-surface: #18181b;
-  --black-muted: #27272a;
-  --black-ink: #18181b;
-  --black-soft: #3f3f46;
+  /* Navy & Slate Ink Shades */
+  --black-deep: #0f172a;
+  --black-sidebar: #0f2557;
+  --black-surface: #173473;
+  --black-muted: #1e40af;
+  --black-ink: #1e293b;
+  --black-soft: #475569;
 
-  /* Pink Accents */
-  --pink-primary: #ec4899;
-  --pink-hover: #db2777;
-  --pink-dark: #be185d;
-  --pink-light: #fdf2f8;
-  --pink-border: #fbcfe8;
-  --pink-glow: rgba(236, 72, 153, 0.28);
-  --pink-soft-glow: rgba(236, 72, 153, 0.12);
+  /* Royal Blue Accents (and legacy aliases for uniform theme) */
+  --blue-primary: #2563eb;
+  --blue-hover: #1d4ed8;
+  --blue-dark: #1e40af;
+  --blue-light: #eff6ff;
+  --blue-border: #bfdbfe;
+  --blue-glow: rgba(37, 99, 235, 0.25);
+  --blue-soft-glow: rgba(37, 99, 235, 0.12);
+
+  --pink-primary: #2563eb;
+  --pink-hover: #1d4ed8;
+  --pink-dark: #1e40af;
+  --pink-light: #eff6ff;
+  --pink-border: #bfdbfe;
+  --pink-glow: rgba(37, 99, 235, 0.25);
+  --pink-soft-glow: rgba(37, 99, 235, 0.12);
 
   /* Functional */
   --green: #10b981;
@@ -89,19 +97,19 @@ button {
 }
 
 /* ============================================================================
-   LOGIN PAGE (Exact Mint-Teal Medical Template Style)
+   LOGIN PAGE (Cohesive Royal Blue, White & Creamy Medical Style)
    ============================================================================ */
 .login-screen-wrap.template-style {
   height: 100vh;
   max-height: 100vh;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  background: #8ec7c3;
+  background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
   overflow: hidden;
 }
 
 .login-brand-panel.template-panel {
-  background: #8ec7c3;
+  background: transparent;
   color: #ffffff;
   padding: 24px 44px;
   display: flex;
@@ -154,11 +162,11 @@ button {
   letter-spacing: -0.6px;
   margin: 0 0 14px 0;
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  text-shadow: 0 2px 10px rgba(23, 78, 74, 0.08);
+  text-shadow: 0 2px 10px rgba(15, 23, 42, 0.16);
 }
 
 .template-hero-subtitle {
-  color: #18524e;
+  color: #dbeafe;
   font-size: 17.5px;
   font-weight: 600;
   line-height: 1.45;
@@ -184,7 +192,7 @@ button {
 .template-field-label {
   font-size: 12.5px;
   font-weight: 700;
-  color: #144e4a;
+  color: #eff6ff;
   letter-spacing: 0.3px;
 }
 
@@ -206,8 +214,8 @@ button {
 
 .template-field-input:focus {
   background: #ffffff;
-  border-color: #2b8c86;
-  box-shadow: 0 0 0 3px rgba(43, 140, 134, 0.25);
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.35);
 }
 
 .template-field-input::placeholder {
@@ -233,7 +241,7 @@ button {
   transform: translateY(-50%);
   background: none;
   border: none;
-  color: #14534f;
+  color: #1e40af;
   cursor: pointer;
   padding: 6px;
   display: flex;
@@ -245,15 +253,15 @@ button {
 }
 
 .template-eye-btn:hover {
-  background: rgba(20, 83, 79, 0.1);
-  color: #0f3d3a;
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
 }
 
 .template-pill-btn {
   width: 100%;
   max-width: 320px;
   height: 52px;
-  background: #469a94;
+  background: #0f2557;
   color: #ffffff;
   border: none;
   border-radius: 999px;
@@ -266,14 +274,14 @@ button {
   justify-content: center;
   gap: 10px;
   margin-top: 10px;
-  box-shadow: 0 4px 16px rgba(27, 85, 80, 0.3);
+  box-shadow: 0 4px 16px rgba(15, 37, 87, 0.35);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .template-pill-btn:hover {
-  background: #398882;
+  background: #0b1c42;
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(27, 85, 80, 0.4);
+  box-shadow: 0 6px 20px rgba(15, 37, 87, 0.45);
 }
 
 .template-pill-btn:active {
@@ -283,13 +291,13 @@ button {
 .template-quick-btn {
   background: none;
   border: none;
-  color: #144e4a;
+  color: #eff6ff;
   font-size: 12px;
   font-weight: 700;
   text-align: left;
   cursor: pointer;
   padding: 4px 0;
-  opacity: 0.85;
+  opacity: 0.9;
   transition: opacity 0.15s ease;
 }
 
@@ -608,9 +616,9 @@ button {
   align-items: center;
   gap: 7px;
   padding: 5px 13px;
-  background: rgba(236, 72, 153, 0.08);
-  border: 1px solid rgba(236, 72, 153, 0.28);
-  color: #f472b6;
+  background: rgba(37, 99, 235, 0.14);
+  border: 1px solid rgba(147, 197, 253, 0.35);
+  color: #93c5fd;
   border-radius: 999px;
   font-size: 10.5px;
   font-weight: 800;
@@ -993,15 +1001,15 @@ button {
   background: var(--cream-bg);
 }
 
-/* SIDEBAR - SLEEK OBSIDIAN BLACK WITH HOT PINK ACTIVE ACCENT */
+/* SIDEBAR - DEEP NAVY BLUE WITH ROYAL BLUE ACTIVE ACCENT */
 .sidebar {
   width: 255px;
-  background: var(--black-sidebar);
-  color: #a1a1aa;
+  background: linear-gradient(180deg, #0f2557 0%, #0b1c42 100%);
+  color: #cbd5e1;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  border-right: 1px solid rgba(255, 255, 255, 0.07);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
   position: sticky;
   top: 0;
   height: 100vh;
@@ -1014,7 +1022,7 @@ button {
   align-items: center;
   gap: 12px;
   padding: 22px 20px 18px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .brand-logo-icon {
@@ -1036,7 +1044,7 @@ button {
 }
 
 .brand-sub {
-  color: var(--pink-primary);
+  color: #93c5fd;
   font-size: 10.5px;
   font-weight: 700;
   text-transform: uppercase;
@@ -1058,7 +1066,7 @@ button {
   padding: 11px 14px;
   border-radius: var(--radius-md);
   background: transparent;
-  color: #a1a1aa;
+  color: #cbd5e1;
   font-size: 13.5px;
   font-weight: 600;
   text-align: left;
@@ -1069,22 +1077,22 @@ button {
   width: 18px;
   height: 18px;
   stroke-width: 2;
-  color: #71717a;
+  color: #93c5fd;
 }
 
 .nav-item:hover {
-  background: rgba(236, 72, 153, 0.08);
+  background: rgba(59, 130, 246, 0.16);
   color: #ffffff;
 }
 
 .nav-item:hover .nav-icon svg {
-  color: var(--pink-primary);
+  color: #ffffff;
 }
 
 .nav-item.active {
   background: var(--pink-primary) !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 16px var(--pink-glow);
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.4);
   font-weight: 700;
 }
 
@@ -1094,8 +1102,8 @@ button {
 
 .sidebar-footer {
   padding: 14px 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  background: var(--black-deep);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: #0a1838;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1111,7 +1119,7 @@ button {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--pink-primary) 0%, var(--pink-dark) 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -1127,25 +1135,25 @@ button {
 }
 
 .user-name {
-  color: #f4f4f5;
+  color: #ffffff;
   font-size: 12.5px;
   font-weight: 700;
 }
 
 .user-role {
-  color: #71717a;
+  color: #93c5fd;
   font-size: 10.5px;
 }
 
 .btn-sidebar-logout {
-  color: #71717a;
+  color: #93c5fd;
   padding: 6px;
   border-radius: var(--radius-sm);
 }
 
 .btn-sidebar-logout:hover {
-  color: var(--pink-primary);
-  background: rgba(236, 72, 153, 0.1);
+  color: #ffffff;
+  background: rgba(59, 130, 246, 0.2);
 }
 
 .btn-sidebar-logout svg {
@@ -1976,10 +1984,10 @@ button {
 }
 
 .pay-chip.active {
-  background: var(--black-deep);
+  background: var(--blue-primary);
   color: #ffffff;
-  border-color: var(--black-deep);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  border-color: var(--blue-primary);
+  box-shadow: 0 2px 8px var(--blue-glow);
 }
 
 .btn-primary-large {
@@ -2414,7 +2422,7 @@ button {
 }
 
 .btn-cat-mini:hover {
-  background: #fce7f3;
+  background: #dbeafe;
 }
 
 .category-buttons-row {
@@ -2446,7 +2454,7 @@ button {
 }
 
 .btn-cat-action-primary:hover {
-  background: #fce7f3;
+  background: #dbeafe;
 }
 
 .modal-subcard-batch {
@@ -3625,10 +3633,10 @@ button {
   display: inline-flex !important;
   align-items: center !important;
   gap: 8px !important;
-  background: #e91e63 !important;
+  background: #2563eb !important;
   color: #ffffff !important;
   font-weight: 700 !important;
-  box-shadow: 0 4px 12px rgba(233, 30, 99, 0.35) !important;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35) !important;
   border: none !important;
   cursor: pointer !important;
   border-radius: 8px !important;
@@ -3637,15 +3645,15 @@ button {
 }
 .btn-direct-print-enter:hover,
 .btn-direct-print-enter:focus {
-  background: #d81b60 !important;
-  box-shadow: 0 6px 16px rgba(233, 30, 99, 0.45) !important;
+  background: #1d4ed8 !important;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.45) !important;
   transform: translateY(-1px) !important;
 }
 .btn-enter-print-now {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #0f766e !important;
+  background: #1e40af !important;
   color: #ffffff !important;
   font-weight: 700;
   border: none;
@@ -3656,11 +3664,11 @@ button {
   transition: all 0.2s ease;
 }
 .btn-enter-print-now:hover {
-  background: #0d9488 !important;
+  background: #1d4ed8 !important;
 }
 .instant-print-banner {
-  background: #fdf2f8;
-  border-bottom: 1.5px solid #fbcfe8;
+  background: #eff6ff;
+  border-bottom: 1.5px solid #bfdbfe;
   padding: 8px 18px;
   display: flex;
   justify-content: space-between;
@@ -3668,7 +3676,7 @@ button {
   gap: 12px;
 }
 .btn-enter-print-pill {
-  background: #e91e63;
+  background: #2563eb;
   color: #ffffff;
   border: none;
   padding: 5px 14px;
@@ -3681,7 +3689,7 @@ button {
   gap: 6px;
 }
 .btn-enter-print-pill:hover {
-  background: #d81b60;
+  background: #1d4ed8;
 }
 
 /* ============================================================================
@@ -3781,7 +3789,7 @@ button {
   min-width: 98px;
 }
 .pur-items-table input:focus {
-  border-color: #0d9488;
+  border-color: #2563eb;
   outline: none;
 }
 .pur-del-btn {
@@ -3862,13 +3870,13 @@ button {
   border-radius: 5px !important;
 }
 .pur-pack-duo-wrap input:focus {
-  border-color: #0d9488 !important;
-  box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2) !important;
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2) !important;
 }
 .pur-pack-x {
   font-size: 13px !important;
   font-weight: 800 !important;
-  color: #0f766e !important;
+  color: #1d4ed8 !important;
   user-select: none !important;
   flex-shrink: 0 !important;
   padding: 0 1px !important;
@@ -4005,7 +4013,7 @@ button {
 .expiry-my-sep {
   font-weight: 900;
   font-size: 14px;
-  color: #0f766e;
+  color: #1d4ed8;
   user-select: none;
   flex-shrink: 0;
 }

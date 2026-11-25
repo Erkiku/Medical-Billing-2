@@ -363,7 +363,7 @@ MedHub.invoices = {
                 </div>
                 <div style="display: flex; justify-content: space-between; font-size: 16px; font-weight: 800; border-top: 1.5px solid var(--cream-border-dark); padding-top: 8px; margin-top: 6px; margin-bottom: 10px;">
                   <span>Grand Total:</span>
-                  <span id="eb-grand-total-val" style="color: #0f766e;">₹0.00</span>
+                  <span id="eb-grand-total-val" style="color: #1d4ed8;">₹0.00</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; margin-bottom: 8px;">
                   <span>Paid Amount (₹):</span>
@@ -382,7 +382,7 @@ MedHub.invoices = {
             <div class="modal-dialog-footer" style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
               <button type="button" class="btn-dialog-cancel" id="btn-cancel-edit-bill">Cancel</button>
               <button type="submit" class="btn-dialog-save" id="btn-save-edit-bill">Save Invoice Changes 💾</button>
-              <button type="button" class="btn-primary" id="btn-save-print-edit-bill" style="background: #0f766e !important;">
+              <button type="button" class="btn-primary" id="btn-save-print-edit-bill" style="background: #1d4ed8 !important;">
                 ${MedHub.icons.print} Save & Print
               </button>
             </div>

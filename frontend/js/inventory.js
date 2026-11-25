@@ -819,7 +819,7 @@ MedHub.inventory = {
             <div style="background: #f0f7ff; padding: 12px 14px; border-radius: 6px; border: 1.5px solid #bfdbfe; margin-bottom: 16px;">
               <strong style="color: #1e40af; font-size: 14.5px;">${med.name}</strong>
               <div style="font-size: 12px; color: #475569; margin-top: 4px;">
-                ${med.company || "Manufacturer"} • Current Stock: <strong style="color: #0f766e;">${med.available_qty || 0} units</strong>
+                ${med.company || "Manufacturer"} • Current Stock: <strong style="color: #1d4ed8;">${med.available_qty || 0} units</strong>
               </div>
             </div>
 
