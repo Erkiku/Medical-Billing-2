@@ -3692,6 +3692,9 @@ button {
   align-items: stretch !important;
   justify-content: stretch !important;
 }
+#pur-sub-add-medicine-wrap .modal-overlay {
+  z-index: 2500 !important;
+}
 .purchase-modal-box {
   max-width: 100vw !important;
   width: 100vw !important;

@@ -549,8 +549,8 @@ MedHub.inventory = {
   // ==========================================================================
   // EXACT MODAL DIALOG MATCHING IMAGE 2: "Add New Medicine to Catalog"
   // ==========================================================================
-  async openAddMedicineModal() {
-    const modalWrap = document.getElementById("add-medicine-modal-wrap");
+  async openAddMedicineModal(options = {}) {
+    const modalWrap = options.wrapEl || document.getElementById("add-medicine-modal-wrap");
     if (!modalWrap) return;
 
     const [categoriesList, companiesList, schedulesList] = await Promise.all([
@@ -560,7 +560,7 @@ MedHub.inventory = {
     ]);
 
     modalWrap.innerHTML = `
-      <div class="modal-overlay">
+      <div class="modal-overlay" ${options.overlayZIndex ? `style="z-index: ${options.overlayZIndex};"` : ""}>
         <div class="modal-box medicine-modal-dialog">
           <!-- MODAL HEADER -->
           <div class="modal-header-dialog">
@@ -785,9 +785,14 @@ MedHub.inventory = {
       if (saved) {
         MedHub.toast(`Medicine "${name}" successfully catalog me add ho gayi!`, "success");
         closeModal();
-        // Refresh inventory table & KPI stats in real-time
+        // Refresh inventory table & KPI stats if on inventory page, and fire callback
         this.medicinesList = await MedHub.api.getMedicines();
-        this.updateStatsAndTable();
+        if (document.getElementById("inventory-tbody")) {
+          this.updateStatsAndTable();
+        }
+        if (typeof options.onSaved === "function") {
+          options.onSaved(saved);
+        }
       } else {
         MedHub.toast("Medicine save karne me dikkat aayi", "error");
         saveBtn.disabled = false;

@@ -2379,6 +2379,9 @@ MedHub.api = {
 
   async inwardStockFromPurchase(items) {
     if (!Array.isArray(items) || !items.length) return;
+    const localMeds = this._getLocalMedicines();
+    const localBatches = this._getLocalBatches();
+
     for (const item of items) {
       const medName = (item.medicine_name || item.name || "").trim();
       if (!medName) continue;
@@ -2386,11 +2389,12 @@ MedHub.api = {
       if (qty <= 0) continue;
       const rate = Number(item.purchase_rate) || 0;
       const mrp = Number(item.mrp) || rate || 0;
+      const gstPct = item.gst_percent !== undefined ? Number(item.gst_percent) : 12;
       const batchNo = (item.batch_no || "BT-" + Date.now().toString().slice(-4)).trim();
       const expDate = item.expiry_date || "2028-12-31";
 
-      // 1. Check if medicine already exists in memory or state
-      let existingMed = (MedHub.state.medicines || mockMedicines).find(
+      // 1. Check if medicine already exists in local persisted catalog
+      let existingMed = localMeds.find(
         m => m.name && m.name.toLowerCase() === medName.toLowerCase()
       );
 
@@ -2399,14 +2403,16 @@ MedHub.api = {
         existingMed.status = existingMed.available_qty <= 0 ? "out" : (existingMed.available_qty <= (existingMed.reorder_level || 10) ? "low" : "in");
         if (rate > 0) existingMed.purchase_price = rate;
         if (mrp > 0) existingMed.mrp = mrp;
+        if (item.gst_percent !== undefined) existingMed.gst_percent = gstPct;
 
         // Add or update batch
-        const existingBatch = mockBatches.find(b => b.medicine_id === existingMed.id && b.batch_no === batchNo);
+        const existingBatch = localBatches.find(b => b.medicine_id === existingMed.id && b.batch_no === batchNo);
         if (existingBatch) {
           existingBatch.quantity = (Number(existingBatch.quantity) || 0) + qty;
           if (rate > 0) existingBatch.purchase_price = rate;
+          if (mrp > 0) existingBatch.selling_price = mrp;
         } else {
-          mockBatches.push({
+          localBatches.push({
             id: "b-" + Date.now() + "-" + Math.floor(Math.random() * 100),
             medicine_id: existingMed.id,
             batch_no: batchNo,
@@ -2443,17 +2449,16 @@ MedHub.api = {
           purchase_price: rate,
           selling_rate: mrp,
           mrp: mrp,
-          gst_percent: 12,
+          gst_percent: gstPct,
           reorder_level: 10,
           rack_location: "General",
           available_qty: qty,
           nearest_expiry: expDate,
           status: "in"
         };
-        mockMedicines.push(newMed);
-        if (MedHub.state.medicines) MedHub.state.medicines.push(newMed);
+        localMeds.push(newMed);
 
-        mockBatches.push({
+        localBatches.push({
           id: "b-" + Date.now() + "-" + Math.floor(Math.random() * 100),
           medicine_id: newMedId,
           batch_no: batchNo,
@@ -2474,12 +2479,13 @@ MedHub.api = {
                 company: newMed.company,
                 category: newMed.category,
                 mrp: newMed.mrp,
-                gst_percent: 12
+                gst_percent: gstPct
               })
               .select()
               .maybeSingle();
 
             if (dbMed && dbMed.id) {
+              newMed.id = dbMed.id;
               await MedHub.supabaseClient.from("medicine_batches").insert({
                 medicine_id: dbMed.id,
                 batch_no: batchNo,
@@ -2493,6 +2499,10 @@ MedHub.api = {
         }
       }
     }
+
+    this._saveLocalMedicines(localMeds);
+    this._saveLocalBatches(localBatches);
+    if (MedHub.state) MedHub.state.medicines = localMeds;
   },
 
   async getPurchases() {
@@ -2574,13 +2584,30 @@ MedHub.api = {
     return newPur;
   },
 
-  async updatePurchase(id, updatedData) {
-    if (MedHub.supabaseClient && id) {
+  async updatePurchase(id, updatedData, oldItems = null) {
+    if (MedHub.supabaseClient && id && !String(id).startsWith("pur-")) {
       try {
-        await MedHub.supabaseClient
+        let res = await MedHub.supabaseClient
           .from("purchases")
           .update(updatedData)
           .eq("id", id);
+        if (res.error) {
+          const baseUpdate = {
+            supplier_name: updatedData.supplier_name,
+            invoice_no: updatedData.invoice_no,
+            purchase_date: updatedData.purchase_date,
+            total_amount: updatedData.total_amount,
+            paid_amount: updatedData.paid_amount,
+            status: updatedData.status,
+            payment_mode: updatedData.payment_mode,
+            items: updatedData.items
+          };
+          Object.keys(baseUpdate).forEach(k => baseUpdate[k] === undefined && delete baseUpdate[k]);
+          await MedHub.supabaseClient
+            .from("purchases")
+            .update(baseUpdate)
+            .eq("id", id);
+        }
       } catch (e) {
         console.warn("updatePurchase Supabase error:", e);
       }
@@ -2588,13 +2615,43 @@ MedHub.api = {
 
     const current = this._getLocalPurchases();
     const idx = current.findIndex(p => String(p.id) === String(id) || String(p.invoice_no) === String(id));
+    let updatedRecord = null;
+    const prevItems = Array.isArray(oldItems) ? oldItems : (idx >= 0 && Array.isArray(current[idx].items) ? current[idx].items : []);
+
     if (idx >= 0) {
       current[idx] = { ...current[idx], ...updatedData };
       this._saveLocalPurchases(current);
       mockPurchases = current;
-      return current[idx];
+      updatedRecord = current[idx];
+    } else {
+      updatedRecord = { id: id || ("pur-" + Date.now()), ...updatedData };
+      current.unshift(updatedRecord);
+      this._saveLocalPurchases(current);
+      mockPurchases = current;
     }
-    return null;
+
+    // Inward only delta/new items when editing line items (never delete pre-existing stock)
+    if (Array.isArray(updatedData.items) && updatedData.items.length > 0) {
+      const deltaItems = [];
+      updatedData.items.forEach(newIt => {
+        const nm = (newIt.medicine_name || newIt.name || "").trim().toLowerCase();
+        const bt = (newIt.batch_no || "").trim().toLowerCase();
+        const prevMatch = prevItems.find(oldIt =>
+          (oldIt.medicine_name || oldIt.name || "").trim().toLowerCase() === nm &&
+          (oldIt.batch_no || "").trim().toLowerCase() === bt
+        );
+        const oldQty = prevMatch ? (Number(prevMatch.quantity) || 0) : 0;
+        const newQty = Number(newIt.quantity) || 0;
+        if (newQty > oldQty) {
+          deltaItems.push({ ...newIt, quantity: newQty - oldQty });
+        }
+      });
+      if (deltaItems.length > 0) {
+        await this.inwardStockFromPurchase(deltaItems);
+      }
+    }
+
+    return updatedRecord;
   },
 
   async deletePurchase(id) {
