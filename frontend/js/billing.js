@@ -214,9 +214,9 @@ MedHub.billing = {
 
             <div class="form-group" style="margin-top: 12px;">
               <label class="form-label">Amount Received (₹)</label>
-              <input type="number" id="amt-received" class="input-field" 
-                placeholder="₹${this.calculateGrandTotal()}" 
-                value="${MedHub.state.amountReceived !== '' ? MedHub.state.amountReceived : this.calculateGrandTotal()}" />
+              <input type="number" step="0.01" min="0" id="amt-received" class="input-field" 
+                placeholder="Enter amount received" 
+                value="${MedHub.state.amountReceived !== undefined && MedHub.state.amountReceived !== null ? MedHub.state.amountReceived : ''}" />
             </div>
 
             <!-- ACTION BUTTONS -->
@@ -787,9 +787,6 @@ MedHub.billing = {
     }
     if (discAppliedEl) discAppliedEl.innerText = `-${MedHub.rupee(discAmt)}`;
     if (grandTotalEl) grandTotalEl.innerText = MedHub.rupee(grand);
-    if (amtReceivedInput && MedHub.state.amountReceived === "") {
-      amtReceivedInput.placeholder = `₹${grand.toFixed(2)}`;
-    }
   },
 
   async submitBill() {
@@ -804,7 +801,10 @@ MedHub.billing = {
       ? Math.min(100, Math.max(0, Number(MedHub.state.discount || 0)))
       : 0;
     const grandTotal = this.calculateGrandTotal();
-    const paidAmount = MedHub.state.paymentMode === "CREDIT" ? 0 : (Number(MedHub.state.amountReceived) || grandTotal);
+    const amtStr = String(MedHub.state.amountReceived ?? "").trim();
+    const paidAmount = MedHub.state.paymentMode === "CREDIT"
+      ? 0
+      : (amtStr === "" ? grandTotal : Math.max(0, Number(amtStr) || 0));
 
     const billPayload = {
       customer_name: MedHub.state.customer.name || "Walk-in Customer",

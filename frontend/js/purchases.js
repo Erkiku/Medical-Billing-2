@@ -399,7 +399,7 @@ MedHub.purchases = {
               </div>
               <div class="pur-summary-stat">
                 <span class="pur-stat-label">Paid Amount (₹)</span>
-                <input type="number" step="0.01" id="pur-paid-amount" class="input-field" style="width: 120px; padding: 4px 8px; font-size: 14px; font-weight: 700;" value="0.00" />
+                <input type="number" step="0.01" min="0" id="pur-paid-amount" class="input-field" style="width: 140px; padding: 4px 8px; font-size: 14px; font-weight: 700;" placeholder="Enter paid amount" value="" />
               </div>
             </div>
 
@@ -673,11 +673,6 @@ MedHub.purchases = {
 
       const elTotal = document.getElementById("pur-total-amount-display");
       if (elTotal) elTotal.innerText = `₹${summary.netTotal.toFixed(2)}`;
-
-      const paidInput = document.getElementById("pur-paid-amount");
-      if (paidInput && !paidInput.dataset.touched) {
-        paidInput.value = summary.netTotal.toFixed(2);
-      }
 
       return summary;
     };
