@@ -386,13 +386,7 @@ MedHub.purchases = {
           />
         </td>
         <td>
-          <input 
-            type="month" 
-            class="pur-item-exp" 
-            value="${monthVal}" 
-            required 
-            title="Expiry Month & Year (MM/YYYY)"
-          />
+          ${MedHub.renderMonthYearPicker("", monthVal, { compact: true, required: true, mmClass: "pur-item-exp-mm", yyClass: "pur-item-exp-yy" })}
         </td>
         <td>
           <div class="pur-pack-duo-wrap">
@@ -474,7 +468,8 @@ MedHub.purchases = {
       // Event Listeners for Row Inputs
       const nameInput = tr.querySelector(".pur-item-name");
       const batchInput = tr.querySelector(".pur-item-batch");
-      const expInput = tr.querySelector(".pur-item-exp");
+      const expMmSelect = tr.querySelector(".pur-item-exp-mm");
+      const expYySelect = tr.querySelector(".pur-item-exp-yy");
       const packAInput = tr.querySelector(".pur-item-pack-a");
       const packBInput = tr.querySelector(".pur-item-pack-b");
       const qtyInput = tr.querySelector(".pur-item-qty");
@@ -517,10 +512,16 @@ MedHub.purchases = {
       batchInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter") {
           e.preventDefault();
-          expInput?.focus();
+          expMmSelect?.focus();
         }
       });
-      expInput.addEventListener("keydown", (e) => {
+      expMmSelect?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          expYySelect?.focus();
+        }
+      });
+      expYySelect?.addEventListener("keydown", (e) => {
         if (e.key === "Enter") {
           e.preventDefault();
           packAInput?.focus();
@@ -688,7 +689,9 @@ MedHub.purchases = {
       rows.forEach(tr => {
         const name = tr.querySelector(".pur-item-name")?.value.trim();
         const batchNo = tr.querySelector(".pur-item-batch")?.value.trim();
-        const expDate = tr.querySelector(".pur-item-exp")?.value;
+        const expMm = tr.querySelector(".pur-item-exp-mm")?.value?.trim();
+        const expYy = tr.querySelector(".pur-item-exp-yy")?.value?.trim();
+        const expDate = (expMm && expYy) ? `${expYy}-${expMm}` : "";
         const packA = tr.querySelector(".pur-item-pack-a")?.value.trim() || "1";
         const packB = tr.querySelector(".pur-item-pack-b")?.value.trim() || "10";
         const packSize = `${packA}x${packB}`;

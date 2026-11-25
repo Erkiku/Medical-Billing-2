@@ -685,7 +685,7 @@ MedHub.inventory = {
                 </div>
                 <div class="form-group">
                   <label class="form-label">Expiry (Month & Year only)</label>
-                  <input type="month" id="m-expiry-date" class="input-field" title="Expiry Month & Year only" />
+                  ${MedHub.renderMonthYearPicker("m-exp", "")}
                 </div>
                 <div class="form-group">
                   <label class="form-label">Quantity</label>
@@ -768,7 +768,7 @@ MedHub.inventory = {
 
       // Initial batch fields
       const batch_no = document.getElementById("m-batch-no").value.trim();
-      const expiry_date = document.getElementById("m-expiry-date").value;
+      const expiry_date = MedHub.readMonthYearValue("m-exp");
       const quantity = document.getElementById("m-quantity").value;
 
       let initialBatch = null;
@@ -843,7 +843,7 @@ MedHub.inventory = {
 
             <div class="form-group" style="margin-bottom: 14px;">
               <label class="form-label">Expiry (Month & Year only) <span class="req">*</span></label>
-              <input type="month" id="stock-expiry-date" class="input-field" title="Expiry Month & Year only" required />
+              ${MedHub.renderMonthYearPicker("stock-exp", "2027-11", { required: true })}
             </div>
 
             <div class="form-row-2" style="margin-bottom: 16px;">
@@ -874,7 +874,7 @@ MedHub.inventory = {
     form?.addEventListener("submit", async (e) => {
       e.preventDefault();
       const batch_no = document.getElementById("stock-batch-no").value.trim();
-      const expiry_date = document.getElementById("stock-expiry-date").value;
+      const expiry_date = MedHub.readMonthYearValue("stock-exp");
       const qty = parseInt(document.getElementById("stock-qty").value, 10);
       const pur_rate = parseFloat(document.getElementById("stock-pur-rate").value) || med.purchase_price || 0;
 
@@ -919,11 +919,16 @@ MedHub.inventory = {
     let modalWrap = document.getElementById("add-medicine-modal-wrap");
     if (!modalWrap) return;
 
-    const [categoriesList, companiesList, schedulesList] = await Promise.all([
+    const [categoriesList, companiesList, schedulesList, batchesList] = await Promise.all([
       MedHub.api.getCategories(),
       MedHub.api.getCompanies ? MedHub.api.getCompanies() : (MedHub.state.companies || []),
-      MedHub.api.getDrugSchedules ? MedHub.api.getDrugSchedules() : (MedHub.state.drugSchedules || [])
+      MedHub.api.getDrugSchedules ? MedHub.api.getDrugSchedules() : (MedHub.state.drugSchedules || []),
+      MedHub.api.getBatches ? MedHub.api.getBatches(med.id) : []
     ]);
+    const primaryBatch = (batchesList && batchesList.length) ? batchesList[0] : null;
+    const initBatchNo = primaryBatch?.batch_no || "";
+    const initExpiry = primaryBatch?.expiry_date || (med.nearest_expiry && med.nearest_expiry !== "—" ? med.nearest_expiry : "");
+    const initQty = primaryBatch ? primaryBatch.quantity : (med.available_qty ?? "");
 
     const companyNames = (companiesList || []).map(c => c.name);
     if (med.company && !companyNames.some(c => c.toLowerCase() === med.company.toLowerCase())) {
@@ -1049,6 +1054,25 @@ MedHub.inventory = {
               <input type="text" id="edit-m-rack" class="input-field" value="${med.rack_location || ''}" placeholder="e.g. Shelf A-02" />
             </div>
 
+            <!-- EDIT EXPIRY (MONTH & YEAR) & BATCH STOCK -->
+            <div class="modal-subcard-batch" style="margin-top: 16px;">
+              <h4 class="subcard-title">Edit Batch Expiry (Month & Year) & Stock</h4>
+              <div class="form-row-3" style="margin-top: 10px;">
+                <div class="form-group">
+                  <label class="form-label">Batch Number</label>
+                  <input type="text" id="edit-m-batch-no" class="input-field" value="${initBatchNo}" placeholder="e.g. BT-01" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Expiry (Month & Year only)</label>
+                  ${MedHub.renderMonthYearPicker("edit-m-exp", initExpiry)}
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Stock Quantity</label>
+                  <input type="number" id="edit-m-qty" class="input-field" min="0" value="${initQty}" placeholder="e.g. 50" />
+                </div>
+              </div>
+            </div>
+
             <div class="modal-dialog-footer" style="margin-top: 24px;">
               <button type="button" class="btn-dialog-cancel" id="btn-cancel-edit-modal">Cancel</button>
               <button type="submit" class="btn-dialog-save" id="btn-save-edit-medicine">Save Changes</button>
@@ -1132,6 +1156,20 @@ MedHub.inventory = {
         gst_percent,
         rack_location
       });
+
+      const editBatchNo = document.getElementById("edit-m-batch-no")?.value.trim();
+      const editExpiry = MedHub.readMonthYearValue("edit-m-exp");
+      const editQtyRaw = document.getElementById("edit-m-qty")?.value;
+      const hasQty = editQtyRaw !== undefined && editQtyRaw !== "";
+      if (MedHub.api.updateMedicineBatch && (editExpiry || hasQty || (editBatchNo && primaryBatch))) {
+        await MedHub.api.updateMedicineBatch(primaryBatch ? primaryBatch.id : null, med.id, {
+          batch_no: editBatchNo || initBatchNo || "BT-01",
+          expiry_date: editExpiry || initExpiry || undefined,
+          quantity: hasQty ? Math.max(0, parseInt(editQtyRaw, 10) || 0) : undefined,
+          purchase_price,
+          selling_price: med.selling_rate || med.mrp || purchase_price
+        });
+      }
 
       if (updated) {
         MedHub.toast(`'${name}' updated successfully!`, "success");

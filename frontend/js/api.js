@@ -1404,10 +1404,11 @@ MedHub.api = {
         if (!error && data) {
           createdMed = data;
           if (initialBatch && initialBatch.batch_no && Number(initialBatch.quantity) > 0) {
+            const normExp = this._normalizeDateForPg(initialBatch.expiry_date) || new Date(Date.now() + 365*86400000).toISOString().slice(0, 10);
             await MedHub.supabaseClient.from("medicine_batches").insert({
               medicine_id: createdMed.id,
               batch_no: initialBatch.batch_no,
-              expiry_date: initialBatch.expiry_date || new Date(Date.now() + 365*86400000).toISOString().slice(0, 10),
+              expiry_date: normExp,
               purchase_price: Number(medData.purchase_price) || 0,
               selling_price: Number(medData.selling_rate) || Number(medData.mrp) || 0,
               quantity: Number(initialBatch.quantity)
@@ -1609,6 +1610,81 @@ MedHub.api = {
     if (b) {
       b.quantity = qty;
       this._saveLocalBatches(localBatches);
+    }
+    return true;
+  },
+
+  async updateMedicineBatch(batchId, medicineId, patchData) {
+    const expPg = patchData.expiry_date ? (this._normalizeDateForPg(patchData.expiry_date) || patchData.expiry_date) : null;
+    const qty = patchData.quantity !== undefined ? Math.max(0, Number(patchData.quantity) || 0) : undefined;
+    const batchNo = patchData.batch_no ? String(patchData.batch_no).trim() : undefined;
+
+    if (MedHub.supabaseClient && this._isUuid(String(batchId))) {
+      try {
+        const upd = {};
+        if (batchNo !== undefined) upd.batch_no = batchNo;
+        if (expPg) upd.expiry_date = expPg;
+        if (qty !== undefined) upd.quantity = qty;
+        if (Object.keys(upd).length > 0) {
+          await MedHub.supabaseClient.from("medicine_batches").update(upd).eq("id", batchId);
+        }
+      } catch (e) {
+        console.warn("updateMedicineBatch Supabase error:", e);
+      }
+    } else if (MedHub.supabaseClient && this._isUuid(String(medicineId)) && expPg) {
+      // If no batchId existed yet, create one when user sets expiry/qty in Edit Medicine
+      try {
+        await MedHub.supabaseClient.from("medicine_batches").insert({
+          medicine_id: medicineId,
+          batch_no: batchNo || "BT-" + Date.now().toString().slice(-4),
+          expiry_date: expPg,
+          purchase_price: Number(patchData.purchase_price) || 0,
+          selling_price: Number(patchData.selling_price) || 0,
+          quantity: qty !== undefined ? qty : 0
+        });
+      } catch (e) {}
+    }
+
+    const localBatches = this._getLocalBatches();
+    let localB = batchId ? localBatches.find(x => String(x.id) === String(batchId)) : null;
+    if (!localB && medicineId) {
+      localB = localBatches.find(x => String(x.medicine_id) === String(medicineId));
+    }
+    if (localB) {
+      if (batchNo !== undefined) localB.batch_no = batchNo;
+      if (expPg || patchData.expiry_date) localB.expiry_date = expPg || patchData.expiry_date;
+      if (qty !== undefined) localB.quantity = qty;
+    } else if (medicineId && (expPg || patchData.expiry_date)) {
+      localBatches.push({
+        id: "b-" + Date.now(),
+        medicine_id: medicineId,
+        batch_no: batchNo || "BT-01",
+        expiry_date: expPg || patchData.expiry_date,
+        purchase_price: Number(patchData.purchase_price) || 0,
+        selling_price: Number(patchData.selling_price) || 0,
+        quantity: qty !== undefined ? qty : 0
+      });
+    }
+    this._saveLocalBatches(localBatches);
+
+    // Sync nearest_expiry and available_qty on local medicine record
+    if (medicineId) {
+      const localMeds = this._getLocalMedicines();
+      const med = localMeds.find(m => String(m.id) === String(medicineId));
+      if (med) {
+        const medBatches = localBatches.filter(x => String(x.medicine_id) === String(medicineId));
+        if (medBatches.length > 0) {
+          med.available_qty = medBatches.reduce((sum, x) => sum + (Number(x.quantity) || 0), 0);
+          const sortedExp = medBatches.map(x => x.expiry_date).filter(Boolean).sort();
+          if (sortedExp.length > 0) med.nearest_expiry = sortedExp[0];
+        } else if (expPg || patchData.expiry_date) {
+          med.nearest_expiry = expPg || patchData.expiry_date;
+          if (qty !== undefined) med.available_qty = qty;
+        }
+        const reorder = Number(med.reorder_level) || 10;
+        med.status = med.available_qty <= 0 ? "out" : (med.available_qty <= reorder ? "low" : "in");
+        this._saveLocalMedicines(localMeds);
+      }
     }
     return true;
   },

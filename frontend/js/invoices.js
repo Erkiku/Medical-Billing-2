@@ -432,7 +432,7 @@ MedHub.invoices = {
           <td>${idx + 1}</td>
           <td><strong>${it.medicine_name}</strong></td>
           <td><input type="text" class="input-inline eb-batch-inp" data-idx="${idx}" value="${it.batch_no || ""}" style="width: 82px;" /></td>
-          <td class="cell-nowrap">${MedHub.formatExpiry ? MedHub.formatExpiry(it.expiry_date) : (it.expiry_date || "—")}</td>
+          <td class="cell-nowrap">${MedHub.renderMonthYearPicker("", it.expiry_date || "", { compact: true, mmClass: "eb-exp-mm", yyClass: "eb-exp-yy", dataIdx: idx })}</td>
           <td><input type="number" min="1" class="input-inline eb-qty-inp" data-idx="${idx}" value="${it.quantity}" style="width: 60px; text-align: center;" /></td>
           <td><input type="number" step="0.01" min="0" class="input-inline eb-rate-inp" data-idx="${idx}" value="${Number(it.rate).toFixed(2)}" style="width: 80px; text-align: right;" /></td>
           <td><input type="number" step="0.1" min="0" max="100" class="input-inline eb-disc-inp" data-idx="${idx}" value="${it.discount_percent || 0}" style="width: 58px; text-align: right;" /></td>
@@ -471,6 +471,19 @@ MedHub.invoices = {
       const rowTotalEl = tbody.querySelector(`.eb-row-total[data-idx="${idx}"]`);
       if (rowTotalEl) rowTotalEl.innerText = `₹${item.line_total.toFixed(2)}`;
       computeSummary();
+    });
+
+    tbody?.addEventListener("change", (e) => {
+      const idx = Number(e.target.dataset.idx);
+      if (isNaN(idx) || !editableItems[idx]) return;
+      if (e.target.classList.contains("eb-exp-mm") || e.target.classList.contains("eb-exp-yy")) {
+        const row = e.target.closest("tr");
+        const mm = row?.querySelector(".eb-exp-mm")?.value?.trim() || "";
+        const yy = row?.querySelector(".eb-exp-yy")?.value?.trim() || "";
+        if (mm && yy) {
+          editableItems[idx].expiry_date = `${yy}-${mm}`;
+        }
+      }
     });
 
     tbody?.addEventListener("click", (e) => {

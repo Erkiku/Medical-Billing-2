@@ -392,6 +392,90 @@ MedHub.formatExpiry = function (dateStr) {
   return str;
 };
 
+// Parses YYYY-MM, YYYY-MM-DD, MM/YY, MM/YYYY into { month: "11", year: "2026" }
+MedHub.parseMonthYear = function (dateStr) {
+  if (!dateStr || dateStr === "—" || dateStr === "null" || dateStr === "undefined") {
+    return { month: "", year: "" };
+  }
+  const str = String(dateStr).trim();
+  const sep = str.includes("-") ? "-" : (str.includes("/") ? "/" : null);
+  if (sep) {
+    const parts = str.split(sep).map(p => p.trim());
+    if (parts.length >= 2) {
+      if (parts[0].length === 4) {
+        return { month: parts[1].padStart(2, "0"), year: parts[0] };
+      }
+      if (parts[1].length === 4) {
+        return { month: parts[0].padStart(2, "0"), year: parts[1] };
+      }
+      if (parts[1].length === 2 && parts.length === 2) {
+        return { month: parts[0].padStart(2, "0"), year: `20${parts[1]}` };
+      }
+      if (parts.length === 3 && parts[2].length === 4) {
+        return { month: parts[1].padStart(2, "0"), year: parts[2] };
+      }
+    }
+  }
+  return { month: "", year: "" };
+};
+
+// Clean Month & Year dual dropdown control (replaces browser <input type="month">)
+MedHub.renderMonthYearPicker = function (idPrefix, currentVal = "", opts = {}) {
+  const { month, year } = MedHub.parseMonthYear(currentVal);
+  const nowYear = new Date().getFullYear();
+  const baseYears = [];
+  for (let y = nowYear - 1; y <= nowYear + 12; y++) {
+    baseYears.push(String(y));
+  }
+  if (year && !baseYears.includes(year)) {
+    baseYears.unshift(year);
+    baseYears.sort();
+  }
+
+  const months = [
+    { val: "01", short: "01", full: "01 - Jan" },
+    { val: "02", short: "02", full: "02 - Feb" },
+    { val: "03", short: "03", full: "03 - Mar" },
+    { val: "04", short: "04", full: "04 - Apr" },
+    { val: "05", short: "05", full: "05 - May" },
+    { val: "06", short: "06", full: "06 - Jun" },
+    { val: "07", short: "07", full: "07 - Jul" },
+    { val: "08", short: "08", full: "08 - Aug" },
+    { val: "09", short: "09", full: "09 - Sep" },
+    { val: "10", short: "10", full: "10 - Oct" },
+    { val: "11", short: "11", full: "11 - Nov" },
+    { val: "12", short: "12", full: "12 - Dec" }
+  ];
+
+  const reqAttr = opts.required ? "required" : "";
+  const compact = !!opts.compact;
+  const mmCls = opts.mmClass ? `${opts.mmClass} expiry-my-select` : "input-field select-field expiry-my-select";
+  const yyCls = opts.yyClass ? `${opts.yyClass} expiry-my-select` : "input-field select-field expiry-my-select";
+  const dataAttr = opts.dataIdx !== undefined ? `data-idx="${opts.dataIdx}"` : "";
+
+  return `
+    <div class="expiry-my-wrap ${compact ? 'expiry-my-compact' : ''}">
+      <select ${idPrefix ? `id="${idPrefix}-mm"` : ""} class="${mmCls}" ${dataAttr} ${reqAttr} title="Expiry Month (MM)">
+        <option value="">MM</option>
+        ${months.map(m => `<option value="${m.val}" ${month === m.val ? "selected" : ""}>${compact ? m.short : m.full}</option>`).join("")}
+      </select>
+      <span class="expiry-my-sep">/</span>
+      <select ${idPrefix ? `id="${idPrefix}-yy"` : ""} class="${yyCls}" ${dataAttr} ${reqAttr} title="Expiry Year (YYYY)">
+        <option value="">YYYY</option>
+        ${baseYears.map(y => `<option value="${y}" ${year === y ? "selected" : ""}>${compact ? y.slice(-2) : y}</option>`).join("")}
+      </select>
+    </div>
+  `;
+};
+
+MedHub.readMonthYearValue = function (idPrefix, rootEl) {
+  const scope = rootEl || document;
+  const mm = scope.querySelector(`#${idPrefix}-mm`)?.value?.trim() || "";
+  const yy = scope.querySelector(`#${idPrefix}-yy`)?.value?.trim() || "";
+  if (mm && yy) return `${yy}-${mm}`;
+  return "";
+};
+
 MedHub.numberToWords = function (amount) {
   const num = Math.round(Number(amount) || 0);
   if (num === 0) return "Rs. Zero only";

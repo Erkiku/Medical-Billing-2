@@ -3847,6 +3847,191 @@ button {
   flex-shrink: 0;
 }
 
+/* ============================================================================
+   CLEAN EXPIRY MONTH & YEAR DUAL PICKER (Replaces browser <input type="month">)
+   ============================================================================ */
+.expiry-my-wrap {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+}
+
+.expiry-my-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 38px;
+  padding: 0 8px;
+  border: 1.5px solid var(--cream-border-dark);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--black-deep);
+  background: #ffffff;
+  outline: none;
+  cursor: pointer;
+}
+
+.expiry-my-select:focus {
+  border-color: var(--pink-primary);
+  box-shadow: 0 0 0 3px var(--pink-soft-glow);
+}
+
+.expiry-my-sep {
+  font-weight: 900;
+  font-size: 14px;
+  color: #0f766e;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.expiry-my-compact {
+  gap: 3px;
+  min-width: 104px;
+}
+
+.expiry-my-compact .expiry-my-select {
+  height: 30px;
+  padding: 2px 4px;
+  font-size: 12px;
+  min-width: 44px;
+}
+
+/* ============================================================================
+   EXPANDED COLUMN SPACE IN POS BILLING & CART MEDICINE TABLE
+   ============================================================================ */
+.marg-entry-row-grid {
+  gap: 10px !important;
+  padding: 14px 16px !important;
+  flex-wrap: wrap;
+}
+
+.marg-cell-product {
+  flex: 6 1 300px !important;
+  min-width: 260px !important;
+}
+
+.marg-cell-pack {
+  flex: 0 0 84px !important;
+  width: 84px !important;
+}
+
+.marg-cell-batch {
+  flex: 1.2 1 125px !important;
+  min-width: 115px !important;
+}
+
+.marg-cell-exp {
+  flex: 0 0 94px !important;
+  width: 94px !important;
+}
+
+.marg-cell-qty {
+  flex: 0 0 80px !important;
+  width: 80px !important;
+}
+
+.marg-cell-rate {
+  flex: 1 1 108px !important;
+  min-width: 100px !important;
+}
+
+.marg-cell-dis {
+  flex: 0 0 72px !important;
+  width: 72px !important;
+}
+
+.marg-cell-amount {
+  flex: 1 1 112px !important;
+  min-width: 104px !important;
+}
+
+.marg-entry-row-grid .medicine-dropdown-results {
+  width: 560px !important;
+}
+
+.billing-main-grid {
+  grid-template-columns: minmax(0, 1fr) 305px !important;
+  gap: 20px !important;
+}
+
+@media (max-width: 1160px) {
+  .billing-main-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.cart-card {
+  min-width: 0;
+}
+
+.cart-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+}
+
+#cart-table {
+  min-width: 880px;
+}
+
+#cart-table th,
+#cart-table td {
+  padding: 11px 14px !important;
+}
+
+#cart-table th:nth-child(2),
+#cart-table td:nth-child(2) {
+  min-width: 240px;
+  white-space: normal !important;
+}
+
+#cart-table th:nth-child(3),
+#cart-table td:nth-child(3) {
+  min-width: 76px;
+}
+
+#cart-table th:nth-child(4),
+#cart-table td:nth-child(4) {
+  min-width: 110px;
+}
+
+#cart-table th:nth-child(5),
+#cart-table td:nth-child(5) {
+  min-width: 82px;
+}
+
+#cart-table th:nth-child(6),
+#cart-table td:nth-child(6) {
+  min-width: 84px;
+}
+
+#cart-table th:nth-child(7),
+#cart-table td:nth-child(7) {
+  min-width: 94px;
+}
+
+#cart-table th:nth-child(8),
+#cart-table td:nth-child(8) {
+  min-width: 72px;
+}
+
+#cart-table th:nth-child(9),
+#cart-table td:nth-child(9) {
+  min-width: 105px;
+}
+
+.classic-receipt-table th,
+.classic-receipt-table td {
+  padding: 7px 6px !important;
+}
+
+.classic-receipt-table th:nth-child(2),
+.classic-receipt-table td:nth-child(2) {
+  min-width: 165px;
+}
+
+
 
 
 
