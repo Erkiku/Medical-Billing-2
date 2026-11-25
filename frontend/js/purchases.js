@@ -253,9 +253,12 @@ MedHub.purchases = {
             <div style="margin-top: 20px;">
               <div class="pur-section-title">
                 <span>📦 Purchased Medicines & Rates Breakdown</span>
-                <button type="button" class="btn-outline-sm" id="btn-add-pur-item" style="font-size: 12px; font-weight: 700;">
-                  + Add Medicine Item
-                </button>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <span style="font-size: 11.5px; color: var(--black-soft); font-weight: 600;">⌨️ ENTER ↵ switches box • Empty Medicine + Enter ➔ Payment</span>
+                  <button type="button" class="btn-outline-sm" id="btn-add-pur-item" style="font-size: 12px; font-weight: 700;">
+                    + Add Medicine Item
+                  </button>
+                </div>
               </div>
 
               <!-- Datalist of existing inventory medicines for quick selection -->
@@ -480,8 +483,9 @@ MedHub.purchases = {
       const delBtn = tr.querySelector(".pur-del-btn");
 
       // Auto-populate MRP, Rate, GST & Pack if selected from catalog
-      nameInput.addEventListener("change", () => {
+      const applyCatalogMatch = () => {
         const val = nameInput.value.trim().toLowerCase();
+        if (!val) return;
         const matched = medicines.find(m => m.name.toLowerCase() === val || (m.name.toLowerCase().startsWith(val) && val.length > 2));
         if (matched) {
           nameInput.value = matched.name;
@@ -499,87 +503,9 @@ MedHub.purchases = {
           }
           calcRow();
         }
-      });
-
-      // MARG ERP STYLE ENTER-KEY NAVIGATION (FAST KEYBOARD WORKFLOW)
-      nameInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          batchInput?.focus();
-          batchInput?.select();
-        }
-      });
-      batchInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          expMmSelect?.focus();
-        }
-      });
-      expMmSelect?.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          expYySelect?.focus();
-        }
-      });
-      expYySelect?.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          packAInput?.focus();
-          packAInput?.select();
-        }
-      });
-      packAInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          packBInput?.focus();
-          packBInput?.select();
-        }
-      });
-      packBInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          qtyInput?.focus();
-          qtyInput?.select();
-        }
-      });
-      qtyInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          rateInput?.focus();
-          rateInput?.select();
-        }
-      });
-      rateInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          mrpInput?.focus();
-          mrpInput?.select();
-        }
-      });
-      mrpInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          gstInput?.focus();
-        }
-      });
-      gstInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          const nextTr = tr.nextElementSibling;
-          if (nextTr) {
-            const nextName = nextTr.querySelector(".pur-item-name");
-            nextName?.focus();
-            nextName?.select();
-          } else {
-            addItemRow();
-            setTimeout(() => {
-              const newTr = tbody.lastElementChild;
-              const nextName = newTr?.querySelector(".pur-item-name");
-              nextName?.focus();
-            }, 50);
-          }
-        }
-      });
+      };
+      tr._applyCatalogMatch = applyCatalogMatch;
+      nameInput.addEventListener("change", applyCatalogMatch);
 
       const calcRow = () => {
         const qty = Number(qtyInput.value) || 0;
@@ -661,9 +587,52 @@ MedHub.purchases = {
     // Add initial 1 empty row
     addItemRow();
 
+    // Auto-switch across ALL Purchase inputs & selects on Enter key
+    const purchaseFormEl = document.getElementById("purchase-form");
+    if (purchaseFormEl && MedHub.enableEnterNavigation) {
+      MedHub.enableEnterNavigation(purchaseFormEl, {
+        focusSubmitOnLast: true,
+        autoFocusFirst: true,
+        onEnter: (target, e, { focusField }) => {
+          if (e.shiftKey) return false;
+
+          const row = target.closest("tr.pur-item-row");
+          if (target.classList.contains("pur-item-name") && row) {
+            row._applyCatalogMatch?.();
+            const hasOtherFilledRow = Array.from(tbody.querySelectorAll("tr.pur-item-row"))
+              .some(r => r !== row && r.querySelector(".pur-item-name")?.value.trim());
+            if (!target.value.trim() && hasOtherFilledRow) {
+              e.preventDefault();
+              e.stopPropagation();
+              focusField(document.getElementById("pur-payment-mode"));
+              return true;
+            }
+            return false;
+          }
+
+          if (target.classList.contains("pur-item-gst") && row) {
+            e.preventDefault();
+            e.stopPropagation();
+            const nextTr = row.nextElementSibling;
+            if (nextTr) {
+              focusField(nextTr.querySelector(".pur-item-name"));
+            } else {
+              addItemRow();
+              const newTr = tbody.lastElementChild;
+              focusField(newTr?.querySelector(".pur-item-name"));
+            }
+            return true;
+          }
+
+          return false;
+        }
+      });
+    }
+
     // Add row button
     document.getElementById("btn-add-pur-item")?.addEventListener("click", () => {
       addItemRow();
+      tbody.lastElementChild?.querySelector(".pur-item-name")?.focus();
     });
 
     // Close Modal helper
@@ -997,6 +966,9 @@ MedHub.purchases = {
     paidEl?.addEventListener("input", recalcDues);
 
     const form = document.getElementById("edit-purchase-form");
+    if (form && MedHub.enableEnterNavigation) {
+      MedHub.enableEnterNavigation(form, { focusSubmitOnLast: true });
+    }
     form?.addEventListener("submit", async (e) => {
       e.preventDefault();
       const supplier_name = document.getElementById("edit-pur-supplier").value.trim();

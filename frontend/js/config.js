@@ -624,3 +624,87 @@ MedHub.exportToPdf = function (elementId, fileName) {
     window.print();
   }
 };
+
+// 10. KEYBOARD ENTER AUTO-SWITCHING ACROSS FORM INPUTS & SELECTS
+MedHub.enableEnterNavigation = function (containerEl, options = {}) {
+  if (!containerEl) return;
+
+  const isFieldVisible = (el) => {
+    if (!el || el.disabled || el.readOnly) return false;
+    const tag = (el.tagName || "").toUpperCase();
+    if (tag === "INPUT") {
+      const t = (el.type || "text").toLowerCase();
+      if (["hidden", "submit", "button", "reset", "image"].includes(t)) return false;
+    } else if (tag !== "SELECT") {
+      return false;
+    }
+    if (!options.includeQuickAdd && el.closest && el.closest(".inline-quick-add")) return false;
+    let cur = el;
+    while (cur && cur !== containerEl) {
+      if (cur.style && cur.style.display === "none") return false;
+      cur = cur.parentElement;
+    }
+    return true;
+  };
+
+  const getFocusableFields = () => {
+    return Array.from(containerEl.querySelectorAll("input, select")).filter(isFieldVisible);
+  };
+
+  const focusField = (el) => {
+    if (!el) return;
+    el.focus();
+    if (typeof el.select === "function" && (el.tagName || "").toUpperCase() === "INPUT") {
+      try { el.select(); } catch (e) {}
+    }
+  };
+
+  containerEl.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.keyCode !== 13) return;
+    if (e.isComposing) return;
+
+    const target = e.target;
+    if (!target) return;
+    const tag = (target.tagName || "").toUpperCase();
+    if (tag === "TEXTAREA" || tag === "BUTTON") return;
+    if (tag === "INPUT" && ["submit", "button", "reset"].includes((target.type || "").toLowerCase())) return;
+    if (!options.includeQuickAdd && target.closest && target.closest(".inline-quick-add")) return;
+
+    if (typeof options.onEnter === "function") {
+      const handled = options.onEnter(target, e, { focusField, getFocusableFields });
+      if (handled === true) return;
+    }
+
+    const fields = getFocusableFields();
+    const idx = fields.indexOf(target);
+    if (idx === -1) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (e.shiftKey) {
+      if (idx > 0) focusField(fields[idx - 1]);
+      return;
+    }
+
+    if (idx + 1 < fields.length) {
+      focusField(fields[idx + 1]);
+    } else if (options.focusSubmitOnLast) {
+      const submitBtn = containerEl.querySelector('button[type="submit"], input[type="submit"]');
+      submitBtn?.focus();
+    } else if (options.submitOnLast !== false) {
+      if (typeof containerEl.requestSubmit === "function") {
+        containerEl.requestSubmit();
+      } else {
+        containerEl.querySelector('button[type="submit"]')?.click();
+      }
+    }
+  });
+
+  if (options.autoFocusFirst) {
+    setTimeout(() => {
+      const fields = getFocusableFields();
+      if (fields.length > 0) focusField(fields[0]);
+    }, 30);
+  }
+};

@@ -723,6 +723,9 @@ MedHub.inventory = {
 
     // Form Submit: Save Medicine
     const form = document.getElementById("add-medicine-form");
+    if (form && MedHub.enableEnterNavigation) {
+      MedHub.enableEnterNavigation(form, { focusSubmitOnLast: true, autoFocusFirst: true });
+    }
     form?.addEventListener("submit", async (e) => {
       e.preventDefault();
 
@@ -850,6 +853,9 @@ MedHub.inventory = {
     document.getElementById("btn-cancel-stock-modal")?.addEventListener("click", closeStockModal);
 
     const form = document.getElementById("add-stock-form");
+    if (form && MedHub.enableEnterNavigation) {
+      MedHub.enableEnterNavigation(form, { focusSubmitOnLast: true, autoFocusFirst: true });
+    }
     form?.addEventListener("submit", async (e) => {
       e.preventDefault();
       const batch_no = document.getElementById("stock-batch-no").value.trim();
@@ -1100,6 +1106,9 @@ MedHub.inventory = {
     });
 
     const form = document.getElementById("edit-medicine-form");
+    if (form && MedHub.enableEnterNavigation) {
+      MedHub.enableEnterNavigation(form, { focusSubmitOnLast: true });
+    }
     form?.addEventListener("submit", async (e) => {
       e.preventDefault();
       const name = document.getElementById("edit-m-name").value.trim();

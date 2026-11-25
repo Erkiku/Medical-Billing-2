@@ -621,5 +621,11 @@ MedHub.invoices = {
     document.getElementById("btn-save-print-edit-bill")?.addEventListener("click", () => {
       saveInvoiceChanges(true);
     });
+
+    if (MedHub.enableEnterNavigation) {
+      MedHub.enableEnterNavigation(document.getElementById("edit-invoice-form"), {
+        focusSubmitOnLast: true
+      });
+    }
   }
 };
