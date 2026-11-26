@@ -23,6 +23,8 @@ MedHub.inventory = {
     const lowStockCount = this.medicinesList.filter(m => m.status === "low").length;
     const outStockCount = this.medicinesList.filter(m => m.status === "out").length;
     const totalUnits = this.medicinesList.reduce((sum, m) => sum + (Number(m.available_qty) || 0), 0);
+    const lockActive = MedHub.api.isEditSecurityEnabled();
+    const canEdit = MedHub.api.canShowEditControls();
 
     container.innerHTML = `
       <div class="inventory-page-wrap">
@@ -39,9 +41,20 @@ MedHub.inventory = {
             <button type="button" class="btn-outline" id="btn-export-pdf">
               ${MedHub.icons.print} Download PDF
             </button>
-            <button type="button" class="btn-primary" id="btn-open-add-modal">
-              ${MedHub.icons.plus} Add New Medicine
-            </button>
+            ${lockActive && !canEdit ? `
+              <button type="button" class="btn-unlock-edit" id="btn-unlock-edit-mode">
+                🔒 Unlock Edit / Stock
+              </button>
+            ` : `
+              ${lockActive ? `
+                <button type="button" class="btn-lock-edit" id="btn-lock-edit-mode" title="Edit options wapas hide karein">
+                  🔓 Lock Edit
+                </button>
+              ` : ""}
+              <button type="button" class="btn-primary" id="btn-open-add-modal">
+                ${MedHub.icons.plus} Add New Medicine
+              </button>
+            `}
           </div>
         </div>
 
@@ -110,7 +123,7 @@ MedHub.inventory = {
                   <th>Available Qty</th>
                   <th>Expiry</th>
                   <th>Status</th>
-                  <th style="width: 175px; text-align: center;">Actions</th>
+                  ${canEdit ? `<th style="width: 175px; text-align: center;">Actions</th>` : ""}
                 </tr>
               </thead>
               <tbody id="inventory-tbody">
@@ -156,9 +169,10 @@ MedHub.inventory = {
   },
 
   renderTableRows() {
+    const canEdit = MedHub.api.canShowEditControls();
     const list = this.getFilteredMedicines();
     if (!list.length) {
-      return `<tr><td colspan="12" class="table-empty">Koi medicine nahi mili. Nayi medicine add karein.</td></tr>`;
+      return `<tr><td colspan="${canEdit ? 12 : 11}" class="table-empty">Koi medicine nahi mili. ${canEdit ? "Nayi medicine add karein." : ""}</td></tr>`;
     }
 
     return list.map((m, idx) => {
@@ -193,17 +207,19 @@ MedHub.inventory = {
           </td>
           <td class="cell-nowrap">${MedHub.formatExpiry ? MedHub.formatExpiry(m.nearest_expiry) : MedHub.formatDate(m.nearest_expiry)}</td>
           <td class="cell-nowrap">${statusBadge}</td>
-          <td class="cell-nowrap table-actions-cell">
-            <button type="button" class="btn-action-stock btn-stock-action" data-id="${m.id}" title="Add New Stock Batch">
-              + Stock
-            </button>
-            <button type="button" class="btn-action-edit btn-edit-action" data-id="${m.id}" title="Edit Medicine">
-              Edit
-            </button>
-            <button type="button" class="btn-action-delete btn-delete-action" data-id="${m.id}" title="Delete Medicine">
-              Delete
-            </button>
-          </td>
+          ${canEdit ? `
+            <td class="cell-nowrap table-actions-cell">
+              <button type="button" class="btn-action-stock btn-stock-action" data-id="${m.id}" title="Add New Stock Batch">
+                + Stock
+              </button>
+              <button type="button" class="btn-action-edit btn-edit-action" data-id="${m.id}" title="Edit Medicine">
+                Edit
+              </button>
+              <button type="button" class="btn-action-delete btn-delete-action" data-id="${m.id}" title="Delete Medicine">
+                Delete
+              </button>
+            </td>
+          ` : ""}
         </tr>
       `;
     }).join("");
@@ -310,6 +326,18 @@ MedHub.inventory = {
     container.querySelector("#btn-open-add-modal")?.addEventListener("click", async () => {
       if (!(await MedHub.api.requireEditSecurityAuth("Nayi Medicine add karna"))) return;
       self.openAddMedicineModal();
+    });
+
+    // Unlock / Lock Edit Options Toggle
+    container.querySelector("#btn-unlock-edit-mode")?.addEventListener("click", async () => {
+      const ok = await MedHub.api.promptUnlockEditMode("Medicines & Stock Edit Options");
+      if (ok) self.render(container);
+    });
+
+    container.querySelector("#btn-lock-edit-mode")?.addEventListener("click", () => {
+      MedHub.api.lockEditSession();
+      MedHub.toast("🔒 Edit options hide / lock kar diye gaye hain.", "info");
+      self.render(container);
     });
   },
 

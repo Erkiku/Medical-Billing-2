@@ -15,6 +15,8 @@ MedHub.invoices = {
     const totalBills = this.billsList.length;
     const totalSales = this.billsList.reduce((sum, b) => sum + (Number(b.grand_total) || 0), 0);
     const totalDue = this.billsList.reduce((sum, b) => sum + Math.max(0, Number(b.due_amount !== undefined ? b.due_amount : (Number(b.grand_total || 0) - Number(b.paid_amount || 0)))), 0);
+    const lockActive = MedHub.api.isEditSecurityEnabled();
+    const canEdit = MedHub.api.canShowEditControls();
 
     container.innerHTML = `
       <div class="invoices-page-wrap">
@@ -30,6 +32,15 @@ MedHub.invoices = {
             <button type="button" class="btn-outline" id="btn-export-bills-pdf">
               ${MedHub.icons.print} Download PDF
             </button>
+            ${lockActive && !canEdit ? `
+              <button type="button" class="btn-unlock-edit" id="btn-unlock-invoice-edit">
+                🔒 Unlock Bill Edit
+              </button>
+            ` : (lockActive ? `
+              <button type="button" class="btn-lock-edit" id="btn-lock-invoice-edit" title="Edit options wapas hide karein">
+                🔓 Lock Edit
+              </button>
+            ` : "")}
           </div>
         </div>
 
@@ -109,6 +120,7 @@ MedHub.invoices = {
   },
 
   renderRows() {
+    const canEdit = MedHub.api.canShowEditControls();
     const list = this.getFilteredBills();
     if (!list.length) {
       return `<tr><td colspan="9" class="table-empty">Koi invoice nahi mila.</td></tr>`;
@@ -140,9 +152,11 @@ MedHub.invoices = {
             <button type="button" class="btn-outline-sm btn-view-invoice" data-id="${b.id || b.bill_no}" title="Print / View Invoice">
               ${MedHub.icons.print} Print
             </button>
-            <button type="button" class="btn-action-edit btn-edit-invoice" data-id="${b.id || b.bill_no}" title="Edit Invoice & Items">
-              ✏️ Edit
-            </button>
+            ${canEdit ? `
+              <button type="button" class="btn-action-edit btn-edit-invoice" data-id="${b.id || b.bill_no}" title="Edit Invoice & Items">
+                ✏️ Edit
+              </button>
+            ` : ""}
           </td>
         </tr>
       `;
@@ -199,6 +213,18 @@ MedHub.invoices = {
     // Export PDF
     container.querySelector("#btn-export-bills-pdf")?.addEventListener("click", () => {
       MedHub.exportToPdf("printable-bills-table", "Invoices_Report");
+    });
+
+    // Unlock / Lock Bill Edit Options
+    container.querySelector("#btn-unlock-invoice-edit")?.addEventListener("click", async () => {
+      const ok = await MedHub.api.promptUnlockEditMode("Bill / Invoice Edit Option");
+      if (ok) self.render(container);
+    });
+
+    container.querySelector("#btn-lock-invoice-edit")?.addEventListener("click", () => {
+      MedHub.api.lockEditSession();
+      MedHub.toast("🔒 Bill edit option hide kar diya gaya hai.", "info");
+      self.render(container);
     });
 
     // View / Print & Edit Invoice

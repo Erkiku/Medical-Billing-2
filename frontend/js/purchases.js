@@ -17,6 +17,8 @@ MedHub.purchases = {
 
     const totalPurchases = this.purchasesList.length;
     const totalAmount = this.purchasesList.reduce((sum, p) => sum + (Number(p.total_amount) || 0), 0);
+    const lockActive = MedHub.api.isEditSecurityEnabled();
+    const canEdit = MedHub.api.canShowEditControls();
 
     container.innerHTML = `
       <div class="purchases-page-wrap">
@@ -29,9 +31,20 @@ MedHub.purchases = {
             <button type="button" class="btn-outline" id="btn-export-purchases">
               ${MedHub.icons.download} Download Excel
             </button>
-            <button type="button" class="btn-primary" id="btn-open-purchase-modal">
-              ${MedHub.icons.plus} Record New Purchase
-            </button>
+            ${lockActive && !canEdit ? `
+              <button type="button" class="btn-unlock-edit" id="btn-unlock-purchase-edit">
+                🔒 Unlock Edit / Purchase
+              </button>
+            ` : `
+              ${lockActive ? `
+                <button type="button" class="btn-lock-edit" id="btn-lock-purchase-edit" title="Edit options wapas hide karein">
+                  🔓 Lock Edit
+                </button>
+              ` : ""}
+              <button type="button" class="btn-primary" id="btn-open-purchase-modal">
+                ${MedHub.icons.plus} Record New Purchase
+              </button>
+            `}
           </div>
         </div>
 
@@ -104,12 +117,14 @@ MedHub.purchases = {
                         <button type="button" class="btn-outline-sm btn-view-purchase-detail" data-id="${p.id || p.invoice_no}" title="View Details">
                           👁️ Details
                         </button>
-                        <button type="button" class="btn-action-edit btn-edit-purchase" data-id="${p.id || p.invoice_no}" title="Edit Payment & Dues">
-                          ✏️ Edit
-                        </button>
-                        <button type="button" class="btn-action-delete btn-delete-purchase" data-id="${p.id || p.invoice_no}" title="Delete Invoice">
-                          🗑️
-                        </button>
+                        ${canEdit ? `
+                          <button type="button" class="btn-action-edit btn-edit-purchase" data-id="${p.id || p.invoice_no}" title="Edit Payment & Dues">
+                            ✏️ Edit
+                          </button>
+                          <button type="button" class="btn-action-delete btn-delete-purchase" data-id="${p.id || p.invoice_no}" title="Delete Invoice">
+                            🗑️
+                          </button>
+                        ` : ""}
                       </td>
                     </tr>
                   `;
@@ -148,6 +163,18 @@ MedHub.purchases = {
     container.querySelector("#btn-open-purchase-modal")?.addEventListener("click", async () => {
       if (!(await MedHub.api.requireEditSecurityAuth("Naya Purchase & Stock inward add karna"))) return;
       self.openNewPurchaseModal();
+    });
+
+    // Unlock / Lock Purchase Edit Options
+    container.querySelector("#btn-unlock-purchase-edit")?.addEventListener("click", async () => {
+      const ok = await MedHub.api.promptUnlockEditMode("Purchases Edit Options");
+      if (ok) self.render(container);
+    });
+
+    container.querySelector("#btn-lock-purchase-edit")?.addEventListener("click", () => {
+      MedHub.api.lockEditSession();
+      MedHub.toast("🔒 Purchase edit options hide kar diye gaye hain.", "info");
+      self.render(container);
     });
 
     // Purchase Actions: View Details, Edit, Delete

@@ -199,6 +199,7 @@ MedHub.api = {
     try {
       localStorage.setItem(this._getEditSecurityLocalKey(saved || MedHub.state.store), newHash);
     } catch (e) {}
+    this.lockEditSession();
     return { success: true, cloudSynced: Boolean(saved && saved._cloudSynced) };
   },
 
@@ -225,23 +226,77 @@ MedHub.api = {
     try {
       localStorage.removeItem(this._getEditSecurityLocalKey(saved || MedHub.state.store));
     } catch (e) {}
+    this.lockEditSession();
     return { success: true, cloudSynced: Boolean(saved && saved._cloudSynced) };
   },
 
-  async requireEditSecurityAuth(actionLabel = "Medicine / Stock changes karna") {
+  _editSessionHash: "",
+
+  _getEditSessionKey() {
+    const scope = (MedHub.state.store?.id || MedHub.state.store?.user_email || MedHub.state.user?.store_id || MedHub.state.user?.email || "default")
+      .toString()
+      .toLowerCase()
+      .trim();
+    return `medhub_edit_unlocked_${scope}`;
+  },
+
+  isEditModeUnlocked() {
+    const storedHash = this.getEditSecurityHash();
+    if (!storedHash) return true;
+    if (this._editSessionHash && this._editSessionHash === storedHash) return true;
+    try {
+      if (typeof sessionStorage !== "undefined") {
+        const sVal = String(sessionStorage.getItem(this._getEditSessionKey()) || "").trim();
+        if (sVal && sVal === storedHash) {
+          this._editSessionHash = sVal;
+          return true;
+        }
+      }
+    } catch (e) {}
+    return false;
+  },
+
+  canShowEditControls() {
+    return this.isEditModeUnlocked();
+  },
+
+  unlockEditSession(password) {
+    const storedHash = this.getEditSecurityHash();
+    if (!storedHash) return true;
+    if (!this.verifyEditSecurityPassword(password)) return false;
+    this._editSessionHash = storedHash;
+    try {
+      if (typeof sessionStorage !== "undefined") {
+        sessionStorage.setItem(this._getEditSessionKey(), storedHash);
+      }
+    } catch (e) {}
+    return true;
+  },
+
+  lockEditSession() {
+    this._editSessionHash = "";
+    try {
+      if (typeof sessionStorage !== "undefined") {
+        sessionStorage.removeItem(this._getEditSessionKey());
+      }
+    } catch (e) {}
+  },
+
+  async promptUnlockEditMode(actionLabel = "Edit & Stock Options Unlock") {
     if (!MedHub.state.store) {
       try { await this.getStoreSettings(); } catch (e) {}
     }
     if (!this.isEditSecurityEnabled()) return true;
+    if (this.isEditModeUnlocked()) return true;
 
     const entered = await MedHub.prompt(
-      `"${actionLabel}" ke liye Store Security Password darj karein:`,
+      `"${actionLabel}" show karne ke liye Store Security PIN / Password darj karein:`,
       "",
       {
-        title: "Security Lock Required",
+        title: "Security Lock PIN",
         type: "password",
-        placeholder: "Security password daalein...",
-        confirmText: "Unlock & Continue",
+        placeholder: "Security PIN / Password daalein...",
+        confirmText: "Unlock Edit Mode",
         cancelText: "Cancel",
         icon: "🔒"
       }
@@ -251,12 +306,22 @@ MedHub.api = {
       return false;
     }
 
-    if (!this.verifyEditSecurityPassword(entered)) {
-      MedHub.toast("❌ Galat security password! Medicine/Stock changes allowed nahi hai.", "error");
+    if (!this.unlockEditSession(entered)) {
+      MedHub.toast("❌ Galat Security PIN! Edit options locked rahenge.", "error");
       return false;
     }
 
+    MedHub.toast("🔓 Edit options unlock ho gaye hain!", "success");
     return true;
+  },
+
+  async requireEditSecurityAuth(actionLabel = "Medicine / Stock changes karna") {
+    if (!MedHub.state.store) {
+      try { await this.getStoreSettings(); } catch (e) {}
+    }
+    if (!this.isEditSecurityEnabled()) return true;
+    if (this.isEditModeUnlocked()) return true;
+    return await this.promptUnlockEditMode(actionLabel);
   },
 
   // 1. STORE SETTINGS (Per-Store / Per-User with Supabase & LocalStorage)

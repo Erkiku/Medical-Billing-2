@@ -11,6 +11,7 @@ MedHub.security = {
 
     await MedHub.api.getStoreSettings();
     const isLocked = MedHub.api.isEditSecurityEnabled();
+    const isEditUnlocked = MedHub.api.isEditModeUnlocked();
     const storeName = MedHub.state.store?.store_name || "Your Store";
 
     container.innerHTML = `
@@ -18,27 +19,46 @@ MedHub.security = {
         <div class="page-header-flex">
           <div>
             <h2 class="page-title">Security Lock</h2>
-            <p class="page-subtitle">${storeName} ke Medicine, Stock aur Purchase edits ko password se surakshit rakhein</p>
+            <p class="page-subtitle">${storeName} me normal view par Edit/Stock options hidden rahenge — sirf PIN daalne par show honge</p>
           </div>
           <span class="security-status-badge ${isLocked ? "locked" : "unlocked"}">
-            ${isLocked ? "🔒 Lock Active" : "🔓 Not Protected"}
+            ${isLocked ? (isEditUnlocked ? "🔓 Unlocked Now" : "🔒 Lock Active") : "🔓 Not Protected"}
           </span>
         </div>
 
-        <div class="security-hero-banner ${isLocked ? "is-locked" : "is-unlocked"}">
-          <div class="security-hero-icon">${isLocked ? "🛡️" : "🔐"}</div>
-          <div>
-            <div class="security-hero-title">
-              ${isLocked
-                ? "Medicine & Stock Protection ON hai"
-                : "Abhi koi Security Password set nahi hai"}
-            </div>
-            <div class="security-hero-desc">
-              ${isLocked
-                ? "Ab Medicine add/edit/delete, + Stock aur Purchase/Bill edit karne se pehle password poochha jayega."
-                : "Neeche ek simple PIN ya Password set karein taaki koi bhi bina permission ke stock ya rate change na kare."}
+        <div class="security-hero-banner ${isLocked ? "is-locked" : "is-unlocked"}" style="justify-content: space-between; flex-wrap: wrap;">
+          <div style="display:flex; align-items:center; gap:14px; flex:1; min-width:240px;">
+            <div class="security-hero-icon">${isLocked ? (isEditUnlocked ? "🔓" : "🛡️") : "🔐"}</div>
+            <div>
+              <div class="security-hero-title">
+                ${!isLocked
+                  ? "Abhi koi Security PIN set nahi hai"
+                  : (isEditUnlocked
+                    ? "Edit Options Abhi Visible Hain (Unlocked)"
+                    : "Normal Mode: Edit & Stock Options Hidden Hain")}
+              </div>
+              <div class="security-hero-desc">
+                ${!isLocked
+                  ? "Neeche PIN/Password set karein. Set hone ke baad bina PIN daale Edit, +Stock, Delete aur Add Medicine options show nahi honge."
+                  : (isEditUnlocked
+                    ? "Ab aap Medicines, Stock, Purchases aur Bills edit kar sakte hain. Kaam khatam hone par Lock Now dabaa dein."
+                    : "PIN enter karte hi Medicines & Stock, Purchases aur Bills me sabhi Edit options show ho jayenge.")}
+              </div>
             </div>
           </div>
+          ${isLocked ? `
+            <div>
+              ${isEditUnlocked ? `
+                <button type="button" id="btn-sec-lock-edit-now" class="btn-lock-edit">
+                  🔒 Lock Edit Options Now
+                </button>
+              ` : `
+                <button type="button" id="btn-sec-unlock-edit-now" class="btn-unlock-edit">
+                  🔓 Enter PIN to Show Edit Options
+                </button>
+              `}
+            </div>
+          ` : ""}
         </div>
 
         <form id="security-password-form" class="settings-card security-main-card">
@@ -129,6 +149,17 @@ MedHub.security = {
 
     document.getElementById("btn-toggle-sec-recovery")?.addEventListener("click", () => {
       self.useLoginFallback = !self.useLoginFallback;
+      self.render(container);
+    });
+
+    document.getElementById("btn-sec-unlock-edit-now")?.addEventListener("click", async () => {
+      const ok = await MedHub.api.promptUnlockEditMode("Edit & Stock Options");
+      if (ok) self.render(container);
+    });
+
+    document.getElementById("btn-sec-lock-edit-now")?.addEventListener("click", () => {
+      MedHub.api.lockEditSession();
+      MedHub.toast("🔒 Edit options ab hide / lock ho gaye hain.", "info");
       self.render(container);
     });
 

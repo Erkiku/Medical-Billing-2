@@ -244,6 +244,9 @@ MedHub.router = {
   logout() {
     MedHub.state.isAuthenticated = false;
     MedHub.state.impersonatedStore = null;
+    if (MedHub.api && typeof MedHub.api.lockEditSession === "function") {
+      MedHub.api.lockEditSession();
+    }
     const banner = document.getElementById("superadmin-return-banner");
     if (banner) banner.style.display = "none";
 
