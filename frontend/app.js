@@ -17,6 +17,7 @@ MedHub.menuItems = [
   { id: "ledger", label: "Customers & Ledger", icon: "ledger" },
   { id: "suppliers", label: "Suppliers", icon: "suppliers" },
   { id: "reports", label: "Reports & GST", icon: "reports" },
+  { id: "security", label: "Security Lock", icon: "lock" },
   { id: "settings", label: "Store Settings", icon: "settings" }
 ];
 
@@ -228,6 +229,9 @@ MedHub.router = {
         break;
       case "reports":
         if (MedHub.reports) MedHub.reports.render(contentContainer);
+        break;
+      case "security":
+        if (MedHub.security) MedHub.security.render(contentContainer);
         break;
       case "settings":
         if (MedHub.settings) MedHub.settings.render(contentContainer);

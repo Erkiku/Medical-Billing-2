@@ -4633,6 +4633,134 @@ button {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
 }
 
+.medhub-dialog-input-wrap {
+  position: relative;
+  margin-top: 12px;
+}
+
+.medhub-dialog-input-wrap .medhub-dialog-input-pwd {
+  margin-top: 0;
+  padding-right: 42px;
+}
+
+.medhub-dialog-eye {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  color: #475569;
+  line-height: 1;
+}
+
+.medhub-dialog-eye:hover {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+/* Security Lock Screen */
+.security-status-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 20px;
+  border-radius: 12px;
+  border: 1.5px solid #cbd5e1;
+  background: #ffffff;
+  margin-bottom: 18px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+}
+
+.security-status-banner.is-locked {
+  border-color: #93c5fd;
+  background: linear-gradient(135deg, #ffffff 0%, #eff6ff 100%);
+}
+
+.security-status-banner.is-unlocked {
+  border-color: #fde68a;
+  background: linear-gradient(135deg, #ffffff 0%, #fffbeb 100%);
+}
+
+.security-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.security-status-badge.locked {
+  background: #1d4ed8;
+  color: #ffffff;
+}
+
+.security-status-badge.unlocked {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #f59e0b;
+}
+
+.security-pwd-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.security-pwd-wrap input {
+  width: 100%;
+  padding-right: 40px;
+}
+
+.security-pwd-eye {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  color: #475569;
+}
+
+.security-pwd-eye:hover {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.security-scope-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.security-scope-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.security-scope-icon {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
 .medhub-dialog-footer {
   display: flex;
   justify-content: flex-end;

@@ -202,7 +202,7 @@ MedHub.invoices = {
     });
 
     // View / Print & Edit Invoice
-    container.addEventListener("click", (e) => {
+    container.addEventListener("click", async (e) => {
       const viewBtn = e.target.closest(".btn-view-invoice");
       if (viewBtn) {
         const id = viewBtn.dataset.id;
@@ -220,6 +220,7 @@ MedHub.invoices = {
         const id = editBtn.dataset.id;
         const bill = self.billsList.find(b => String(b.id) === String(id) || String(b.bill_no) === String(id));
         if (bill) {
+          if (!(await MedHub.api.requireEditSecurityAuth(`Invoice #${bill.bill_no} edit karna`))) return;
           self.openEditInvoiceModal(bill);
         } else {
           MedHub.toast("Invoice edit karne ke liye data nahi mila", "warning");

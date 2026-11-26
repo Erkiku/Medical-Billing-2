@@ -242,7 +242,10 @@ MedHub.inventory = {
       if (stockBtn) {
         const id = stockBtn.dataset.id;
         const med = self.medicinesList.find(m => String(m.id) === String(id));
-        if (med) self.openAddStockModal(med);
+        if (med) {
+          if (!(await MedHub.api.requireEditSecurityAuth(`${med.name} me Stock add karna`))) return;
+          self.openAddStockModal(med);
+        }
         return;
       }
 
@@ -250,7 +253,10 @@ MedHub.inventory = {
       if (editBtn) {
         const id = editBtn.dataset.id;
         const med = self.medicinesList.find(m => String(m.id) === String(id));
-        if (med) self.openEditMedicineModal(med);
+        if (med) {
+          if (!(await MedHub.api.requireEditSecurityAuth(`${med.name} ki details edit karna`))) return;
+          self.openEditMedicineModal(med);
+        }
         return;
       }
 
@@ -258,14 +264,17 @@ MedHub.inventory = {
       if (deleteBtn) {
         const id = deleteBtn.dataset.id;
         const med = self.medicinesList.find(m => String(m.id) === String(id));
-        if (med && await MedHub.confirm(`Kya aap '${med.name}' ko catalog se delete karna chahte hain?`)) {
-          const ok = await MedHub.api.deleteMedicine(id);
-          if (ok) {
-            MedHub.toast(`'${med.name}' delete ho gaya`, "success");
-            self.medicinesList = await MedHub.api.getMedicines();
-            self.updateStatsAndTable();
-          } else {
-            MedHub.toast("Delete karne me samasya aayi", "error");
+        if (med) {
+          if (!(await MedHub.api.requireEditSecurityAuth(`${med.name} ko catalog se delete karna`))) return;
+          if (await MedHub.confirm(`Kya aap '${med.name}' ko catalog se delete karna chahte hain?`)) {
+            const ok = await MedHub.api.deleteMedicine(id);
+            if (ok) {
+              MedHub.toast(`'${med.name}' delete ho gaya`, "success");
+              self.medicinesList = await MedHub.api.getMedicines();
+              self.updateStatsAndTable();
+            } else {
+              MedHub.toast("Delete karne me samasya aayi", "error");
+            }
           }
         }
         return;
@@ -298,7 +307,8 @@ MedHub.inventory = {
     });
 
     // Open Add Medicine Modal
-    container.querySelector("#btn-open-add-modal")?.addEventListener("click", () => {
+    container.querySelector("#btn-open-add-modal")?.addEventListener("click", async () => {
+      if (!(await MedHub.api.requireEditSecurityAuth("Nayi Medicine add karna"))) return;
       self.openAddMedicineModal();
     });
   },

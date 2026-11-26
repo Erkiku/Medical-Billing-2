@@ -975,8 +975,29 @@ MedHub.enableEnterNavigation = function (containerEl, options = {}) {
   }
 };
 
-// 11. CUSTOM WEBSITE IN-APP CONFIRM / PROMPT / ALERT MODALS (REPLACES NATIVE BROWSER POPUPS)
-MedHub._openDialog = function ({ mode = "confirm", title = "Confirm Action", message = "", defaultValue = "", confirmText = "Confirm", cancelText = "Cancel", danger = false } = {}) {
+// 11. SECURITY SECRET HASHER & CUSTOM WEBSITE IN-APP CONFIRM / PROMPT / ALERT MODALS
+MedHub.hashSecuritySecret = function (secret) {
+  const raw = String(secret || "");
+  if (!raw) return "";
+  const input = "medhub_sec_v1|" + raw + "|" + raw.length;
+  let h1 = 0x811c9dc5;
+  let h2 = 0x9e3779b9;
+  let h3 = 0x85ebca6b;
+  let h4 = 0xc2b2ae35;
+  for (let round = 0; round < 3; round++) {
+    for (let i = 0; i < input.length; i++) {
+      const c = input.charCodeAt(i) ^ (round * 31 + i);
+      h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+      h2 = Math.imul(h2 ^ ((c << 3) | (i & 7)), 0x85ebca6b) >>> 0;
+      h3 = Math.imul(h3 ^ (c + round * 17), 0xc2b2ae35) >>> 0;
+      h4 = Math.imul(h4 ^ (h1 ^ h2 ^ h3), 0x27d4eb2f) >>> 0;
+    }
+  }
+  const toHex = (n) => n.toString(16).padStart(8, "0");
+  return "sec1:" + toHex(h1) + toHex(h2) + toHex(h3) + toHex(h4);
+};
+
+MedHub._openDialog = function ({ mode = "confirm", title = "Confirm Action", message = "", defaultValue = "", confirmText = "Confirm", cancelText = "Cancel", danger = false, inputType = "text", placeholder = "", icon = "" } = {}) {
   return new Promise((resolve) => {
     const existing = document.getElementById("medhub-dialog-overlay");
     if (existing) existing.remove();
@@ -987,21 +1008,30 @@ MedHub._openDialog = function ({ mode = "confirm", title = "Confirm Action", mes
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
 
+    const headerIcon = icon || (danger ? "🗑️" : (mode === "prompt" ? (inputType === "password" ? "🔒" : "💳") : "💬"));
+
     const overlay = document.createElement("div");
     overlay.id = "medhub-dialog-overlay";
     overlay.className = "medhub-dialog-overlay";
     overlay.innerHTML = `
       <div class="medhub-dialog-card" role="dialog" aria-modal="true">
         <div class="medhub-dialog-head ${danger ? "is-danger" : ""}">
-          <span class="medhub-dialog-icon">${danger ? "🗑️" : (mode === "prompt" ? "💳" : "💬")}</span>
+          <span class="medhub-dialog-icon">${escapeHtml(headerIcon)}</span>
           <h3 class="medhub-dialog-title">${escapeHtml(title)}</h3>
           <button type="button" class="medhub-dialog-close" id="medhub-dlg-x" aria-label="Close">✕</button>
         </div>
         <div class="medhub-dialog-body">
           <p class="medhub-dialog-msg">${escapeHtml(message)}</p>
-          ${mode === "prompt" ? `
-            <input type="text" id="medhub-dlg-input" class="medhub-dialog-input" value="${escapeHtml(defaultValue)}" />
-          ` : ""}
+          ${mode === "prompt" ? (
+            inputType === "password" ? `
+              <div class="medhub-dialog-input-wrap">
+                <input type="password" id="medhub-dlg-input" class="medhub-dialog-input medhub-dialog-input-pwd" value="${escapeHtml(defaultValue)}" placeholder="${escapeHtml(placeholder)}" autocomplete="new-password" />
+                <button type="button" id="medhub-dlg-eye" class="medhub-dialog-eye" aria-label="Show password" title="Show/Hide Password">👁️</button>
+              </div>
+            ` : `
+              <input type="${escapeHtml(inputType || "text")}" id="medhub-dlg-input" class="medhub-dialog-input" value="${escapeHtml(defaultValue)}" placeholder="${escapeHtml(placeholder)}" />
+            `
+          ) : ""}
         </div>
         <div class="medhub-dialog-footer">
           ${mode !== "alert" ? `<button type="button" class="medhub-dlg-btn medhub-dlg-cancel" id="medhub-dlg-cancel">${escapeHtml(cancelText)}</button>` : ""}
@@ -1013,9 +1043,20 @@ MedHub._openDialog = function ({ mode = "confirm", title = "Confirm Action", mes
     document.body.appendChild(overlay);
 
     const inputEl = document.getElementById("medhub-dlg-input");
+    const eyeBtn = document.getElementById("medhub-dlg-eye");
     const okBtn = document.getElementById("medhub-dlg-ok");
     const cancelBtn = document.getElementById("medhub-dlg-cancel");
     const closeBtn = document.getElementById("medhub-dlg-x");
+
+    if (eyeBtn && inputEl) {
+      eyeBtn.addEventListener("click", () => {
+        const show = inputEl.type === "password";
+        inputEl.type = show ? "text" : "password";
+        eyeBtn.textContent = show ? "🙈" : "👁️";
+        eyeBtn.setAttribute("aria-label", show ? "Hide password" : "Show password");
+        inputEl.focus();
+      });
+    }
 
     let settled = false;
     const finish = (val) => {
@@ -1095,7 +1136,10 @@ MedHub.prompt = function (message, defaultValue = "", options = {}) {
     defaultValue,
     confirmText: options.confirmText || "Submit",
     cancelText: options.cancelText || "Cancel",
-    danger: false
+    danger: Boolean(options.danger),
+    inputType: options.type || "text",
+    placeholder: options.placeholder || "",
+    icon: options.icon || ""
   });
 };
 

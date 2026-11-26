@@ -145,7 +145,8 @@ MedHub.purchases = {
     });
 
     // Open New Purchase Modal
-    container.querySelector("#btn-open-purchase-modal")?.addEventListener("click", () => {
+    container.querySelector("#btn-open-purchase-modal")?.addEventListener("click", async () => {
+      if (!(await MedHub.api.requireEditSecurityAuth("Naya Purchase & Stock inward add karna"))) return;
       self.openNewPurchaseModal();
     });
 
@@ -166,6 +167,7 @@ MedHub.purchases = {
         const id = editBtn.dataset.id;
         const purchase = self.purchasesList.find(p => String(p.id) === String(id) || String(p.invoice_no) === String(id));
         if (purchase) {
+          if (!(await MedHub.api.requireEditSecurityAuth(`Purchase Invoice #${purchase.invoice_no} edit karna`))) return;
           self.openEditPurchaseModal(purchase);
         }
         return;
@@ -175,14 +177,17 @@ MedHub.purchases = {
       if (deleteBtn) {
         const id = deleteBtn.dataset.id;
         const purchase = self.purchasesList.find(p => String(p.id) === String(id) || String(p.invoice_no) === String(id));
-        if (purchase && await MedHub.confirm(`Kya aap Purchase Invoice '${purchase.invoice_no}' ko delete karna chahte hain?`)) {
-          const ok = await MedHub.api.deletePurchase(id);
-          if (ok) {
-            MedHub.toast(`Purchase Invoice #${purchase.invoice_no} delete ho gaya`, "success");
-            self.purchasesList = await MedHub.api.getPurchases();
-            self.render(document.getElementById("page-content"));
-          } else {
-            MedHub.toast("Delete karne me samasya aayi", "error");
+        if (purchase) {
+          if (!(await MedHub.api.requireEditSecurityAuth(`Purchase Invoice #${purchase.invoice_no} delete karna`))) return;
+          if (await MedHub.confirm(`Kya aap Purchase Invoice '${purchase.invoice_no}' ko delete karna chahte hain?`)) {
+            const ok = await MedHub.api.deletePurchase(id);
+            if (ok) {
+              MedHub.toast(`Purchase Invoice #${purchase.invoice_no} delete ho gaya`, "success");
+              self.purchasesList = await MedHub.api.getPurchases();
+              self.render(document.getElementById("page-content"));
+            } else {
+              MedHub.toast("Delete karne me samasya aayi", "error");
+            }
           }
         }
         return;

@@ -89,6 +89,176 @@ MedHub.api = {
     return await buildQueryFn(false);
   },
 
+  // --------------------------------------------------------------------------
+  // MEDICINE & STOCK EDIT SECURITY LOCK HELPERS (Synced via store_settings)
+  // --------------------------------------------------------------------------
+  _SEC_MARKER_REGEX: /\n?<!--medhub_sec:([a-z0-9:]+)-->/gi,
+
+  _stripSecurityMarker(text) {
+    return String(text || "").replace(/\n?<!--medhub_sec:[a-z0-9:]+-->/gi, "").trim();
+  },
+
+  _packBillTermsWithSecurity(billTerms, hash) {
+    const clean = this._stripSecurityMarker(billTerms);
+    const cleanHash = String(hash || "").trim();
+    if (!cleanHash) return clean;
+    return clean ? `${clean}\n<!--medhub_sec:${cleanHash}-->` : `<!--medhub_sec:${cleanHash}-->`;
+  },
+
+  _getEditSecurityLocalKey(store) {
+    const scope = (store?.id || store?.user_email || MedHub.state.user?.store_id || MedHub.state.user?.email || MedHub.state.user?.username || localStorage.getItem("medhub_store_id") || localStorage.getItem("medhub_current_user") || "default")
+      .toString()
+      .toLowerCase()
+      .trim();
+    return `medhub_edit_sec_${scope}`;
+  },
+
+  _unpackStoreSecurityMeta(store) {
+    if (!store || typeof store !== "object") return store;
+    const copy = { ...store };
+    const rawTerms = String(copy.bill_terms || "");
+    const match = rawTerms.match(/<!--medhub_sec:([a-z0-9:]+)-->/i);
+    if (match && match[1]) {
+      copy.edit_security_hash = match[1].trim();
+      copy.bill_terms = this._stripSecurityMarker(rawTerms);
+    } else {
+      copy.bill_terms = this._stripSecurityMarker(rawTerms);
+      if (copy.edit_security_hash === undefined) {
+        try {
+          const localHash = localStorage.getItem(this._getEditSecurityLocalKey(copy));
+          if (localHash) copy.edit_security_hash = localHash;
+        } catch (e) {}
+      }
+    }
+    return copy;
+  },
+
+  getEditSecurityHash() {
+    const store = MedHub.state.store;
+    if (store && typeof store.edit_security_hash === "string") {
+      return store.edit_security_hash.trim();
+    }
+    try {
+      return String(localStorage.getItem(this._getEditSecurityLocalKey(store)) || "").trim();
+    } catch (e) {
+      return "";
+    }
+  },
+
+  isEditSecurityEnabled() {
+    return Boolean(this.getEditSecurityHash());
+  },
+
+  verifyEditSecurityPassword(inputPassword) {
+    const storedHash = this.getEditSecurityHash();
+    if (!storedHash) return true;
+    const raw = String(inputPassword || "");
+    if (!raw) return false;
+    const candidate = MedHub.hashSecuritySecret(raw);
+    return candidate === storedHash;
+  },
+
+  async verifyCurrentStoreLoginPassword(inputPassword) {
+    const raw = String(inputPassword || "");
+    if (!raw) return false;
+    const user = MedHub.state.user || {};
+    const identifier = user.username || user.email || localStorage.getItem("medhub_username") || localStorage.getItem("medhub_current_user") || "";
+    if (!identifier) return false;
+    try {
+      const auth = await this.authenticateUser(identifier, raw, user.role === "superadmin" ? "superadmin" : "store");
+      return Boolean(auth && auth.success);
+    } catch (e) {
+      return false;
+    }
+  },
+
+  async setEditSecurityPassword(newPassword, opts = {}) {
+    const rawNew = String(newPassword || "").trim();
+    if (rawNew.length < 4) {
+      return { success: false, message: "Security password kam se kam 4 characters ka hona chahiye." };
+    }
+    if (this.isEditSecurityEnabled() && !opts.skipAuthCheck) {
+      let authorized = false;
+      if (opts.currentPassword && this.verifyEditSecurityPassword(opts.currentPassword)) {
+        authorized = true;
+      } else if (opts.loginPassword && await this.verifyCurrentStoreLoginPassword(opts.loginPassword)) {
+        authorized = true;
+      }
+      if (!authorized) {
+        return {
+          success: false,
+          message: opts.loginPassword
+            ? "Account login password galat hai."
+            : "Purana security password galat hai."
+        };
+      }
+    }
+
+    const newHash = MedHub.hashSecuritySecret(rawNew);
+    const saved = await this.saveStoreSettings({ edit_security_hash: newHash });
+    try {
+      localStorage.setItem(this._getEditSecurityLocalKey(saved || MedHub.state.store), newHash);
+    } catch (e) {}
+    return { success: true, cloudSynced: Boolean(saved && saved._cloudSynced) };
+  },
+
+  async removeEditSecurityPassword(opts = {}) {
+    if (!this.isEditSecurityEnabled()) {
+      return { success: true };
+    }
+    let authorized = false;
+    if (opts.currentPassword && this.verifyEditSecurityPassword(opts.currentPassword)) {
+      authorized = true;
+    } else if (opts.loginPassword && await this.verifyCurrentStoreLoginPassword(opts.loginPassword)) {
+      authorized = true;
+    }
+    if (!authorized) {
+      return {
+        success: false,
+        message: opts.loginPassword
+          ? "Account login password galat hai. Lock hatane ke liye sahi password daalein."
+          : "Current security password galat hai."
+      };
+    }
+
+    const saved = await this.saveStoreSettings({ edit_security_hash: "" });
+    try {
+      localStorage.removeItem(this._getEditSecurityLocalKey(saved || MedHub.state.store));
+    } catch (e) {}
+    return { success: true, cloudSynced: Boolean(saved && saved._cloudSynced) };
+  },
+
+  async requireEditSecurityAuth(actionLabel = "Medicine / Stock changes karna") {
+    if (!MedHub.state.store) {
+      try { await this.getStoreSettings(); } catch (e) {}
+    }
+    if (!this.isEditSecurityEnabled()) return true;
+
+    const entered = await MedHub.prompt(
+      `"${actionLabel}" ke liye Store Security Password darj karein:`,
+      "",
+      {
+        title: "Security Lock Required",
+        type: "password",
+        placeholder: "Security password daalein...",
+        confirmText: "Unlock & Continue",
+        cancelText: "Cancel",
+        icon: "🔒"
+      }
+    );
+
+    if (entered === null) {
+      return false;
+    }
+
+    if (!this.verifyEditSecurityPassword(entered)) {
+      MedHub.toast("❌ Galat security password! Medicine/Stock changes allowed nahi hai.", "error");
+      return false;
+    }
+
+    return true;
+  },
+
   // 1. STORE SETTINGS (Per-Store / Per-User with Supabase & LocalStorage)
   async getStoreSettings(userEmailOrUser, opts = {}) {
     const allowFallback = opts.allowFallback !== false;
@@ -232,6 +402,7 @@ MedHub.api = {
     }
 
     if (found) {
+      found = this._unpackStoreSecurityMeta(found);
       try {
         const json = JSON.stringify(found);
         if (targetEmail) localStorage.setItem("medhub_store_" + targetEmail, json);
@@ -239,6 +410,9 @@ MedHub.api = {
         localStorage.setItem("medhub_store_settings", json);
         localStorage.setItem("mededuhub_store_settings", json);
         if (found.id) localStorage.setItem("medhub_store_id", String(found.id));
+        if (found.edit_security_hash) {
+          localStorage.setItem(this._getEditSecurityLocalKey(found), found.edit_security_hash);
+        }
       } catch (e) {}
       MedHub.state.store = found;
       return found;
@@ -250,12 +424,19 @@ MedHub.api = {
   async saveStoreSettings(settings, userEmail) {
     const email = (userEmail || MedHub.state.user?.email || localStorage.getItem("medhub_current_user") || "admin@mededuhub.com").toLowerCase().trim();
 
+    const activeSecHash = settings && settings.edit_security_hash !== undefined
+      ? String(settings.edit_security_hash || "").trim()
+      : this.getEditSecurityHash();
+
     const merged = {
       ...(MedHub.state.store || {}),
       ...settings,
       user_email: email,
       updated_at: new Date().toISOString()
     };
+    merged.edit_security_hash = activeSecHash;
+    merged.bill_terms = this._stripSecurityMarker(merged.bill_terms);
+
     if (merged.gstin !== undefined) {
       merged.gstin = String(merged.gstin || "").trim().toUpperCase();
     }
@@ -290,6 +471,10 @@ MedHub.api = {
           if (merged[col] !== undefined) {
             dbPayload[col] = merged[col];
           }
+        }
+        // Pack security hash cleanly inside bill_terms ONLY in cloud payload
+        if (activeSecHash || dbPayload.bill_terms !== undefined) {
+          dbPayload.bill_terms = this._packBillTermsWithSecurity(dbPayload.bill_terms || "", activeSecHash);
         }
         dbPayload.updated_at = new Date().toISOString();
 
