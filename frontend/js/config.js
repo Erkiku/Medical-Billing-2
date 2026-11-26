@@ -4,9 +4,10 @@
 
 window.MedHub = window.MedHub || {};
 
-// 1. DYNAMIC SUPABASE CONNECTION CONFIGURATION (SECURE: NO HARDCODED KEYS!)
-// Credentials are loaded at runtime from Vercel Environment Variables (/api/config),
-// window.__ENV__, or localStorage.
+// 1. DYNAMIC SUPABASE CONNECTION CONFIGURATION
+// Priority: Vercel Environment Variables (/api/config), window.__ENV__, localStorage, or public publishable fallback
+MedHub.DEFAULT_SUPABASE_URL = "https://vmeelrdhkedcnzdkhrgg.supabase.co";
+MedHub.DEFAULT_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_cCP_WY3MxQ9T2nCTJtl0BA_n4j3dpKR";
 MedHub.supabaseUrl = "";
 MedHub.supabaseAnonKey = "";
 MedHub.supabaseClient = null;
@@ -59,6 +60,12 @@ MedHub.loadConfig = async function () {
       key = key || localStorage.getItem("supabase_anon_key") || localStorage.getItem("supabase_publishable_key") || localStorage.getItem("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") || "";
     }
 
+    // Priority 4: Public publishable project fallback (for local static servers or deployments without env vars)
+    if (!url || !key) {
+      url = url || MedHub.DEFAULT_SUPABASE_URL;
+      key = key || MedHub.DEFAULT_SUPABASE_PUBLISHABLE_KEY;
+    }
+
     if (url && key) {
       MedHub.supabaseUrl = url;
       MedHub.supabaseAnonKey = key;
@@ -88,31 +95,219 @@ MedHub.ensureSupabaseClient = async function () {
   return MedHub.supabaseClient;
 };
 
+MedHub._createFetchSupabaseClient = function (baseUrl, apiKey) {
+  const cleanUrl = String(baseUrl || "").replace(/\/+$/, "");
+  if (!cleanUrl || !apiKey || typeof fetch !== "function") return null;
+
+  const restBase = `${cleanUrl}/rest/v1`;
+  const baseHeaders = {
+    apikey: apiKey,
+    Authorization: `Bearer ${apiKey}`
+  };
+
+  function buildQueryBuilder(table) {
+    let op = "select";
+    let selectCols = "*";
+    let returnRepresentation = false;
+    let bodyPayload = null;
+    let onConflict = "";
+    const queryParams = [];
+    let singleMode = null; // null | "single" | "maybeSingle"
+
+    const addOp = (col, operator, val) => {
+      queryParams.push([col, `${operator}.${val}`]);
+      return builder;
+    };
+
+    const exec = async () => {
+      try {
+        const sp = new URLSearchParams();
+        if (op === "select" || returnRepresentation) {
+          sp.set("select", selectCols || "*");
+        }
+        for (const [k, v] of queryParams) {
+          sp.append(k, v);
+        }
+        if (op === "upsert" && onConflict) {
+          sp.set("on_conflict", onConflict);
+        }
+
+        const qs = sp.toString();
+        const url = `${restBase}/${encodeURIComponent(table)}${qs ? `?${qs}` : ""}`;
+        const headers = { ...baseHeaders };
+        let method = "GET";
+        const prefers = [];
+
+        if (op === "insert") {
+          method = "POST";
+          headers["Content-Type"] = "application/json";
+          if (returnRepresentation || singleMode) prefers.push("return=representation");
+        } else if (op === "upsert") {
+          method = "POST";
+          headers["Content-Type"] = "application/json";
+          prefers.push("resolution=merge-duplicates");
+          if (returnRepresentation || singleMode) prefers.push("return=representation");
+        } else if (op === "update") {
+          method = "PATCH";
+          headers["Content-Type"] = "application/json";
+          if (returnRepresentation || singleMode) prefers.push("return=representation");
+        } else if (op === "delete") {
+          method = "DELETE";
+          if (returnRepresentation || singleMode) prefers.push("return=representation");
+        }
+
+        if (prefers.length > 0) {
+          headers["Prefer"] = prefers.join(",");
+        }
+
+        const fetchOpts = { method, headers };
+        if (bodyPayload !== null && method !== "GET" && method !== "DELETE") {
+          fetchOpts.body = JSON.stringify(bodyPayload);
+        }
+
+        const res = await fetch(url, fetchOpts);
+        const text = await res.text();
+        let parsed = null;
+        if (text) {
+          try { parsed = JSON.parse(text); } catch (e) { parsed = text; }
+        }
+
+        if (!res.ok) {
+          return {
+            data: null,
+            error: {
+              message: (parsed && parsed.message) || res.statusText || `HTTP ${res.status}`,
+              code: (parsed && parsed.code) || String(res.status),
+              details: (parsed && parsed.details) || null,
+              status: res.status
+            }
+          };
+        }
+
+        if (singleMode === "single") {
+          if (!Array.isArray(parsed) || parsed.length === 0) {
+            return { data: null, error: { message: "Row not found", code: "PGRST116" } };
+          }
+          return { data: parsed[0], error: null };
+        }
+        if (singleMode === "maybeSingle") {
+          return { data: Array.isArray(parsed) ? (parsed[0] || null) : parsed, error: null };
+        }
+        return { data: parsed === null ? [] : parsed, error: null };
+      } catch (err) {
+        return { data: null, error: { message: err?.message || "Network error" } };
+      }
+    };
+
+    const builder = {
+      select(cols = "*") {
+        selectCols = cols || "*";
+        if (op !== "select") returnRepresentation = true;
+        return builder;
+      },
+      insert(rows) { op = "insert"; bodyPayload = rows; return builder; },
+      update(patch) { op = "update"; bodyPayload = patch; return builder; },
+      upsert(rows, opts = {}) {
+        op = "upsert";
+        bodyPayload = rows;
+        onConflict = (opts && opts.onConflict) || "";
+        return builder;
+      },
+      delete() { op = "delete"; return builder; },
+      eq(col, val) { return addOp(col, "eq", val); },
+      neq(col, val) { return addOp(col, "neq", val); },
+      gt(col, val) { return addOp(col, "gt", val); },
+      gte(col, val) { return addOp(col, "gte", val); },
+      lt(col, val) { return addOp(col, "lt", val); },
+      lte(col, val) { return addOp(col, "lte", val); },
+      ilike(col, val) { return addOp(col, "ilike", val); },
+      like(col, val) { return addOp(col, "like", val); },
+      is(col, val) { return addOp(col, "is", val); },
+      in(col, arr) {
+        const list = Array.isArray(arr) ? arr.join(",") : String(arr || "");
+        queryParams.push([col, `in.(${list})`]);
+        return builder;
+      },
+      or(expr) {
+        queryParams.push(["or", `(${expr})`]);
+        return builder;
+      },
+      order(col, opts = {}) {
+        const dir = opts && opts.ascending === false ? "desc" : "asc";
+        queryParams.push(["order", `${col}.${dir}`]);
+        return builder;
+      },
+      limit(n) {
+        queryParams.push(["limit", String(n)]);
+        return builder;
+      },
+      single() {
+        singleMode = "single";
+        return exec();
+      },
+      maybeSingle() {
+        singleMode = "maybeSingle";
+        return exec();
+      },
+      then(resolve, reject) {
+        return exec().then(resolve, reject);
+      }
+    };
+
+    return builder;
+  }
+
+  return {
+    from(table) {
+      return buildQueryBuilder(table);
+    },
+    async rpc(fnName, params = {}) {
+      try {
+        const res = await fetch(`${restBase}/rpc/${encodeURIComponent(fnName)}`, {
+          method: "POST",
+          headers: { ...baseHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify(params || {})
+        });
+        const text = await res.text();
+        let parsed = null;
+        if (text) {
+          try { parsed = JSON.parse(text); } catch (e) { parsed = text; }
+        }
+        if (!res.ok) {
+          return { data: null, error: { message: (parsed && parsed.message) || res.statusText || `HTTP ${res.status}` } };
+        }
+        return { data: parsed, error: null };
+      } catch (err) {
+        return { data: null, error: { message: err?.message || "Network error" } };
+      }
+    }
+  };
+};
+
 MedHub.initSupabaseClient = function (customUrl, customKey) {
   const url = customUrl || MedHub.supabaseUrl;
   const key = customKey || MedHub.supabaseAnonKey;
 
-  if (
-    window.supabase &&
-    typeof window.supabase.createClient === "function" &&
-    url &&
-    key
-  ) {
+  if (url && key) {
     try {
-      MedHub.supabaseClient = window.supabase.createClient(url, key);
+      if (window.supabase && typeof window.supabase.createClient === "function") {
+        MedHub.supabaseClient = window.supabase.createClient(url, key);
+      } else {
+        MedHub.supabaseClient = MedHub._createFetchSupabaseClient(url, key);
+      }
       MedHub.supabaseUrl = url;
       MedHub.supabaseAnonKey = key;
-      MedHub.isLiveSupabase = true;
+      MedHub.isLiveSupabase = Boolean(MedHub.supabaseClient);
     } catch (err) {
       console.warn("Supabase init error:", err);
-      MedHub.supabaseClient = null;
-      MedHub.isLiveSupabase = false;
+      MedHub.supabaseClient = MedHub._createFetchSupabaseClient(url, key);
+      MedHub.isLiveSupabase = Boolean(MedHub.supabaseClient);
     }
   } else {
     MedHub.supabaseClient = null;
     MedHub.isLiveSupabase = false;
   }
-  MedHub.state.isLiveSupabase = MedHub.isLiveSupabase;
+  if (MedHub.state) MedHub.state.isLiveSupabase = MedHub.isLiveSupabase;
 };
 
 // 2. SVG ICONS

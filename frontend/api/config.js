@@ -23,6 +23,10 @@ module.exports = (req, res) => {
     process.env.VITE_SUPABASE_ANON_KEY ||
     "";
 
+  if (!supabaseUrl || !supabaseAnonKey) {
+    res.setHeader("Cache-Control", "no-store");
+  }
+
   return res.status(200).json({
     supabaseUrl,
     supabaseAnonKey
