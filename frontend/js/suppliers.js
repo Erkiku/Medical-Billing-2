@@ -133,7 +133,7 @@ MedHub.suppliers = {
       if (delBtn) {
         const id = delBtn.dataset.id;
         const sup = self.suppliersList.find(s => String(s.id) === String(id));
-        if (sup && confirm(`Kya aap supplier '${sup.name}' ko delete karna chahte hain?`)) {
+        if (sup && await MedHub.confirm(`Kya aap supplier '${sup.name}' ko delete karna chahte hain?`)) {
           const ok = await MedHub.api.deleteSupplier(id);
           if (ok) {
             MedHub.toast(`Supplier '${sup.name}' delete ho gaya`, "success");

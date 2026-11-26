@@ -119,10 +119,10 @@ MedHub.ledger = {
     });
 
     container.querySelectorAll(".btn-settle-due").forEach(btn => {
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", async () => {
         const cust = btn.dataset.cust;
         const due = btn.dataset.due;
-        const amt = prompt(`${cust} ke liye payment amount darj karein (Due: ₹${due}):`, due);
+        const amt = await MedHub.prompt(`${cust} ke liye payment amount darj karein (Due: ₹${due}):`, due, { title: "Collect Customer Payment" });
         if (amt && Number(amt) > 0) {
           MedHub.toast(`₹${amt} payment successfully recorded for ${cust}!`, "success");
         }

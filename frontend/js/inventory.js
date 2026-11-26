@@ -258,7 +258,7 @@ MedHub.inventory = {
       if (deleteBtn) {
         const id = deleteBtn.dataset.id;
         const med = self.medicinesList.find(m => String(m.id) === String(id));
-        if (med && confirm(`Kya aap '${med.name}' ko catalog se delete karna chahte hain?`)) {
+        if (med && await MedHub.confirm(`Kya aap '${med.name}' ko catalog se delete karna chahte hain?`)) {
           const ok = await MedHub.api.deleteMedicine(id);
           if (ok) {
             MedHub.toast(`'${med.name}' delete ho gaya`, "success");

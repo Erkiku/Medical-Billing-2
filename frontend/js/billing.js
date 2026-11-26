@@ -857,8 +857,8 @@ MedHub.billing = {
     });
 
     // Clear Cart
-    container.querySelector("#btn-clear-cart")?.addEventListener("click", () => {
-      if (confirm("Kya aap poora cart clear karna chahte hain?")) {
+    container.querySelector("#btn-clear-cart")?.addEventListener("click", async () => {
+      if (await MedHub.confirm("Kya aap poora cart clear karna chahte hain?")) {
         MedHub.state.cart = [];
         self.inspectedItem = null;
         self.updateCartUI();

@@ -512,7 +512,7 @@ MedHub.admin = {
         if (delBtn) {
           const email = delBtn.dataset.email;
           const store = self.storesList.find(s => s.user_email?.toLowerCase() === email?.toLowerCase());
-          if (store && confirm(`Are you sure you want to permanently delete store "${store.store_name}"?`)) {
+          if (store && await MedHub.confirm(`Are you sure you want to permanently delete store "${store.store_name}"?`)) {
             await MedHub.api.deleteStore(email);
             self.storesList = self.storesList.filter(s => s.user_email?.toLowerCase() !== email?.toLowerCase());
             self.render(container);

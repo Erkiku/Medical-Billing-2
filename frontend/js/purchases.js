@@ -175,7 +175,7 @@ MedHub.purchases = {
       if (deleteBtn) {
         const id = deleteBtn.dataset.id;
         const purchase = self.purchasesList.find(p => String(p.id) === String(id) || String(p.invoice_no) === String(id));
-        if (purchase && confirm(`Kya aap Purchase Invoice '${purchase.invoice_no}' ko delete karna chahte hain?`)) {
+        if (purchase && await MedHub.confirm(`Kya aap Purchase Invoice '${purchase.invoice_no}' ko delete karna chahte hain?`)) {
           const ok = await MedHub.api.deletePurchase(id);
           if (ok) {
             MedHub.toast(`Purchase Invoice #${purchase.invoice_no} delete ho gaya`, "success");

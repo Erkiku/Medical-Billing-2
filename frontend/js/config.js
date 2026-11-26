@@ -974,3 +974,137 @@ MedHub.enableEnterNavigation = function (containerEl, options = {}) {
     }, 30);
   }
 };
+
+// 11. CUSTOM WEBSITE IN-APP CONFIRM / PROMPT / ALERT MODALS (REPLACES NATIVE BROWSER POPUPS)
+MedHub._openDialog = function ({ mode = "confirm", title = "Confirm Action", message = "", defaultValue = "", confirmText = "Confirm", cancelText = "Cancel", danger = false } = {}) {
+  return new Promise((resolve) => {
+    const existing = document.getElementById("medhub-dialog-overlay");
+    if (existing) existing.remove();
+
+    const escapeHtml = (str) => String(str || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+
+    const overlay = document.createElement("div");
+    overlay.id = "medhub-dialog-overlay";
+    overlay.className = "medhub-dialog-overlay";
+    overlay.innerHTML = `
+      <div class="medhub-dialog-card" role="dialog" aria-modal="true">
+        <div class="medhub-dialog-head ${danger ? "is-danger" : ""}">
+          <span class="medhub-dialog-icon">${danger ? "🗑️" : (mode === "prompt" ? "💳" : "💬")}</span>
+          <h3 class="medhub-dialog-title">${escapeHtml(title)}</h3>
+          <button type="button" class="medhub-dialog-close" id="medhub-dlg-x" aria-label="Close">✕</button>
+        </div>
+        <div class="medhub-dialog-body">
+          <p class="medhub-dialog-msg">${escapeHtml(message)}</p>
+          ${mode === "prompt" ? `
+            <input type="text" id="medhub-dlg-input" class="medhub-dialog-input" value="${escapeHtml(defaultValue)}" />
+          ` : ""}
+        </div>
+        <div class="medhub-dialog-footer">
+          ${mode !== "alert" ? `<button type="button" class="medhub-dlg-btn medhub-dlg-cancel" id="medhub-dlg-cancel">${escapeHtml(cancelText)}</button>` : ""}
+          <button type="button" class="medhub-dlg-btn ${danger ? "medhub-dlg-danger" : "medhub-dlg-primary"}" id="medhub-dlg-ok">${escapeHtml(confirmText)}</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const inputEl = document.getElementById("medhub-dlg-input");
+    const okBtn = document.getElementById("medhub-dlg-ok");
+    const cancelBtn = document.getElementById("medhub-dlg-cancel");
+    const closeBtn = document.getElementById("medhub-dlg-x");
+
+    let settled = false;
+    const finish = (val) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener("keydown", onKeyDown, true);
+      overlay.remove();
+      resolve(val);
+    };
+
+    const onConfirm = () => {
+      if (mode === "prompt") finish(inputEl ? inputEl.value : "");
+      else if (mode === "alert") finish(undefined);
+      else finish(true);
+    };
+
+    const onCancel = () => {
+      if (mode === "prompt") finish(null);
+      else if (mode === "alert") finish(undefined);
+      else finish(false);
+    };
+
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        onCancel();
+      } else if (e.key === "Enter") {
+        if (document.activeElement === cancelBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          onCancel();
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        onConfirm();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown, true);
+    okBtn?.addEventListener("click", onConfirm);
+    cancelBtn?.addEventListener("click", onCancel);
+    closeBtn?.addEventListener("click", onCancel);
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) onCancel();
+    });
+
+    setTimeout(() => {
+      if (inputEl) {
+        inputEl.focus();
+        inputEl.select();
+      } else {
+        okBtn?.focus();
+      }
+    }, 20);
+  });
+};
+
+MedHub.confirm = function (message, options = {}) {
+  const isDelete = /delete|remove|clear|permanently/i.test(String(message || ""));
+  return MedHub._openDialog({
+    mode: "confirm",
+    title: options.title || (isDelete ? "Confirm Delete" : "Confirm Action"),
+    message,
+    confirmText: options.confirmText || (isDelete ? "Yes, Delete" : "Confirm"),
+    cancelText: options.cancelText || "Cancel",
+    danger: options.danger !== undefined ? options.danger : isDelete
+  });
+};
+
+MedHub.prompt = function (message, defaultValue = "", options = {}) {
+  return MedHub._openDialog({
+    mode: "prompt",
+    title: options.title || "Enter Details",
+    message,
+    defaultValue,
+    confirmText: options.confirmText || "Submit",
+    cancelText: options.cancelText || "Cancel",
+    danger: false
+  });
+};
+
+MedHub.alert = function (message, options = {}) {
+  return MedHub._openDialog({
+    mode: "alert",
+    title: options.title || "Notice",
+    message,
+    confirmText: options.confirmText || "OK",
+    danger: Boolean(options.danger)
+  });
+};
