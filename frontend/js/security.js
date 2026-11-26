@@ -1,28 +1,50 @@
 // ============================================================================
 // MedEduHub - Security Lock Screen (js/security.js)
-// Clean, simple & store-synced Security Password for Medicine & Stock edits
+// English-only clean interface with Security Question recovery
 // ============================================================================
 
 MedHub.security = {
-  useLoginFallback: false,
+  useForgotRecovery: false,
+  presetQuestions: [
+    "What is your birth city?",
+    "What was the name of your first school?",
+    "What is your childhood nickname?",
+    "What is your mother's maiden name?",
+    "What was the name of your first pet?"
+  ],
+
+  _escapeHtml(str) {
+    return String(str || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  },
 
   async render(container) {
-    container.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>Loading Security Lock...</p></div>`;
+    container.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>Loading Security Lock settings...</p></div>`;
 
     await MedHub.api.getStoreSettings();
     const isLocked = MedHub.api.isEditSecurityEnabled();
     const isEditUnlocked = MedHub.api.isEditModeUnlocked();
-    const storeName = MedHub.state.store?.store_name || "Your Store";
+    const savedQuestion = MedHub.api.getEditSecurityQuestion();
+    const hasRecoveryQuestion = MedHub.api.hasEditSecurityQuestion();
+    const storeName = this._escapeHtml(MedHub.state.store?.store_name || "Your Medical Store");
+
+    const isPreset = savedQuestion && this.presetQuestions.includes(savedQuestion);
+    const initialSelectVal = !savedQuestion
+      ? this.presetQuestions[0]
+      : (isPreset ? savedQuestion : "__custom__");
 
     container.innerHTML = `
       <div class="security-page-shell">
         <div class="page-header-flex">
           <div>
             <h2 class="page-title">Security Lock</h2>
-            <p class="page-subtitle">${storeName} me normal view par Edit/Stock options hidden rahenge — sirf PIN daalne par show honge</p>
+            <p class="page-subtitle">Hide edit and stock controls by default for ${storeName} until unlocked with your password.</p>
           </div>
           <span class="security-status-badge ${isLocked ? "locked" : "unlocked"}">
-            ${isLocked ? (isEditUnlocked ? "🔓 Unlocked Now" : "🔒 Lock Active") : "🔓 Not Protected"}
+            ${isLocked ? (isEditUnlocked ? "🔓 Unlocked" : "🔒 Lock Active") : "🔓 Not Set"}
           </span>
         </div>
 
@@ -32,17 +54,17 @@ MedHub.security = {
             <div>
               <div class="security-hero-title">
                 ${!isLocked
-                  ? "Abhi koi Security PIN set nahi hai"
+                  ? "No Security Password Configured"
                   : (isEditUnlocked
-                    ? "Edit Options Abhi Visible Hain (Unlocked)"
-                    : "Normal Mode: Edit & Stock Options Hidden Hain")}
+                    ? "Edit Options Are Currently Visible"
+                    : "Normal Mode: Edit & Stock Options Are Hidden")}
               </div>
               <div class="security-hero-desc">
                 ${!isLocked
-                  ? "Neeche PIN/Password set karein. Set hone ke baad bina PIN daale Edit, +Stock, Delete aur Add Medicine options show nahi honge."
+                  ? "Set a security password and a recovery security question below. Once enabled, edit buttons stay hidden by default."
                   : (isEditUnlocked
-                    ? "Ab aap Medicines, Stock, Purchases aur Bills edit kar sakte hain. Kaam khatam hone par Lock Now dabaa dein."
-                    : "PIN enter karte hi Medicines & Stock, Purchases aur Bills me sabhi Edit options show ho jayenge.")}
+                    ? "You can add, edit, or delete medicines, stock, purchases, and bills during this session. Click Lock Now when finished."
+                    : "Enter your security password once to temporarily show edit controls across Medicines & Stock, Purchases, and Bills.")}
               </div>
             </div>
           </div>
@@ -50,11 +72,11 @@ MedHub.security = {
             <div>
               ${isEditUnlocked ? `
                 <button type="button" id="btn-sec-lock-edit-now" class="btn-lock-edit">
-                  🔒 Lock Edit Options Now
+                  🔒 Lock Edit Options
                 </button>
               ` : `
                 <button type="button" id="btn-sec-unlock-edit-now" class="btn-unlock-edit">
-                  🔓 Enter PIN to Show Edit Options
+                  🔓 Unlock Edit Options
                 </button>
               `}
             </div>
@@ -65,26 +87,38 @@ MedHub.security = {
           <div class="settings-card-header" style="justify-content: space-between;">
             <div style="display:flex; align-items:center; gap:10px;">
               <span class="settings-card-icon">${MedHub.icons.lock}</span>
-              <h3 class="settings-card-title">${isLocked ? "CHANGE OR REMOVE SECURITY PASSWORD" : "SET SECURITY PASSWORD"}</h3>
+              <h3 class="settings-card-title">${isLocked ? "UPDATE OR REMOVE SECURITY PASSWORD" : "SET SECURITY PASSWORD"}</h3>
             </div>
-            <span class="security-hint-pill">Min. 4 chars</span>
+            <span class="security-hint-pill">Min. 4 characters</span>
           </div>
 
           ${isLocked ? `
             <div class="form-group" style="margin-bottom: 16px;">
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
                 <label class="form-label" style="margin:0;">
-                  ${this.useLoginFallback ? "Store Login Password" : "Current Security Password"} <span class="req">*</span>
+                  ${this.useForgotRecovery
+                    ? (hasRecoveryQuestion ? "Answer Your Security Question" : "Store Account Login Password")
+                    : "Current Security Password"} <span class="req">*</span>
                 </label>
                 <button type="button" id="btn-toggle-sec-recovery" class="security-link-btn">
-                  ${this.useLoginFallback ? "Security password yaad hai?" : "Password bhool gaye? Login password se reset karein"}
+                  ${this.useForgotRecovery ? "Use current password instead" : "Forgot Password?"}
                 </button>
               </div>
-              <div class="security-pwd-wrap">
-                <input type="password" id="sec-current-pwd" class="input-field security-pwd-input" autocomplete="current-password"
-                  placeholder="${this.useLoginFallback ? "Apna store login password daalein..." : "Purana security password daalein..."}" required />
-                <button type="button" class="security-pwd-eye" data-target="sec-current-pwd" aria-label="Show password">👁️</button>
-              </div>
+
+              ${this.useForgotRecovery && hasRecoveryQuestion ? `
+                <div class="security-question-box">
+                  <span class="security-q-label">Security Question:</span>
+                  <span class="security-q-text">${this._escapeHtml(savedQuestion)}</span>
+                </div>
+                <input type="text" id="sec-recovery-verify-input" class="input-field"
+                  placeholder="Enter your recovery answer..." autocomplete="off" required />
+              ` : `
+                <div class="security-pwd-wrap">
+                  <input type="password" id="sec-current-pwd" class="input-field security-pwd-input" autocomplete="current-password"
+                    placeholder="${this.useForgotRecovery ? "Enter your store account login password..." : "Enter current security password..."}" required />
+                  <button type="button" class="security-pwd-eye" data-target="sec-current-pwd" aria-label="Show password">👁️</button>
+                </div>
+              `}
             </div>
           ` : ""}
 
@@ -93,7 +127,7 @@ MedHub.security = {
               <label class="form-label">${isLocked ? "New Security Password" : "Security Password"} <span class="req">*</span></label>
               <div class="security-pwd-wrap">
                 <input type="password" id="sec-new-pwd" class="input-field security-pwd-input" autocomplete="new-password"
-                  placeholder="e.g. 1234 ya Sagar@99" required minlength="4" />
+                  placeholder="Enter at least 4 characters" required minlength="4" />
                 <button type="button" class="security-pwd-eye" data-target="sec-new-pwd" aria-label="Show password">👁️</button>
               </div>
             </div>
@@ -101,8 +135,46 @@ MedHub.security = {
               <label class="form-label">Confirm Password <span class="req">*</span></label>
               <div class="security-pwd-wrap">
                 <input type="password" id="sec-confirm-pwd" class="input-field security-pwd-input" autocomplete="new-password"
-                  placeholder="Wahi password dobara daalein" required minlength="4" />
+                  placeholder="Re-enter password" required minlength="4" />
                 <button type="button" class="security-pwd-eye" data-target="sec-confirm-pwd" aria-label="Show password">👁️</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- SECURITY RECOVERY QUESTION & ANSWER -->
+          <div class="security-recovery-section">
+            <div class="security-recovery-header">
+              <span>🔑</span>
+              <div>
+                <strong>Password Recovery Security Question</strong>
+                <div style="font-size:12px; color:#64748b; margin-top:2px;">
+                  Required to reset or remove your Security Lock if you ever forget your password.
+                </div>
+              </div>
+            </div>
+
+            <div class="form-row-2" style="margin-top: 12px;">
+              <div class="form-group">
+                <label class="form-label">Security Question <span class="req">*</span></label>
+                <select id="sec-question-select" class="input-field" required>
+                  ${this.presetQuestions.map(q => `
+                    <option value="${this._escapeHtml(q)}" ${initialSelectVal === q ? "selected" : ""}>${this._escapeHtml(q)}</option>
+                  `).join("")}
+                  <option value="__custom__" ${initialSelectVal === "__custom__" ? "selected" : ""}>Write a custom question...</option>
+                </select>
+                <input type="text" id="sec-custom-question" class="input-field"
+                  style="margin-top:8px; display:${initialSelectVal === "__custom__" ? "block" : "none"};"
+                  placeholder="Type your custom security question..."
+                  value="${initialSelectVal === "__custom__" ? this._escapeHtml(savedQuestion) : ""}" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">
+                  Security Answer ${!isLocked || !hasRecoveryQuestion ? `<span class="req">*</span>` : `(Optional to keep existing)`}
+                </label>
+                <input type="text" id="sec-recovery-answer" class="input-field" autocomplete="off"
+                  placeholder="${isLocked && hasRecoveryQuestion ? "Enter new answer (or leave blank to keep current)" : "Enter recovery answer (case-insensitive)"}"
+                  ${!isLocked || !hasRecoveryQuestion ? "required" : ""} />
               </div>
             </div>
           </div>
@@ -121,19 +193,19 @@ MedHub.security = {
         </form>
 
         <div class="security-scope-strip">
-          <span class="security-scope-label">Protected:</span>
+          <span class="security-scope-label">Protected Actions:</span>
           <span class="security-chip">💊 Medicine Add / Edit / Delete</span>
-          <span class="security-chip">📦 + Stock Entry</span>
-          <span class="security-chip">🧾 Purchase &amp; Bill Edit</span>
-          <span class="security-chip is-free">⚡ POS Counter Billing Free</span>
+          <span class="security-chip">📦 Add Stock</span>
+          <span class="security-chip">🧾 Purchase &amp; Invoice Edit</span>
+          <span class="security-chip is-free">⚡ POS Billing Always Open</span>
         </div>
       </div>
     `;
 
-    this.bindEvents(container, isLocked);
+    this.bindEvents(container, isLocked, hasRecoveryQuestion, savedQuestion);
   },
 
-  bindEvents(container, isLocked) {
+  bindEvents(container, isLocked, hasRecoveryQuestion, savedQuestion) {
     const self = this;
 
     container.querySelectorAll(".security-pwd-eye").forEach((btn) => {
@@ -147,8 +219,17 @@ MedHub.security = {
       });
     });
 
+    document.getElementById("sec-question-select")?.addEventListener("change", (e) => {
+      const customEl = document.getElementById("sec-custom-question");
+      if (!customEl) return;
+      const isCustom = e.target.value === "__custom__";
+      customEl.style.display = isCustom ? "block" : "none";
+      customEl.required = isCustom;
+      if (isCustom) customEl.focus();
+    });
+
     document.getElementById("btn-toggle-sec-recovery")?.addEventListener("click", () => {
-      self.useLoginFallback = !self.useLoginFallback;
+      self.useForgotRecovery = !self.useForgotRecovery;
       self.render(container);
     });
 
@@ -159,27 +240,61 @@ MedHub.security = {
 
     document.getElementById("btn-sec-lock-edit-now")?.addEventListener("click", () => {
       MedHub.api.lockEditSession();
-      MedHub.toast("🔒 Edit options ab hide / lock ho gaye hain.", "info");
+      MedHub.toast("Edit options are now hidden and locked.", "info");
       self.render(container);
     });
 
     const form = document.getElementById("security-password-form");
     form?.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const currentPwd = document.getElementById("sec-current-pwd")?.value || "";
       const newPwd = document.getElementById("sec-new-pwd")?.value || "";
       const confirmPwd = document.getElementById("sec-confirm-pwd")?.value || "";
+      const qSelect = document.getElementById("sec-question-select")?.value || "";
+      const qCustom = document.getElementById("sec-custom-question")?.value || "";
+      const finalQuestion = (qSelect === "__custom__" ? qCustom : qSelect).trim();
+      const newAnswer = (document.getElementById("sec-recovery-answer")?.value || "").trim();
 
       if (newPwd.trim().length < 4) {
-        MedHub.toast("Security password kam se kam 4 characters ka hona chahiye", "warning");
+        MedHub.toast("Security password must be at least 4 characters long.", "warning");
         document.getElementById("sec-new-pwd")?.focus();
         return;
       }
 
       if (newPwd !== confirmPwd) {
-        MedHub.toast("New Password aur Confirm Password match nahi kar rahe", "error");
+        MedHub.toast("New password and confirm password do not match.", "error");
         document.getElementById("sec-confirm-pwd")?.focus();
         return;
+      }
+
+      if (!finalQuestion) {
+        MedHub.toast("Please enter your security question.", "warning");
+        document.getElementById("sec-custom-question")?.focus();
+        return;
+      }
+
+      const questionChanged = isLocked && savedQuestion && finalQuestion !== savedQuestion;
+      if ((!isLocked || !hasRecoveryQuestion || questionChanged) && !newAnswer) {
+        MedHub.toast("Please enter an answer for your security question.", "warning");
+        document.getElementById("sec-recovery-answer")?.focus();
+        return;
+      }
+
+      const opts = {
+        securityQuestion: finalQuestion,
+        securityAnswerInput: newAnswer,
+        preserveExistingAnswer: Boolean(isLocked && hasRecoveryQuestion && !newAnswer && !questionChanged)
+      };
+
+      if (isLocked) {
+        if (self.useForgotRecovery) {
+          if (hasRecoveryQuestion) {
+            opts.securityAnswer = document.getElementById("sec-recovery-verify-input")?.value || "";
+          } else {
+            opts.loginPassword = document.getElementById("sec-current-pwd")?.value || "";
+          }
+        } else {
+          opts.currentPassword = document.getElementById("sec-current-pwd")?.value || "";
+        }
       }
 
       const saveBtn = document.getElementById("btn-save-security-pwd");
@@ -187,10 +302,6 @@ MedHub.security = {
         saveBtn.disabled = true;
         saveBtn.textContent = "Saving...";
       }
-
-      const opts = isLocked
-        ? (self.useLoginFallback ? { loginPassword: currentPwd } : { currentPassword: currentPwd })
-        : {};
 
       const res = await MedHub.api.setEditSecurityPassword(newPwd, opts);
 
@@ -200,28 +311,43 @@ MedHub.security = {
       }
 
       if (!res.success) {
-        MedHub.toast(res.message || "Security password save nahi ho paya", "error");
+        MedHub.toast(res.message || "Could not save security password.", "error");
         return;
       }
 
-      self.useLoginFallback = false;
+      self.useForgotRecovery = false;
       MedHub.toast(
         isLocked
-          ? "🔒 Security Password successfully update ho gaya!"
-          : "🔒 Security Lock activate ho gaya!",
+          ? "Security password updated. Edit options remain hidden until unlocked."
+          : "Security Lock enabled. Edit options are now hidden by default.",
         "success"
       );
       await self.render(container);
     });
 
     document.getElementById("btn-disable-security-lock")?.addEventListener("click", async () => {
-      const promptMsg = self.useLoginFallback
-        ? "Security Lock hatane ke liye apna Store Account Login Password daalein:"
-        : "Security Lock hatane ke liye apna Current Security Password daalein:";
+      const useRecoveryPrompt = self.useForgotRecovery;
+      let promptMsg = "Enter your current security password to remove Security Lock:";
+      let promptTitle = "Remove Security Lock";
+      let promptType = "password";
+      let promptPlaceholder = "Enter current security password...";
+
+      if (useRecoveryPrompt && hasRecoveryQuestion) {
+        promptMsg = `Security Question: ${savedQuestion}\nEnter your recovery answer to remove Security Lock:`;
+        promptTitle = "Recover & Remove Lock";
+        promptType = "text";
+        promptPlaceholder = "Enter security answer...";
+      } else if (useRecoveryPrompt) {
+        promptMsg = "Enter your store account login password to remove Security Lock:";
+        promptTitle = "Verify Store Account";
+        promptType = "password";
+        promptPlaceholder = "Enter login password...";
+      }
+
       const entered = await MedHub.prompt(promptMsg, "", {
-        title: "Remove Security Lock",
-        type: "password",
-        placeholder: self.useLoginFallback ? "Login password..." : "Current security password...",
+        title: promptTitle,
+        type: promptType,
+        placeholder: promptPlaceholder,
         confirmText: "Remove Lock",
         cancelText: "Keep Lock",
         danger: true,
@@ -230,17 +356,19 @@ MedHub.security = {
 
       if (entered === null) return;
 
-      const res = await MedHub.api.removeEditSecurityPassword(
-        self.useLoginFallback ? { loginPassword: entered } : { currentPassword: entered }
-      );
+      const authPayload = useRecoveryPrompt
+        ? (hasRecoveryQuestion ? { securityAnswer: entered } : { loginPassword: entered })
+        : { currentPassword: entered };
+
+      const res = await MedHub.api.removeEditSecurityPassword(authPayload);
 
       if (!res.success) {
-        MedHub.toast(res.message || "Galat password! Security Lock remove nahi hua.", "error");
+        MedHub.toast(res.message || "Verification failed. Security Lock was not removed.", "error");
         return;
       }
 
-      self.useLoginFallback = false;
-      MedHub.toast("🔓 Security Lock disable kar diya gaya hai.", "warning");
+      self.useForgotRecovery = false;
+      MedHub.toast("Security Lock disabled. Edit options are now visible.", "warning");
       await self.render(container);
     });
 

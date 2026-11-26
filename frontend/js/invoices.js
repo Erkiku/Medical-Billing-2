@@ -37,7 +37,7 @@ MedHub.invoices = {
                 🔒 Unlock Bill Edit
               </button>
             ` : (lockActive ? `
-              <button type="button" class="btn-lock-edit" id="btn-lock-invoice-edit" title="Edit options wapas hide karein">
+              <button type="button" class="btn-lock-edit" id="btn-lock-invoice-edit" title="Hide and lock bill edit option">
                 🔓 Lock Edit
               </button>
             ` : "")}
@@ -217,13 +217,13 @@ MedHub.invoices = {
 
     // Unlock / Lock Bill Edit Options
     container.querySelector("#btn-unlock-invoice-edit")?.addEventListener("click", async () => {
-      const ok = await MedHub.api.promptUnlockEditMode("Bill / Invoice Edit Option");
+      const ok = await MedHub.api.promptUnlockEditMode("Invoice Edit Option");
       if (ok) self.render(container);
     });
 
     container.querySelector("#btn-lock-invoice-edit")?.addEventListener("click", () => {
       MedHub.api.lockEditSession();
-      MedHub.toast("🔒 Bill edit option hide kar diya gaya hai.", "info");
+      MedHub.toast("Invoice edit option is now hidden and locked.", "info");
       self.render(container);
     });
 
@@ -246,7 +246,7 @@ MedHub.invoices = {
         const id = editBtn.dataset.id;
         const bill = self.billsList.find(b => String(b.id) === String(id) || String(b.bill_no) === String(id));
         if (bill) {
-          if (!(await MedHub.api.requireEditSecurityAuth(`Invoice #${bill.bill_no} edit karna`))) return;
+          if (!(await MedHub.api.requireEditSecurityAuth(`Edit Invoice #${bill.bill_no}`))) return;
           self.openEditInvoiceModal(bill);
         } else {
           MedHub.toast("Invoice edit karne ke liye data nahi mila", "warning");

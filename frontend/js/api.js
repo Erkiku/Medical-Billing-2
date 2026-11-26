@@ -92,17 +92,88 @@ MedHub.api = {
   // --------------------------------------------------------------------------
   // MEDICINE & STOCK EDIT SECURITY LOCK HELPERS (Synced via store_settings)
   // --------------------------------------------------------------------------
-  _SEC_MARKER_REGEX: /\n?<!--medhub_sec:([a-z0-9:]+)-->/gi,
+  _SEC_MARKER_REGEX: /\n?<!--medhub_sec2?:([A-Za-z0-9:+/=_-]+)-->/gi,
 
   _stripSecurityMarker(text) {
-    return String(text || "").replace(/\n?<!--medhub_sec:[a-z0-9:]+-->/gi, "").trim();
+    return String(text || "").replace(/\n?<!--medhub_sec2?:[A-Za-z0-9:+/=_-]+-->/gi, "").trim();
   },
 
-  _packBillTermsWithSecurity(billTerms, hash) {
+  _encodeSecBase64(str) {
+    try {
+      if (typeof btoa === "function") {
+        return btoa(unescape(encodeURIComponent(str)));
+      }
+      if (typeof Buffer !== "undefined") {
+        return Buffer.from(str, "utf8").toString("base64");
+      }
+    } catch (e) {}
+    // Pure-JS Base64 fallback for restricted runtimes without btoa/Buffer
+    const utf8 = unescape(encodeURIComponent(String(str || "")));
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let out = "";
+    for (let i = 0; i < utf8.length; i += 3) {
+      const b1 = utf8.charCodeAt(i);
+      const has2 = i + 1 < utf8.length;
+      const has3 = i + 2 < utf8.length;
+      const b2 = has2 ? utf8.charCodeAt(i + 1) : 0;
+      const b3 = has3 ? utf8.charCodeAt(i + 2) : 0;
+      const triplet = (b1 << 16) | (b2 << 8) | b3;
+      out += chars[(triplet >> 18) & 63];
+      out += chars[(triplet >> 12) & 63];
+      out += has2 ? chars[(triplet >> 6) & 63] : "=";
+      out += has3 ? chars[triplet & 63] : "=";
+    }
+    return out;
+  },
+
+  _decodeSecBase64(b64) {
+    try {
+      if (typeof atob === "function") {
+        return decodeURIComponent(escape(atob(b64)));
+      }
+      if (typeof Buffer !== "undefined") {
+        return Buffer.from(b64, "base64").toString("utf8");
+      }
+    } catch (e) {}
+    const clean = String(b64 || "").replace(/[^A-Za-z0-9+/=]/g, "");
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let bytes = "";
+    for (let i = 0; i < clean.length; i += 4) {
+      const c1 = chars.indexOf(clean[i]);
+      const c2 = chars.indexOf(clean[i + 1]);
+      const c3 = clean[i + 2] === "=" ? -1 : chars.indexOf(clean[i + 2]);
+      const c4 = clean[i + 3] === "=" ? -1 : chars.indexOf(clean[i + 3]);
+      if (c1 < 0 || c2 < 0) break;
+      const n1 = (c1 << 2) | (c2 >> 4);
+      bytes += String.fromCharCode(n1);
+      if (c3 >= 0) {
+        const n2 = ((c2 & 15) << 4) | (c3 >> 2);
+        bytes += String.fromCharCode(n2);
+        if (c4 >= 0) {
+          const n3 = ((c3 & 3) << 6) | c4;
+          bytes += String.fromCharCode(n3);
+        }
+      }
+    }
+    try {
+      return decodeURIComponent(escape(bytes));
+    } catch (e) {
+      return bytes;
+    }
+  },
+
+  _packBillTermsWithSecurity(billTerms, hash, question = "", answerHash = "") {
     const clean = this._stripSecurityMarker(billTerms);
     const cleanHash = String(hash || "").trim();
     if (!cleanHash) return clean;
-    return clean ? `${clean}\n<!--medhub_sec:${cleanHash}-->` : `<!--medhub_sec:${cleanHash}-->`;
+    const payload = {
+      h: cleanHash,
+      q: String(question || "").trim(),
+      a: String(answerHash || "").trim()
+    };
+    const encoded = this._encodeSecBase64(JSON.stringify(payload));
+    const tag = encoded ? `<!--medhub_sec2:${encoded}-->` : `<!--medhub_sec:${cleanHash}-->`;
+    return clean ? `${clean}\n${tag}` : tag;
   },
 
   _getEditSecurityLocalKey(store) {
@@ -113,23 +184,54 @@ MedHub.api = {
     return `medhub_edit_sec_${scope}`;
   },
 
+  _saveLocalSecurityMeta(store, meta) {
+    try {
+      const key = this._getEditSecurityLocalKey(store);
+      if (meta && meta.h) {
+        localStorage.setItem(key + "_meta", JSON.stringify(meta));
+        localStorage.setItem(key, meta.h);
+      } else {
+        localStorage.removeItem(key + "_meta");
+        localStorage.removeItem(key);
+      }
+    } catch (e) {}
+  },
+
   _unpackStoreSecurityMeta(store) {
     if (!store || typeof store !== "object") return store;
     const copy = { ...store };
     const rawTerms = String(copy.bill_terms || "");
-    const match = rawTerms.match(/<!--medhub_sec:([a-z0-9:]+)-->/i);
-    if (match && match[1]) {
-      copy.edit_security_hash = match[1].trim();
-      copy.bill_terms = this._stripSecurityMarker(rawTerms);
-    } else {
-      copy.bill_terms = this._stripSecurityMarker(rawTerms);
-      if (copy.edit_security_hash === undefined) {
-        try {
-          const localHash = localStorage.getItem(this._getEditSecurityLocalKey(copy));
+    const matchV2 = rawTerms.match(/<!--medhub_sec2:([A-Za-z0-9+/=]+)-->/i);
+    const matchV1 = rawTerms.match(/<!--medhub_sec:([a-z0-9:]+)-->/i);
+
+    if (matchV2 && matchV2[1]) {
+      try {
+        const parsed = JSON.parse(this._decodeSecBase64(matchV2[1]) || "{}");
+        copy.edit_security_hash = String(parsed.h || "").trim();
+        copy.edit_security_question = String(parsed.q || "").trim();
+        copy.edit_security_answer_hash = String(parsed.a || "").trim();
+      } catch (e) {}
+    } else if (matchV1 && matchV1[1]) {
+      copy.edit_security_hash = matchV1[1].trim();
+      copy.edit_security_question = copy.edit_security_question || "";
+      copy.edit_security_answer_hash = copy.edit_security_answer_hash || "";
+    } else if (copy.edit_security_hash === undefined) {
+      try {
+        const key = this._getEditSecurityLocalKey(copy);
+        const rawMeta = localStorage.getItem(key + "_meta");
+        if (rawMeta) {
+          const parsed = JSON.parse(rawMeta);
+          copy.edit_security_hash = String(parsed.h || "").trim();
+          copy.edit_security_question = String(parsed.q || "").trim();
+          copy.edit_security_answer_hash = String(parsed.a || "").trim();
+        } else {
+          const localHash = localStorage.getItem(key);
           if (localHash) copy.edit_security_hash = localHash;
-        } catch (e) {}
-      }
+        }
+      } catch (e) {}
     }
+
+    copy.bill_terms = this._stripSecurityMarker(rawTerms);
     return copy;
   },
 
@@ -145,6 +247,36 @@ MedHub.api = {
     }
   },
 
+  getEditSecurityQuestion() {
+    const store = MedHub.state.store;
+    if (store && typeof store.edit_security_question === "string") {
+      return store.edit_security_question.trim();
+    }
+    try {
+      const raw = localStorage.getItem(this._getEditSecurityLocalKey(store) + "_meta");
+      return raw ? String(JSON.parse(raw).q || "").trim() : "";
+    } catch (e) {
+      return "";
+    }
+  },
+
+  getEditSecurityAnswerHash() {
+    const store = MedHub.state.store;
+    if (store && typeof store.edit_security_answer_hash === "string") {
+      return store.edit_security_answer_hash.trim();
+    }
+    try {
+      const raw = localStorage.getItem(this._getEditSecurityLocalKey(store) + "_meta");
+      return raw ? String(JSON.parse(raw).a || "").trim() : "";
+    } catch (e) {
+      return "";
+    }
+  },
+
+  hasEditSecurityQuestion() {
+    return Boolean(this.getEditSecurityQuestion() && this.getEditSecurityAnswerHash());
+  },
+
   isEditSecurityEnabled() {
     return Boolean(this.getEditSecurityHash());
   },
@@ -154,8 +286,15 @@ MedHub.api = {
     if (!storedHash) return true;
     const raw = String(inputPassword || "");
     if (!raw) return false;
-    const candidate = MedHub.hashSecuritySecret(raw);
-    return candidate === storedHash;
+    return MedHub.hashSecuritySecret(raw) === storedHash;
+  },
+
+  verifySecurityAnswer(inputAnswer) {
+    const storedAnsHash = this.getEditSecurityAnswerHash();
+    if (!storedAnsHash) return false;
+    const normalized = String(inputAnswer || "").trim().toLowerCase();
+    if (!normalized) return false;
+    return MedHub.hashSecuritySecret(normalized) === storedAnsHash;
   },
 
   async verifyCurrentStoreLoginPassword(inputPassword) {
@@ -175,30 +314,60 @@ MedHub.api = {
   async setEditSecurityPassword(newPassword, opts = {}) {
     const rawNew = String(newPassword || "").trim();
     if (rawNew.length < 4) {
-      return { success: false, message: "Security password kam se kam 4 characters ka hona chahiye." };
+      return { success: false, message: "Security password must be at least 4 characters long." };
     }
-    if (this.isEditSecurityEnabled() && !opts.skipAuthCheck) {
+
+    const wasEnabled = this.isEditSecurityEnabled();
+    if (wasEnabled && !opts.skipAuthCheck) {
       let authorized = false;
       if (opts.currentPassword && this.verifyEditSecurityPassword(opts.currentPassword)) {
+        authorized = true;
+      } else if (opts.securityAnswer && this.verifySecurityAnswer(opts.securityAnswer)) {
         authorized = true;
       } else if (opts.loginPassword && await this.verifyCurrentStoreLoginPassword(opts.loginPassword)) {
         authorized = true;
       }
       if (!authorized) {
-        return {
-          success: false,
-          message: opts.loginPassword
-            ? "Account login password galat hai."
-            : "Purana security password galat hai."
-        };
+        if (opts.securityAnswer !== undefined) {
+          return { success: false, message: "Incorrect security answer. Please try again." };
+        }
+        if (opts.loginPassword !== undefined) {
+          return { success: false, message: "Incorrect store account login password." };
+        }
+        return { success: false, message: "Incorrect current security password." };
       }
     }
 
+    const nextQuestion = String(
+      opts.securityQuestion !== undefined ? opts.securityQuestion : this.getEditSecurityQuestion()
+    ).trim();
+    const rawAnswer = String(opts.securityAnswerInput !== undefined ? opts.securityAnswerInput : "").trim();
+    let nextAnswerHash = rawAnswer
+      ? MedHub.hashSecuritySecret(rawAnswer.toLowerCase())
+      : (opts.preserveExistingAnswer ? this.getEditSecurityAnswerHash() : "");
+
+    if (!wasEnabled && !rawAnswer) {
+      nextAnswerHash = "";
+    }
+
+    if (!nextQuestion || !nextAnswerHash) {
+      return {
+        success: false,
+        message: "Please select or enter a security question and its recovery answer."
+      };
+    }
+
     const newHash = MedHub.hashSecuritySecret(rawNew);
-    const saved = await this.saveStoreSettings({ edit_security_hash: newHash });
-    try {
-      localStorage.setItem(this._getEditSecurityLocalKey(saved || MedHub.state.store), newHash);
-    } catch (e) {}
+    const saved = await this.saveStoreSettings({
+      edit_security_hash: newHash,
+      edit_security_question: nextQuestion,
+      edit_security_answer_hash: nextAnswerHash
+    });
+    this._saveLocalSecurityMeta(saved || MedHub.state.store, {
+      h: newHash,
+      q: nextQuestion,
+      a: nextAnswerHash
+    });
     this.lockEditSession();
     return { success: true, cloudSynced: Boolean(saved && saved._cloudSynced) };
   },
@@ -210,22 +379,27 @@ MedHub.api = {
     let authorized = false;
     if (opts.currentPassword && this.verifyEditSecurityPassword(opts.currentPassword)) {
       authorized = true;
+    } else if (opts.securityAnswer && this.verifySecurityAnswer(opts.securityAnswer)) {
+      authorized = true;
     } else if (opts.loginPassword && await this.verifyCurrentStoreLoginPassword(opts.loginPassword)) {
       authorized = true;
     }
     if (!authorized) {
-      return {
-        success: false,
-        message: opts.loginPassword
-          ? "Account login password galat hai. Lock hatane ke liye sahi password daalein."
-          : "Current security password galat hai."
-      };
+      if (opts.securityAnswer !== undefined) {
+        return { success: false, message: "Incorrect security answer. Lock was not removed." };
+      }
+      if (opts.loginPassword !== undefined) {
+        return { success: false, message: "Incorrect login password. Lock was not removed." };
+      }
+      return { success: false, message: "Incorrect current security password." };
     }
 
-    const saved = await this.saveStoreSettings({ edit_security_hash: "" });
-    try {
-      localStorage.removeItem(this._getEditSecurityLocalKey(saved || MedHub.state.store));
-    } catch (e) {}
+    const saved = await this.saveStoreSettings({
+      edit_security_hash: "",
+      edit_security_question: "",
+      edit_security_answer_hash: ""
+    });
+    this._saveLocalSecurityMeta(saved || MedHub.state.store, null);
     this.lockEditSession();
     return { success: true, cloudSynced: Boolean(saved && saved._cloudSynced) };
   },
@@ -282,7 +456,7 @@ MedHub.api = {
     } catch (e) {}
   },
 
-  async promptUnlockEditMode(actionLabel = "Edit & Stock Options Unlock") {
+  async promptUnlockEditMode(actionLabel = "Edit & Stock Options") {
     if (!MedHub.state.store) {
       try { await this.getStoreSettings(); } catch (e) {}
     }
@@ -290,12 +464,12 @@ MedHub.api = {
     if (this.isEditModeUnlocked()) return true;
 
     const entered = await MedHub.prompt(
-      `"${actionLabel}" show karne ke liye Store Security PIN / Password darj karein:`,
+      `Enter your Store Security Password to unlock "${actionLabel}":`,
       "",
       {
-        title: "Security Lock PIN",
+        title: "Security Lock Required",
         type: "password",
-        placeholder: "Security PIN / Password daalein...",
+        placeholder: "Enter security password...",
         confirmText: "Unlock Edit Mode",
         cancelText: "Cancel",
         icon: "🔒"
@@ -307,15 +481,15 @@ MedHub.api = {
     }
 
     if (!this.unlockEditSession(entered)) {
-      MedHub.toast("❌ Galat Security PIN! Edit options locked rahenge.", "error");
+      MedHub.toast("Incorrect security password. Edit options remain hidden.", "error");
       return false;
     }
 
-    MedHub.toast("🔓 Edit options unlock ho gaye hain!", "success");
+    MedHub.toast("Edit options unlocked for this session.", "success");
     return true;
   },
 
-  async requireEditSecurityAuth(actionLabel = "Medicine / Stock changes karna") {
+  async requireEditSecurityAuth(actionLabel = "Medicine & Stock Changes") {
     if (!MedHub.state.store) {
       try { await this.getStoreSettings(); } catch (e) {}
     }
@@ -476,7 +650,11 @@ MedHub.api = {
         localStorage.setItem("mededuhub_store_settings", json);
         if (found.id) localStorage.setItem("medhub_store_id", String(found.id));
         if (found.edit_security_hash) {
-          localStorage.setItem(this._getEditSecurityLocalKey(found), found.edit_security_hash);
+          this._saveLocalSecurityMeta(found, {
+            h: found.edit_security_hash,
+            q: found.edit_security_question || "",
+            a: found.edit_security_answer_hash || ""
+          });
         }
       } catch (e) {}
       MedHub.state.store = found;
@@ -492,6 +670,12 @@ MedHub.api = {
     const activeSecHash = settings && settings.edit_security_hash !== undefined
       ? String(settings.edit_security_hash || "").trim()
       : this.getEditSecurityHash();
+    const activeSecQuestion = settings && settings.edit_security_question !== undefined
+      ? String(settings.edit_security_question || "").trim()
+      : this.getEditSecurityQuestion();
+    const activeSecAnswerHash = settings && settings.edit_security_answer_hash !== undefined
+      ? String(settings.edit_security_answer_hash || "").trim()
+      : this.getEditSecurityAnswerHash();
 
     const merged = {
       ...(MedHub.state.store || {}),
@@ -500,6 +684,8 @@ MedHub.api = {
       updated_at: new Date().toISOString()
     };
     merged.edit_security_hash = activeSecHash;
+    merged.edit_security_question = activeSecQuestion;
+    merged.edit_security_answer_hash = activeSecAnswerHash;
     merged.bill_terms = this._stripSecurityMarker(merged.bill_terms);
 
     if (merged.gstin !== undefined) {
@@ -537,9 +723,14 @@ MedHub.api = {
             dbPayload[col] = merged[col];
           }
         }
-        // Pack security hash cleanly inside bill_terms ONLY in cloud payload
+        // Pack security metadata cleanly inside bill_terms ONLY in cloud payload
         if (activeSecHash || dbPayload.bill_terms !== undefined) {
-          dbPayload.bill_terms = this._packBillTermsWithSecurity(dbPayload.bill_terms || "", activeSecHash);
+          dbPayload.bill_terms = this._packBillTermsWithSecurity(
+            dbPayload.bill_terms || "",
+            activeSecHash,
+            activeSecQuestion,
+            activeSecAnswerHash
+          );
         }
         dbPayload.updated_at = new Date().toISOString();
 

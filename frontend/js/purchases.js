@@ -33,11 +33,11 @@ MedHub.purchases = {
             </button>
             ${lockActive && !canEdit ? `
               <button type="button" class="btn-unlock-edit" id="btn-unlock-purchase-edit">
-                🔒 Unlock Edit / Purchase
+                🔒 Unlock Edit Options
               </button>
             ` : `
               ${lockActive ? `
-                <button type="button" class="btn-lock-edit" id="btn-lock-purchase-edit" title="Edit options wapas hide karein">
+                <button type="button" class="btn-lock-edit" id="btn-lock-purchase-edit" title="Hide and lock edit options">
                   🔓 Lock Edit
                 </button>
               ` : ""}
@@ -161,19 +161,19 @@ MedHub.purchases = {
 
     // Open New Purchase Modal
     container.querySelector("#btn-open-purchase-modal")?.addEventListener("click", async () => {
-      if (!(await MedHub.api.requireEditSecurityAuth("Naya Purchase & Stock inward add karna"))) return;
+      if (!(await MedHub.api.requireEditSecurityAuth("Record New Purchase"))) return;
       self.openNewPurchaseModal();
     });
 
     // Unlock / Lock Purchase Edit Options
     container.querySelector("#btn-unlock-purchase-edit")?.addEventListener("click", async () => {
-      const ok = await MedHub.api.promptUnlockEditMode("Purchases Edit Options");
+      const ok = await MedHub.api.promptUnlockEditMode("Purchase Edit Options");
       if (ok) self.render(container);
     });
 
     container.querySelector("#btn-lock-purchase-edit")?.addEventListener("click", () => {
       MedHub.api.lockEditSession();
-      MedHub.toast("🔒 Purchase edit options hide kar diye gaye hain.", "info");
+      MedHub.toast("Purchase edit options are now hidden and locked.", "info");
       self.render(container);
     });
 
@@ -194,7 +194,7 @@ MedHub.purchases = {
         const id = editBtn.dataset.id;
         const purchase = self.purchasesList.find(p => String(p.id) === String(id) || String(p.invoice_no) === String(id));
         if (purchase) {
-          if (!(await MedHub.api.requireEditSecurityAuth(`Purchase Invoice #${purchase.invoice_no} edit karna`))) return;
+          if (!(await MedHub.api.requireEditSecurityAuth(`Edit Purchase #${purchase.invoice_no}`))) return;
           self.openEditPurchaseModal(purchase);
         }
         return;
@@ -205,7 +205,7 @@ MedHub.purchases = {
         const id = deleteBtn.dataset.id;
         const purchase = self.purchasesList.find(p => String(p.id) === String(id) || String(p.invoice_no) === String(id));
         if (purchase) {
-          if (!(await MedHub.api.requireEditSecurityAuth(`Purchase Invoice #${purchase.invoice_no} delete karna`))) return;
+          if (!(await MedHub.api.requireEditSecurityAuth(`Delete Purchase #${purchase.invoice_no}`))) return;
           if (await MedHub.confirm(`Kya aap Purchase Invoice '${purchase.invoice_no}' ko delete karna chahte hain?`)) {
             const ok = await MedHub.api.deletePurchase(id);
             if (ok) {

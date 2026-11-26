@@ -43,11 +43,11 @@ MedHub.inventory = {
             </button>
             ${lockActive && !canEdit ? `
               <button type="button" class="btn-unlock-edit" id="btn-unlock-edit-mode">
-                🔒 Unlock Edit / Stock
+                🔒 Unlock Edit Options
               </button>
             ` : `
               ${lockActive ? `
-                <button type="button" class="btn-lock-edit" id="btn-lock-edit-mode" title="Edit options wapas hide karein">
+                <button type="button" class="btn-lock-edit" id="btn-lock-edit-mode" title="Hide and lock edit options">
                   🔓 Lock Edit
                 </button>
               ` : ""}
@@ -259,7 +259,7 @@ MedHub.inventory = {
         const id = stockBtn.dataset.id;
         const med = self.medicinesList.find(m => String(m.id) === String(id));
         if (med) {
-          if (!(await MedHub.api.requireEditSecurityAuth(`${med.name} me Stock add karna`))) return;
+          if (!(await MedHub.api.requireEditSecurityAuth(`Add stock for ${med.name}`))) return;
           self.openAddStockModal(med);
         }
         return;
@@ -270,7 +270,7 @@ MedHub.inventory = {
         const id = editBtn.dataset.id;
         const med = self.medicinesList.find(m => String(m.id) === String(id));
         if (med) {
-          if (!(await MedHub.api.requireEditSecurityAuth(`${med.name} ki details edit karna`))) return;
+          if (!(await MedHub.api.requireEditSecurityAuth(`Edit ${med.name}`))) return;
           self.openEditMedicineModal(med);
         }
         return;
@@ -281,7 +281,7 @@ MedHub.inventory = {
         const id = deleteBtn.dataset.id;
         const med = self.medicinesList.find(m => String(m.id) === String(id));
         if (med) {
-          if (!(await MedHub.api.requireEditSecurityAuth(`${med.name} ko catalog se delete karna`))) return;
+          if (!(await MedHub.api.requireEditSecurityAuth(`Delete ${med.name}`))) return;
           if (await MedHub.confirm(`Kya aap '${med.name}' ko catalog se delete karna chahte hain?`)) {
             const ok = await MedHub.api.deleteMedicine(id);
             if (ok) {
@@ -324,7 +324,7 @@ MedHub.inventory = {
 
     // Open Add Medicine Modal
     container.querySelector("#btn-open-add-modal")?.addEventListener("click", async () => {
-      if (!(await MedHub.api.requireEditSecurityAuth("Nayi Medicine add karna"))) return;
+      if (!(await MedHub.api.requireEditSecurityAuth("Add New Medicine"))) return;
       self.openAddMedicineModal();
     });
 
@@ -336,7 +336,7 @@ MedHub.inventory = {
 
     container.querySelector("#btn-lock-edit-mode")?.addEventListener("click", () => {
       MedHub.api.lockEditSession();
-      MedHub.toast("🔒 Edit options hide / lock kar diye gaye hain.", "info");
+      MedHub.toast("Edit options are now hidden and locked.", "info");
       self.render(container);
     });
   },
