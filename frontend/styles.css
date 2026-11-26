@@ -2944,6 +2944,44 @@ button {
   margin-bottom: 10px;
 }
 
+.classic-receipt-header-with-qr {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  text-align: left;
+}
+
+.classic-header-info {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  padding-left: 70px;
+}
+
+.classic-top-qr-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  border: 1px dashed #444444;
+  padding: 5px 6px;
+  background: rgba(0, 0, 0, 0.02);
+  max-width: 128px;
+}
+
+.classic-top-qr-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  font-size: 8.5px;
+  line-height: 1.25;
+  color: #222222;
+  word-break: break-all;
+}
+
 .classic-store-title {
   font-size: 19px;
   font-weight: 900;
@@ -3002,18 +3040,18 @@ button {
   vertical-align: middle;
 }
 
-/* Authentic Tilted PAID Stamp (Compact, neatly placed on the side) */
+/* Authentic Tilted PAID Stamp (Compact, positioned cleanly top-left away from top-right QR) */
 .classic-stamp-paid {
   position: absolute;
-  top: 14px;
-  right: 20px;
+  top: 12px;
+  left: 16px;
   transform: rotate(-8deg);
   border: 2px solid #6b21a8;
   color: #6b21a8;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 900;
   letter-spacing: 2px;
-  padding: 3px 10px;
+  padding: 2px 8px;
   border-radius: 5px;
   text-transform: uppercase;
   background: rgba(255, 255, 255, 0.95);
@@ -3026,15 +3064,15 @@ button {
 
 .classic-stamp-due {
   position: absolute;
-  top: 14px;
-  right: 20px;
+  top: 12px;
+  left: 16px;
   transform: rotate(-8deg);
   border: 2px solid #dc2626;
   color: #dc2626;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 900;
   letter-spacing: 2px;
-  padding: 3px 10px;
+  padding: 2px 8px;
   border-radius: 5px;
   text-transform: uppercase;
   background: rgba(255, 255, 255, 0.95);
@@ -3311,12 +3349,16 @@ button {
     padding: 0 !important;
   }
 
-  /* Always hide non-printable navigation, headers & buttons */
+  /* Always hide non-printable navigation, headers, banners & buttons */
   .sidebar, 
   .topbar, 
   .header-action-btns, 
   #toast-container, 
   .modal-header-print, 
+  .instant-print-banner,
+  #instant-print-banner,
+  .btn-enter-print-pill,
+  .btn-enter-print-now,
   .digital-actions-grid, 
   .bill-view-toggle-wrap,
   .btn-icon,
@@ -3326,6 +3368,11 @@ button {
   .filter-bar-card,
   .stats-grid {
     display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   /* When invoice modal is open, completely hide the background app */

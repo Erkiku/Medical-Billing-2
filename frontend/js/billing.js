@@ -1078,16 +1078,27 @@ MedHub.billing = {
             <!-- 1. NORMAL BILL VIEW (EXACT REPLICA OF USER PHOTO) -->
             <div id="normal-bill-container" class="printable-bill-view">
               <div id="printable-invoice" class="classic-receipt-paper">
-                <!-- PURPLE SLANTED PAID / DUE STAMP (PHOTO REPLICA) -->
+                <!-- PURPLE SLANTED PAID / DUE STAMP -->
                 ${isPaid ? `<div class="classic-stamp-paid">PAID</div>` : `<div class="classic-stamp-due">DUE</div>`}
 
-                <!-- STORE HEADER -->
-                <div class="classic-receipt-header">
-                  <h2 class="classic-store-title">${store.store_name || "MEDICAL STORE"}</h2>
-                  ${fullAddressLine ? `<p class="classic-store-address">${fullAddressLine}</p>` : ""}
-                  ${store.phone ? `<p class="classic-store-reg">Ph : ${store.phone}</p>` : ""}
-                  ${lic.gstin ? `<p class="classic-store-reg">GSTIN : ${lic.gstin}</p>` : ""}
-                  ${lic.dlDisplay ? `<p class="classic-store-reg">D.L. No : ${lic.dlDisplay}</p>` : ""}
+                <!-- STORE HEADER WITH TOP-RIGHT UPI ID & QR CODE -->
+                <div class="classic-receipt-header classic-receipt-header-with-qr">
+                  <div class="classic-header-info">
+                    <h2 class="classic-store-title">${store.store_name || "MEDICAL STORE"}</h2>
+                    ${fullAddressLine ? `<p class="classic-store-address">${fullAddressLine}</p>` : ""}
+                    ${store.phone ? `<p class="classic-store-reg">Ph : ${store.phone}</p>` : ""}
+                    ${lic.gstin ? `<p class="classic-store-reg">GSTIN : ${lic.gstin}</p>` : ""}
+                    ${lic.dlDisplay ? `<p class="classic-store-reg">D.L. No : ${lic.dlDisplay}</p>` : ""}
+                  </div>
+                  <div class="classic-top-qr-card">
+                    <div class="classic-qr-box">
+                      <img src="${qrImgUrl}" alt="Store Payment QR" crossorigin="anonymous" />
+                    </div>
+                    <div class="classic-top-qr-meta">
+                      <strong>SCAN & PAY</strong>
+                      <span>UPI: ${upiId}</span>
+                    </div>
+                  </div>
                 </div>
 
                 <!-- PATIENT & DOCTOR TWO-COLUMN METADATA -->
@@ -1145,18 +1156,6 @@ MedHub.billing = {
                     }).join("")}
                   </tbody>
                 </table>
-
-                <!-- QR CODE BOX (PHOTO REPLICA - CUSTOM STORE PAYMENT QR) -->
-                <div class="classic-qr-container">
-                  <div class="classic-qr-box">
-                    <img src="${qrImgUrl}" alt="Store Payment QR" crossorigin="anonymous" />
-                  </div>
-                  <div class="classic-qr-meta">
-                    <strong>Scan & Pay via UPI (GPay, PhonePe, Paytm, BHIM)</strong><br />
-                    <span>UPI ID: <strong>${upiId}</strong> • Payee: ${payeeName}</span><br />
-                    <span style="font-size: 9px; color: #555;">Body Checkup | Health Offers • Authentic Dispensed Medicines</span>
-                  </div>
-                </div>
 
                 <!-- TOTAL & AMOUNT IN WORDS -->
                 ${(Number(bill.discount) > 0 || Number(bill.gst_amount) > 0 || !isPaid) ? `
