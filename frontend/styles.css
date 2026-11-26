@@ -4664,36 +4664,21 @@ button {
 }
 
 /* Security Lock Screen */
-.security-status-banner {
+.security-page-shell {
+  max-width: 780px;
+  margin: 0 auto;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 16px 20px;
-  border-radius: 12px;
-  border: 1.5px solid #cbd5e1;
-  background: #ffffff;
-  margin-bottom: 18px;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
-}
-
-.security-status-banner.is-locked {
-  border-color: #93c5fd;
-  background: linear-gradient(135deg, #ffffff 0%, #eff6ff 100%);
-}
-
-.security-status-banner.is-unlocked {
-  border-color: #fde68a;
-  background: linear-gradient(135deg, #ffffff 0%, #fffbeb 100%);
+  flex-direction: column;
+  gap: 16px;
 }
 
 .security-status-badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 7px 14px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -4701,12 +4686,91 @@ button {
 .security-status-badge.locked {
   background: #1d4ed8;
   color: #ffffff;
+  box-shadow: 0 4px 12px rgba(29, 78, 216, 0.22);
 }
 
 .security-status-badge.unlocked {
-  background: #fef3c7;
+  background: #fffbeb;
   color: #92400e;
-  border: 1px solid #f59e0b;
+  border: 1.5px solid #fbbf24;
+}
+
+.security-hero-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+}
+
+.security-hero-banner.is-locked {
+  border-color: #93c5fd;
+  background: linear-gradient(135deg, #ffffff 0%, #eff6ff 100%);
+}
+
+.security-hero-banner.is-unlocked {
+  border-color: #fde68a;
+  background: linear-gradient(135deg, #ffffff 0%, #fffbeb 100%);
+}
+
+.security-hero-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05);
+}
+
+.security-hero-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.security-hero-desc {
+  font-size: 13px;
+  color: #475569;
+  margin-top: 3px;
+  line-height: 1.45;
+}
+
+.security-main-card {
+  margin-bottom: 0;
+}
+
+.security-hint-pill {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.security-link-btn {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #2563eb;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.security-link-btn:hover {
+  color: #1e40af;
 }
 
 .security-pwd-wrap {
@@ -4715,9 +4779,9 @@ button {
   align-items: center;
 }
 
-.security-pwd-wrap input {
+.security-pwd-wrap .security-pwd-input {
   width: 100%;
-  padding-right: 40px;
+  padding-right: 42px;
 }
 
 .security-pwd-eye {
@@ -4732,6 +4796,7 @@ button {
   padding: 4px 6px;
   border-radius: 6px;
   color: #475569;
+  line-height: 1;
 }
 
 .security-pwd-eye:hover {
@@ -4739,26 +4804,72 @@ button {
   color: #1d4ed8;
 }
 
-.security-scope-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.security-scope-item {
+.security-actions-bar {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
 }
 
-.security-scope-icon {
-  font-size: 18px;
-  line-height: 1.2;
+.security-danger-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 15px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1.5px solid #fecaca;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.security-danger-btn:hover {
+  background: #fee2e2;
+  border-color: #f87171;
+}
+
+.security-scope-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+.security-scope-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: #475569;
+  margin-right: 4px;
+}
+
+.security-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #eff6ff;
+  color: #1e3a8a;
+  border: 1px solid #dbeafe;
+}
+
+.security-chip.is-free {
+  background: #ecfdf5;
+  color: #065f46;
+  border-color: #a7f3d0;
 }
 
 .medhub-dialog-footer {
