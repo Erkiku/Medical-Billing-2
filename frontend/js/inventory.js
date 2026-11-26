@@ -181,10 +181,16 @@ MedHub.inventory = {
               ${m.drug_schedule || "General"}
             </span>
           </td>
-          <td class="cell-nowrap">${m.pack_size || "1 × 10"}</td>
+          <td class="cell-nowrap">
+            ${m.pack_size || "1 × 10"}
+            <div style="font-size:10px;color:#64748b;">${(MedHub.parsePackSize ? MedHub.parsePackSize(m.pack_size || "1 × 10").unitsPerPack : 10)} tabs/pk</div>
+          </td>
           <td class="cell-nowrap">₹${Number(m.mrp).toFixed(2)}</td>
           <td class="cell-nowrap"><strong>₹${Number(m.selling_rate || m.mrp).toFixed(2)}</strong></td>
-          <td class="cell-nowrap"><strong style="font-size:14px;">${m.available_qty || 0}</strong></td>
+          <td class="cell-nowrap">
+            <strong style="font-size:14px;">${m.available_qty || 0}</strong>
+            <div style="font-size:10px;color:#64748b;">${(Number(m.available_qty || 0) * (MedHub.parsePackSize ? MedHub.parsePackSize(m.pack_size || "1 × 10").unitsPerPack : 10))} tabs</div>
+          </td>
           <td class="cell-nowrap">${MedHub.formatExpiry ? MedHub.formatExpiry(m.nearest_expiry) : MedHub.formatDate(m.nearest_expiry)}</td>
           <td class="cell-nowrap">${statusBadge}</td>
           <td class="cell-nowrap table-actions-cell">
@@ -648,6 +654,7 @@ MedHub.inventory = {
                   <span class="pack-size-x-badge">×</span>
                   <input type="text" id="m-pack-unit" placeholder="10" value="10" title="Units / Tablets per pack" />
                 </div>
+                <div id="m-pack-units-hint" style="font-size:11px; color:#1d4ed8; font-weight:700; margin-top:4px;">1 Pack = 10 Tablets/Units</div>
               </div>
 
               <!-- Barcode -->
@@ -720,6 +727,16 @@ MedHub.inventory = {
       createFn: (val) => MedHub.api.createDrugSchedule(val),
       labelName: "Drug Schedule"
     });
+
+    const updateAddPackHint = () => {
+      const sVal = document.getElementById("m-pack-strip")?.value.trim() || "1";
+      const uVal = document.getElementById("m-pack-unit")?.value.trim() || "10";
+      const info = MedHub.parsePackSize ? MedHub.parsePackSize(`${sVal}x${uVal}`) : { unitsPerPack: 10 };
+      const el = document.getElementById("m-pack-units-hint");
+      if (el) el.innerText = `1 Pack = ${info.unitsPerPack} Tablets/Units`;
+    };
+    document.getElementById("m-pack-strip")?.addEventListener("input", updateAddPackHint);
+    document.getElementById("m-pack-unit")?.addEventListener("input", updateAddPackHint);
 
     // Form Submit: Save Medicine
     const form = document.getElementById("add-medicine-form");
@@ -1014,6 +1031,9 @@ MedHub.inventory = {
                   <span class="pack-size-x-badge">×</span>
                   <input type="text" id="edit-m-pack-unit" value="${unitVal}" />
                 </div>
+                <div id="edit-m-pack-units-hint" style="font-size:11px; color:#1d4ed8; font-weight:700; margin-top:4px;">
+                  1 Pack = ${(MedHub.parsePackSize ? MedHub.parsePackSize(`${stripVal}x${unitVal}`).unitsPerPack : 10)} Tablets/Units
+                </div>
               </div>
 
               <div class="form-group">
@@ -1109,6 +1129,16 @@ MedHub.inventory = {
       createFn: (val) => MedHub.api.createDrugSchedule(val),
       labelName: "Drug Schedule"
     });
+
+    const updateEditPackHint = () => {
+      const sVal = document.getElementById("edit-m-pack-strip")?.value.trim() || "1";
+      const uVal = document.getElementById("edit-m-pack-unit")?.value.trim() || "10";
+      const info = MedHub.parsePackSize ? MedHub.parsePackSize(`${sVal}x${uVal}`) : { unitsPerPack: 10 };
+      const el = document.getElementById("edit-m-pack-units-hint");
+      if (el) el.innerText = `1 Pack = ${info.unitsPerPack} Tablets/Units`;
+    };
+    document.getElementById("edit-m-pack-strip")?.addEventListener("input", updateEditPackHint);
+    document.getElementById("edit-m-pack-unit")?.addEventListener("input", updateEditPackHint);
 
     const form = document.getElementById("edit-medicine-form");
     if (form && MedHub.enableEnterNavigation) {

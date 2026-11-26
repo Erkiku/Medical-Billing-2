@@ -654,6 +654,38 @@ MedHub.parseMonthYear = function (dateStr) {
   return { month: "", year: "" };
 };
 
+// Parses pack size string (e.g. "1x10", "2 x 15", "15", "1x100ml") to compute tablets/units per pack
+MedHub.parsePackSize = function (packStr) {
+  const raw = String(packStr || "").trim();
+  if (!raw) {
+    return { packA: 1, packB: 10, unitsPerPack: 10, isMeasureUnit: false, formatted: "1x10" };
+  }
+  const parts = raw.split(/[xX×*]/).map(s => s.trim()).filter(Boolean);
+  const measureRegex = /(?:[0-9]\s*|\b)(ml|l|ltr|gm|g|mg|kg|drop|drops)\b/i;
+  if (parts.length >= 2) {
+    const aNum = Math.max(1, parseFloat(parts[0]) || 1);
+    const bStr = parts[1];
+    const hasVolumeOrWeight = measureRegex.test(bStr);
+    const bNumMatch = bStr.match(/^([0-9]+(?:\.[0-9]+)?)/);
+    const bNum = bNumMatch ? Math.max(1, parseFloat(bNumMatch[1])) : 1;
+    const unitsPerPack = hasVolumeOrWeight ? aNum : Math.max(1, Number((aNum * bNum).toFixed(2)));
+    return {
+      packA: aNum,
+      packB: hasVolumeOrWeight ? bStr : bNum,
+      unitsPerPack,
+      isMeasureUnit: hasVolumeOrWeight,
+      formatted: `${aNum}x${bStr}`
+    };
+  }
+  const singleHasMeasure = measureRegex.test(raw);
+  const singleMatch = raw.match(/^([0-9]+(?:\.[0-9]+)?)/);
+  if (!singleHasMeasure && singleMatch) {
+    const val = Math.max(1, parseFloat(singleMatch[1]) || 1);
+    return { packA: 1, packB: val, unitsPerPack: val, isMeasureUnit: false, formatted: `1x${val}` };
+  }
+  return { packA: 1, packB: 1, unitsPerPack: 1, isMeasureUnit: singleHasMeasure, formatted: raw };
+};
+
 // Clean Month & Year dual dropdown control (replaces browser <input type="month">)
 MedHub.renderMonthYearPicker = function (idPrefix, currentVal = "", opts = {}) {
   const { month, year } = MedHub.parseMonthYear(currentVal);

@@ -205,6 +205,7 @@ MedHub.purchases = {
 
   calculatePurchaseSummary(rowsData, billDiscountVal = 0, billDiscountType = "AMOUNT") {
     let totalQty = 0;
+    let totalTablets = 0;
     let rawTaxable = 0;
     let itemDiscTotal = 0;
     let itemCount = 0;
@@ -216,6 +217,10 @@ MedHub.purchases = {
       itemCount++;
       const q = Math.max(0, Number(row.qty) || 0);
       totalQty += q;
+      const packInfo = MedHub.parsePackSize
+        ? MedHub.parsePackSize(row.pack_size || row.packSize || "1x10")
+        : { unitsPerPack: 10 };
+      totalTablets += Math.max(0, Number((q * packInfo.unitsPerPack).toFixed(2)));
       const calc = this.calculatePurchaseItem({
         qty: q,
         rate: row.rate,
@@ -241,6 +246,7 @@ MedHub.purchases = {
     return {
       itemCount,
       totalQty,
+      totalTablets,
       rawTaxable,
       itemDiscTotal,
       extraDisc,
@@ -507,6 +513,9 @@ MedHub.purchases = {
               title="Units / Tablets per pack"
             />
           </div>
+          <div class="pur-pack-units-hint" style="font-size: 10px; color: #1d4ed8; font-weight: 700; text-align: center; margin-top: 2px;">
+            1 pk = ${MedHub.parsePackSize ? MedHub.parsePackSize(`${packA}x${packB}`).unitsPerPack : (Number(packA) * Number(packB) || 10)} tabs
+          </div>
         </td>
         <td>
           <input 
@@ -518,6 +527,9 @@ MedHub.purchases = {
             required 
             style="font-weight: 700; text-align: center;" 
           />
+          <div class="pur-qty-tablets-hint" style="font-size: 10px; color: #475569; font-weight: 600; text-align: center; margin-top: 2px;">
+            = ${(prefill?.quantity || 10) * (MedHub.parsePackSize ? MedHub.parsePackSize(`${packA}x${packB}`).unitsPerPack : 10)} tabs
+          </div>
         </td>
         <td>
           <input 
@@ -625,6 +637,15 @@ MedHub.purchases = {
           dPct = 100;
           if (discInput) discInput.value = "100";
         }
+        const pA = packAInput?.value.trim() || "1";
+        const pB = packBInput?.value.trim() || "10";
+        const packInfo = MedHub.parsePackSize ? MedHub.parsePackSize(`${pA}x${pB}`) : { unitsPerPack: 10 };
+        const qVal = Math.max(0, Number(qtyInput.value) || 0);
+        const packHintEl = tr.querySelector(".pur-pack-units-hint");
+        const qtyTabsHintEl = tr.querySelector(".pur-qty-tablets-hint");
+        if (packHintEl) packHintEl.innerText = `1 pk = ${packInfo.unitsPerPack} tabs`;
+        if (qtyTabsHintEl) qtyTabsHintEl.innerText = `= ${Number((qVal * packInfo.unitsPerPack).toFixed(2))} tabs`;
+
         const calc = self.calculatePurchaseItem({
           qty: qtyInput.value,
           rate: rateInput.value,
@@ -635,6 +656,8 @@ MedHub.purchases = {
         recalcSummary();
       };
 
+      packAInput?.addEventListener("input", calcRow);
+      packBInput?.addEventListener("input", calcRow);
       qtyInput.addEventListener("input", calcRow);
       rateInput.addEventListener("input", calcRow);
       discInput?.addEventListener("input", calcRow);
@@ -658,13 +681,18 @@ MedHub.purchases = {
 
     // Calculate Summary Totals (Taxable, Discount, GST, Net Total)
     const recalcSummary = () => {
-      const rowsData = Array.from(tbody.querySelectorAll("tr")).map(tr => ({
-        name: tr.querySelector(".pur-item-name")?.value.trim() || "",
-        qty: Number(tr.querySelector(".pur-item-qty")?.value) || 0,
-        rate: Number(tr.querySelector(".pur-item-rate")?.value) || 0,
-        discPct: Number(tr.querySelector(".pur-item-disc")?.value) || 0,
-        gstPct: Number(tr.querySelector(".pur-item-gst")?.value) || 0
-      }));
+      const rowsData = Array.from(tbody.querySelectorAll("tr")).map(tr => {
+        const pA = tr.querySelector(".pur-item-pack-a")?.value.trim() || "1";
+        const pB = tr.querySelector(".pur-item-pack-b")?.value.trim() || "10";
+        return {
+          name: tr.querySelector(".pur-item-name")?.value.trim() || "",
+          pack_size: `${pA}x${pB}`,
+          qty: Number(tr.querySelector(".pur-item-qty")?.value) || 0,
+          rate: Number(tr.querySelector(".pur-item-rate")?.value) || 0,
+          discPct: Number(tr.querySelector(".pur-item-disc")?.value) || 0,
+          gstPct: Number(tr.querySelector(".pur-item-gst")?.value) || 0
+        };
+      });
 
       let billDiscVal = Number(billDiscInput?.value) || 0;
       if (billDiscVal < 0) {
@@ -682,7 +710,7 @@ MedHub.purchases = {
       if (elItems) elItems.innerText = `${summary.itemCount} Medicines`;
 
       const elQty = document.getElementById("pur-total-qty-count");
-      if (elQty) elQty.innerText = `${summary.totalQty} Units/Packs`;
+      if (elQty) elQty.innerText = `${summary.totalQty} Packs (${summary.totalTablets} Tabs)`;
 
       const elTaxable = document.getElementById("pur-taxable-amount-display");
       if (elTaxable) elTaxable.innerText = `₹${summary.finalTaxable.toFixed(2)}`;
@@ -877,6 +905,7 @@ MedHub.purchases = {
         const packA = tr.querySelector(".pur-item-pack-a")?.value.trim() || "1";
         const packB = tr.querySelector(".pur-item-pack-b")?.value.trim() || "10";
         const packSize = `${packA}x${packB}`;
+        const packInfo = MedHub.parsePackSize ? MedHub.parsePackSize(packSize) : { unitsPerPack: 10 };
         const qty = Number(tr.querySelector(".pur-item-qty")?.value) || 0;
         const purchaseRate = Number(tr.querySelector(".pur-item-rate")?.value) || 0;
         const mrp = Number(tr.querySelector(".pur-item-mrp")?.value) || purchaseRate;
@@ -890,13 +919,15 @@ MedHub.purchases = {
             discPct: discPercent,
             gstPct: gstPercent
           });
-          rowsForSummary.push({ name, qty, rate: purchaseRate, discPct: discPercent, gstPct: gstPercent });
+          rowsForSummary.push({ name, pack_size: packSize, qty, rate: purchaseRate, discPct: discPercent, gstPct: gstPercent });
           items.push({
             medicine_name: name,
             name: name,
             batch_no: batchNo || ("BT-" + Date.now().toString().slice(-4)),
             expiry_date: expDate || "2028-12-31",
             pack_size: packSize,
+            units_per_pack: packInfo.unitsPerPack,
+            total_tablets: Number((qty * packInfo.unitsPerPack).toFixed(2)),
             quantity: qty,
             purchase_rate: purchaseRate,
             mrp: mrp,

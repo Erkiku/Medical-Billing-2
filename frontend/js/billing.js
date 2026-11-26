@@ -248,14 +248,18 @@ MedHub.billing = {
     const stockQty = item.available_qty ?? item.max_stock ?? item.chosenBatch?.quantity ?? "—";
     const batch = item.batch_no || item.chosenBatch?.batch_no || "BT-DEFAULT";
     const exp = MedHub.formatExpiry(item.expiry_date || item.chosenBatch?.expiry_date || item.nearest_expiry || "");
-    const mrpVal = Number(item.mrp ?? item.selling_rate ?? item.rate ?? 0).toFixed(2);
+    const mrpVal = Number(item.mrp ?? item.selling_rate ?? item.rate ?? 0);
     const sch = item.drug_schedule || "General";
+    const packInfo = MedHub.parsePackSize ? MedHub.parsePackSize(item.pack_size || "1x10") : { unitsPerPack: 10 };
+    const unitsPerPack = Math.max(1, Number(item.units_per_pack || packInfo.unitsPerPack || 10));
+    const perTabPrice = unitsPerPack > 0 ? (mrpVal / unitsPerPack) : mrpVal;
+    const qtyNum = Number(item.quantity || 1);
     return `
       <div class="marg-inspector-grid">
-        <div class="marg-insp-row"><span>Item :</span><strong>${item.name || "—"} (${item.pack_size || "1x10"})</strong></div>
+        <div class="marg-insp-row"><span>Item :</span><strong>${item.name || "—"} (${item.pack_size || "1x10"} • ${unitsPerPack} tabs/pk)</strong></div>
         <div class="marg-insp-row"><span>Batch :</span><strong>${batch}</strong><span>Stock :</span><strong style="color:#1d4ed8;">${stockQty}</strong></div>
-        <div class="marg-insp-row"><span>Expiry :</span><strong>${exp || "—"}</strong><span>MRP :</span><strong>₹${mrpVal}</strong></div>
-        <div class="marg-insp-row"><span>Company :</span><strong>${item.company || "—"}</strong><span>Schedule :</span><strong>${sch}</strong></div>
+        <div class="marg-insp-row"><span>Expiry :</span><strong>${exp || "—"}</strong><span>MRP :</span><strong>₹${mrpVal.toFixed(2)} (₹${perTabPrice.toFixed(2)}/tab)</strong></div>
+        <div class="marg-insp-row"><span>Company :</span><strong>${item.company || "—"}</strong><span>Total Tabs :</span><strong>${qtyNum * unitsPerPack} tabs (${sch})</strong></div>
       </div>
     `;
   },
@@ -294,7 +298,10 @@ MedHub.billing = {
             ${it.salt_composition ? `<div class="sub-text">${it.salt_composition}</div>` : ""}
             ${isScheduleH ? `<span class="badge-schedule schedule-h" style="margin-left: 6px;">Sch-H</span>` : ""}
           </td>
-          <td class="text-center">${it.pack_size || "1x10"}</td>
+          <td class="text-center">
+            ${it.pack_size || "1x10"}
+            <div style="font-size:10px;color:#64748b;">${(MedHub.parsePackSize ? MedHub.parsePackSize(it.pack_size || "1x10").unitsPerPack : (it.units_per_pack || 10))} tabs/pk</div>
+          </td>
           <td class="text-center"><span class="badge-code">${it.batch_no || "BT-DEFAULT"}</span></td>
           <td class="text-center"><span class="badge-exp-month">${MedHub.formatExpiry(it.expiry_date)}</span></td>
           <td class="text-right">
@@ -467,6 +474,9 @@ MedHub.billing = {
     });
 
     let currentSelectedMed = null;
+    let basePackUnits = 0;
+    let baseCatalogMrp = 0;
+    let manualRateOverride = false;
     let currentSearchResults = [];
     let highlightedIndex = 0;
 
@@ -479,9 +489,32 @@ MedHub.billing = {
       if (amountInput) amountInput.value = net.toFixed(2);
     };
 
+    const recalcPackMrp = () => {
+      const packStr = packInput?.value?.trim() || "1x10";
+      const parsedPack = MedHub.parsePackSize ? MedHub.parsePackSize(packStr) : { unitsPerPack: 10 };
+      if (!manualRateOverride && currentSelectedMed && basePackUnits > 0 && baseCatalogMrp > 0) {
+        const scaledMrp = (baseCatalogMrp / basePackUnits) * parsedPack.unitsPerPack;
+        if (rateInput) rateInput.value = scaledMrp.toFixed(2);
+      }
+      if (currentSelectedMed && inspectorEl) {
+        inspectorEl.innerHTML = self.renderItemInspector({
+          ...currentSelectedMed,
+          pack_size: packStr,
+          units_per_pack: parsedPack.unitsPerPack,
+          mrp: parseFloat(rateInput?.value) || baseCatalogMrp,
+          quantity: parseFloat(qtyInput?.value) || 1
+        });
+      }
+      recalcMargAmount();
+    };
+
+    packInput?.addEventListener("input", recalcPackMrp);
     qtyInput?.addEventListener("input", recalcMargAmount);
     freeInput?.addEventListener("input", recalcMargAmount);
-    rateInput?.addEventListener("input", recalcMargAmount);
+    rateInput?.addEventListener("input", () => {
+      manualRateOverride = true;
+      recalcMargAmount();
+    });
     itemDisInput?.addEventListener("input", recalcMargAmount);
 
     // Live Search for Marg Product
@@ -564,6 +597,10 @@ MedHub.billing = {
       }
 
       const selMrp = Number(med.mrp || med.selling_rate || (chosenBatch ? chosenBatch.selling_price : 0) || 0);
+      const basePackInfo = MedHub.parsePackSize ? MedHub.parsePackSize(med.pack_size || "1x10") : { unitsPerPack: 10 };
+      basePackUnits = basePackInfo.unitsPerPack;
+      baseCatalogMrp = selMrp;
+      manualRateOverride = false;
       if (rateInput) rateInput.value = selMrp.toFixed(2);
       if (qtyInput) qtyInput.value = 1;
       if (freeInput) freeInput.value = 0;
@@ -661,6 +698,9 @@ MedHub.billing = {
       const r = parseFloat(rateInput?.value) || 0;
       const disPct = Math.min(100, Math.max(0, parseFloat(itemDisInput?.value) || 0));
       const pack = packInput?.value?.trim() || "1x10";
+      const packInfo = MedHub.parsePackSize ? MedHub.parsePackSize(pack) : { unitsPerPack: 10 };
+      const unitsPerPack = packInfo.unitsPerPack;
+      const totalTablets = Math.max(0, Number(((q + freeQty) * unitsPerPack).toFixed(2)));
       const batch = batchInput?.value?.trim() || "BT-DEFAULT";
       const exp = expInput?.value?.trim() || "11/28";
       const net = Math.max(0, Number((q * r * (1 - disPct / 100)).toFixed(2)));
@@ -687,6 +727,8 @@ MedHub.billing = {
           company: currentSelectedMed?.company || "",
           salt_composition: comp,
           pack_size: pack,
+          units_per_pack: unitsPerPack,
+          total_tablets: totalTablets,
           drug_schedule: sch,
           batch_id: batchId,
           batch_no: batch,
@@ -721,6 +763,9 @@ MedHub.billing = {
       if (itemDisInput) itemDisInput.value = 0;
       if (amountInput) amountInput.value = "";
       currentSelectedMed = null;
+      basePackUnits = 0;
+      baseCatalogMrp = 0;
+      manualRateOverride = false;
       currentSearchResults = [];
       if (prodDropdown) prodDropdown.style.display = "none";
 
@@ -1102,9 +1147,7 @@ MedHub.billing = {
                 <div class="classic-meta-grid">
                   <div>
                     <p><strong>Patient Name :</strong> ${(bill.customer_name || "Walk-in Customer").toUpperCase()}</p>
-                    <p><strong>Patient Address :</strong> ${bill.patient_address || ""}</p>
                     <p><strong>Doctor Name :</strong> ${(bill.doctor_name || "Self").toUpperCase()}</p>
-                    <p><strong>Doctor Address :</strong> ${bill.doctor_hospital || ""}</p>
                   </div>
                   <div style="text-align: right;">
                     <div style="margin-bottom: 4px;">
