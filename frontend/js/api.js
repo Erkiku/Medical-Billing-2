@@ -129,10 +129,54 @@ MedHub.api = {
       } catch (e) {}
     }
 
+    if (!MedHub.supabaseClient && typeof MedHub.ensureSupabaseClient === "function") {
+      try { await MedHub.ensureSupabaseClient(); } catch (e) {}
+    }
+
     // 2. Check Supabase Live Database
     let cloudStore = null;
     if (MedHub.supabaseClient) {
       try {
+        // Resolve missing store_id/email from authorized_users when loading an existing session by username/email
+        if (!targetStoreId && (targetUsername || targetEmail)) {
+          try {
+            const lookupKey = targetUsername || targetEmail;
+            let authRes = await MedHub.supabaseClient
+              .from("authorized_users")
+              .select("username,email,full_name,store_id,store_name")
+              .ilike("username", lookupKey)
+              .limit(1);
+            if ((!authRes.data || !authRes.data.length) && (targetEmail || lookupKey)) {
+              authRes = await MedHub.supabaseClient
+                .from("authorized_users")
+                .select("username,email,full_name,store_id,store_name")
+                .ilike("email", targetEmail || lookupKey)
+                .limit(1);
+            }
+            let au = authRes && Array.isArray(authRes.data) && authRes.data[0];
+            if (!au) {
+              const allAu = await MedHub.supabaseClient
+                .from("authorized_users")
+                .select("username,email,full_name,store_id,store_name")
+                .limit(200);
+              if (allAu && Array.isArray(allAu.data)) {
+                au = allAu.data.find(row => {
+                  const u = String(row.username || "").trim().toLowerCase();
+                  const em = String(row.email || "").trim().toLowerCase();
+                  return (lookupKey && u === lookupKey) || (targetEmail && (u === targetEmail || em === targetEmail));
+                }) || null;
+              }
+            }
+            if (au) {
+              if (au.store_id) targetStoreId = au.store_id;
+              if (au.email && (!targetEmail || !targetEmail.includes("@mededuhub.com"))) {
+                targetEmail = String(au.email).trim().toLowerCase();
+              }
+              if (au.full_name && !targetName) targetName = String(au.full_name).trim();
+            }
+          } catch (e) {}
+        }
+
         // Priority A: Match by store_id if known
         if (targetStoreId) {
           const { data } = await MedHub.supabaseClient
@@ -188,15 +232,14 @@ MedHub.api = {
     }
 
     if (found) {
-      if (targetEmail) {
-        try {
-          const json = JSON.stringify(found);
-          localStorage.setItem("medhub_store_" + targetEmail, json);
-          localStorage.setItem("medhub_store_settings", json);
-          localStorage.setItem("mededuhub_store_settings", json);
-          if (found.id) localStorage.setItem("medhub_store_id", String(found.id));
-        } catch (e) {}
-      }
+      try {
+        const json = JSON.stringify(found);
+        if (targetEmail) localStorage.setItem("medhub_store_" + targetEmail, json);
+        if (targetUsername) localStorage.setItem("medhub_store_" + targetUsername, json);
+        localStorage.setItem("medhub_store_settings", json);
+        localStorage.setItem("mededuhub_store_settings", json);
+        if (found.id) localStorage.setItem("medhub_store_id", String(found.id));
+      } catch (e) {}
       MedHub.state.store = found;
       return found;
     }
@@ -223,6 +266,14 @@ MedHub.api = {
     if (merged.dl_no_21b !== undefined) {
       merged.dl_no_21b = String(merged.dl_no_21b || "").trim();
     }
+
+    // Ensure Supabase client is initialized before saving
+    if (!MedHub.supabaseClient && typeof MedHub.ensureSupabaseClient === "function") {
+      try { await MedHub.ensureSupabaseClient(); } catch (e) {}
+    }
+
+    let cloudSynced = false;
+    let cloudError = null;
 
     // Persist to Supabase Database FIRST so merged.id is captured cleanly for local cache
     if (MedHub.supabaseClient) {
@@ -267,9 +318,14 @@ MedHub.api = {
             .maybeSingle();
           if (!updErr && updData && updData.id) {
             merged.id = updData.id;
+            cloudSynced = true;
+          } else if (updErr) {
+            cloudError = updErr.message;
+            console.warn("Supabase store_settings update error:", updErr);
           }
-          if (updErr) console.warn("Supabase store_settings update error:", updErr);
-        } else {
+        }
+
+        if (!cloudSynced) {
           const { data: inserted, error: insErr } = await MedHub.supabaseClient
             .from("store_settings")
             .insert(dbPayload)
@@ -277,13 +333,42 @@ MedHub.api = {
             .maybeSingle();
           if (!insErr && inserted && inserted.id) {
             merged.id = inserted.id;
+            cloudSynced = true;
+            cloudError = null;
+          } else if (insErr) {
+            // Handle duplicate user_email unique constraint by updating existing row
+            const { data: byEmail } = await MedHub.supabaseClient
+              .from("store_settings")
+              .select("id")
+              .ilike("user_email", email)
+              .limit(1);
+            if (byEmail && byEmail.length && byEmail[0].id) {
+              const { data: upd2, error: updErr2 } = await MedHub.supabaseClient
+                .from("store_settings")
+                .update(dbPayload)
+                .eq("id", byEmail[0].id)
+                .select()
+                .maybeSingle();
+              if (!updErr2 && upd2 && upd2.id) {
+                merged.id = upd2.id;
+                cloudSynced = true;
+                cloudError = null;
+              }
+            }
+            if (!cloudSynced) {
+              cloudError = insErr.message;
+              console.warn("Supabase store_settings insert error:", insErr);
+            }
           }
-          if (insErr) console.warn("Supabase store_settings insert error:", insErr);
         }
       } catch (e) {
+        cloudError = e?.message || "Sync error";
         console.warn("Store settings save error:", e);
       }
     }
+
+    merged._cloudSynced = cloudSynced;
+    if (cloudError) merged._cloudError = cloudError;
 
     // Save to local per-store and active cache
     try {
@@ -308,6 +393,189 @@ MedHub.api = {
     MedHub.state.store = merged;
 
     return merged;
+  },
+
+  async syncUnsyncedLocalDataToCloud(opts = {}) {
+    const force = opts.force === true;
+    if (!MedHub.supabaseClient && typeof MedHub.ensureSupabaseClient === "function") {
+      try { await MedHub.ensureSupabaseClient(); } catch (e) {}
+    }
+    if (!MedHub.supabaseClient) {
+      return { synced: false, reason: "offline", storeSynced: false, usersSynced: 0, medicinesSynced: 0, billsSynced: 0, purchasesSynced: 0, suppliersSynced: 0 };
+    }
+
+    const report = { synced: true, storeSynced: false, usersSynced: 0, medicinesSynced: 0, billsSynced: 0, purchasesSynced: 0, suppliersSynced: 0 };
+    const starterMockIds = new Set(["1", "2", "3", "4", "5", "6", "b-101", "b-102", "b-103", "b-104", "b-105", "bill-001", "sup-1", "sup-2", "sup-3", "pur-1"]);
+
+    // 1. Upload unsynced local store settings (including Custom QR & store details created offline)
+    let resolvedStore = null;
+    try {
+      const rawStore = localStorage.getItem("medhub_store_settings") || localStorage.getItem("mededuhub_store_settings");
+      const localStore = rawStore ? JSON.parse(rawStore) : null;
+      if (localStore && localStore.store_name && localStore.store_name !== "MedEdu Pharmacy") {
+        const email = (localStore.user_email || MedHub.state.user?.email || localStorage.getItem("medhub_current_user") || "admin@mededuhub.com").toLowerCase().trim();
+        let cloudRow = null;
+        if (typeof localStore.id === "number" && localStore.id > 0) {
+          const { data } = await MedHub.supabaseClient.from("store_settings").select("*").eq("id", localStore.id).limit(1);
+          if (data && data.length) cloudRow = data[0];
+        }
+        if (!cloudRow && email) {
+          const { data } = await MedHub.supabaseClient.from("store_settings").select("*").ilike("user_email", email).limit(1);
+          if (data && data.length) cloudRow = data[0];
+        }
+
+        const localIsNewer = !cloudRow ||
+          (typeof localStore.id !== "number") ||
+          (localStore.custom_qr_image && !cloudRow.custom_qr_image) ||
+          (localStore.updated_at && (!cloudRow.updated_at || new Date(localStore.updated_at) > new Date(cloudRow.updated_at)));
+
+        if (force || localIsNewer) {
+          const payload = { ...localStore };
+          if (cloudRow && cloudRow.id) payload.id = cloudRow.id;
+          else if (typeof payload.id !== "number") delete payload.id;
+          const saved = await this.saveStoreSettings(payload, email);
+          if (saved && saved._cloudSynced) {
+            report.storeSynced = true;
+            resolvedStore = saved;
+          }
+        } else {
+          resolvedStore = cloudRow;
+        }
+      }
+    } catch (e) {}
+
+    // 2. Upload any local authorized_users not yet present in Supabase
+    try {
+      const localUsers = this._getLocalUsers();
+      const { data: cloudUsers } = await MedHub.supabaseClient.from("authorized_users").select("id,username,email");
+      const existingUsernames = new Set((cloudUsers || []).map(u => String(u.username || "").trim().toLowerCase()));
+
+      for (const lu of localUsers) {
+        const uname = String(lu.username || "").trim().toLowerCase();
+        const pass = String(lu.password || "").trim();
+        if (!uname || !pass) continue;
+        // Skip untouched starter seed admin unless force-synced with custom password
+        if (uname === "admin" && pass === "admin123" && !force) continue;
+        if (!existingUsernames.has(uname)) {
+          const savedU = await this.createAuthorizedUser({
+            username: uname,
+            email: lu.email || resolvedStore?.user_email || `${uname}@mededuhub.com`,
+            password: pass,
+            full_name: lu.full_name || resolvedStore?.pharmacist_name || uname,
+            role: lu.role || "Pharmacist",
+            store_id: lu.store_id || resolvedStore?.id || this.getActiveStoreId(),
+            store_name: lu.store_name || resolvedStore?.store_name || MedHub.state.store?.store_name
+          });
+          if (savedU && savedU.id) {
+            report.usersSynced += 1;
+            existingUsernames.add(uname);
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 3. Upload non-mock, non-UUID local suppliers
+    try {
+      const rawSup = localStorage.getItem("medhub_suppliers");
+      if (rawSup) {
+        const localSups = JSON.parse(rawSup);
+        if (Array.isArray(localSups)) {
+          let changed = false;
+          for (let i = 0; i < localSups.length; i++) {
+            const s = localSups[i];
+            const sid = String(s?.id || "");
+            if (!s?.name || starterMockIds.has(sid) || this._isUuid(sid)) continue;
+            const created = await this.createSupplier(s);
+            if (created && this._isUuid(String(created.id || ""))) {
+              localSups[i] = created;
+              changed = true;
+              report.suppliersSynced += 1;
+            }
+          }
+          if (changed) this._saveLocalSuppliers(localSups);
+        }
+      }
+    } catch (e) {}
+
+    // 4. Upload non-mock, non-UUID local medicines + their batches
+    try {
+      const rawMeds = localStorage.getItem("medhub_medicines");
+      const rawBats = localStorage.getItem("medhub_batches");
+      if (rawMeds) {
+        const localMeds = JSON.parse(rawMeds);
+        const localBats = rawBats ? JSON.parse(rawBats) : [];
+        if (Array.isArray(localMeds)) {
+          let medsChanged = false;
+          for (let i = 0; i < localMeds.length; i++) {
+            const m = localMeds[i];
+            const mid = String(m?.id || "");
+            if (!m?.name || starterMockIds.has(mid) || this._isUuid(mid)) continue;
+            const medBatch = Array.isArray(localBats) ? localBats.find(b => String(b.medicine_id) === mid) : null;
+            const created = await this.createMedicine(m, medBatch ? {
+              batch_no: medBatch.batch_no,
+              expiry_date: medBatch.expiry_date,
+              quantity: medBatch.quantity,
+              purchase_price: medBatch.purchase_price,
+              selling_price: medBatch.selling_price
+            } : null);
+            if (created && this._isUuid(String(created.id || ""))) {
+              localMeds[i] = created;
+              medsChanged = true;
+              report.medicinesSynced += 1;
+            }
+          }
+          if (medsChanged) this._saveLocalMedicines(localMeds);
+        }
+      }
+    } catch (e) {}
+
+    // 5. Upload non-mock, non-UUID local purchases
+    try {
+      const rawPurs = localStorage.getItem("medhub_purchases");
+      if (rawPurs) {
+        const localPurs = JSON.parse(rawPurs);
+        if (Array.isArray(localPurs)) {
+          let changed = false;
+          for (let i = 0; i < localPurs.length; i++) {
+            const p = localPurs[i];
+            const pid = String(p?.id || "");
+            if (!p?.invoice_no || starterMockIds.has(pid) || this._isUuid(pid)) continue;
+            const created = await this.createPurchase(p);
+            if (created && this._isUuid(String(created.id || ""))) {
+              localPurs[i] = created;
+              changed = true;
+              report.purchasesSynced += 1;
+            }
+          }
+          if (changed) this._saveLocalPurchases(localPurs);
+        }
+      }
+    } catch (e) {}
+
+    // 6. Upload non-mock, non-UUID local bills
+    try {
+      const rawBills = localStorage.getItem("medhub_bills");
+      if (rawBills) {
+        const localBills = JSON.parse(rawBills);
+        if (Array.isArray(localBills)) {
+          let changed = false;
+          for (let i = 0; i < localBills.length; i++) {
+            const b = localBills[i];
+            const bid = String(b?.id || "");
+            if (!bid || starterMockIds.has(bid) || this._isUuid(bid)) continue;
+            const created = await this.createBill(b);
+            if (created && this._isUuid(String(created.id || ""))) {
+              localBills[i] = created;
+              changed = true;
+              report.billsSynced += 1;
+            }
+          }
+          if (changed) this._saveLocalBills(localBills);
+        }
+      }
+    } catch (e) {}
+
+    return report;
   },
 
   // Master Admin Credentials & All Stores Directory

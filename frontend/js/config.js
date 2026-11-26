@@ -518,7 +518,9 @@ MedHub.updateUserBadge = function (name, role) {
       if (role) localStorage.setItem("medhub_user_role", role);
     } catch (e) {}
   }
-  const currentName = MedHub.state.user?.name || localStorage.getItem("medhub_user_name") || "Dr. Anil Kumar";
+  const storedName = MedHub.state.user?.name || localStorage.getItem("medhub_user_name") || "";
+  const storePharma = MedHub.state.store?.pharmacist_name || "";
+  const currentName = (storedName && storedName !== "Dr. Anil Kumar") ? storedName : (storePharma || storedName || "Dr. Anil Kumar");
   const currentRole = MedHub.state.user?.role || localStorage.getItem("medhub_user_role") || "Pharmacist Admin";
   const initials = MedHub.getInitials(currentName);
 

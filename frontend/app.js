@@ -83,9 +83,9 @@ MedHub.router = {
 
           <div class="sidebar-footer">
             <div class="user-profile-badge">
-              <div class="user-avatar">${isSuper ? "DEV" : (MedHub.getInitials ? MedHub.getInitials(MedHub.state.user?.name) : "DA")}</div>
+              <div class="user-avatar">${isSuper ? "DEV" : (MedHub.getInitials ? MedHub.getInitials((MedHub.state.store?.pharmacist_name || MedHub.state.user?.name)) : "DA")}</div>
               <div class="user-meta">
-                <span class="user-name">${MedHub.state.user?.name || (isSuper ? "Developer Admin" : "Dr. Anil Kumar")}</span>
+                <span class="user-name">${isSuper ? (MedHub.state.user?.name || "Developer Admin") : ((MedHub.state.user?.name && MedHub.state.user.name !== "Dr. Anil Kumar") ? MedHub.state.user.name : (MedHub.state.store?.pharmacist_name || MedHub.state.user?.name || "Dr. Anil Kumar"))}</span>
                 <span class="user-role">${isSuper ? 'Platform Developer' : (MedHub.state.user?.role === 'admin' ? 'Pharmacist Admin' : (MedHub.state.user?.role || 'Pharmacist Admin'))}</span>
               </div>
             </div>
@@ -289,13 +289,26 @@ document.addEventListener("DOMContentLoaded", async () => {
   } else {
     MedHub.initSupabaseClient();
   }
-  if (MedHub.state.isAuthenticated && !MedHub.state.isSuperAdmin && MedHub.state.user?.role !== "superadmin" && MedHub.api?.getStoreSettings) {
+  if (MedHub.state.isAuthenticated && !MedHub.state.isSuperAdmin && MedHub.state.user?.role !== "superadmin") {
     try {
-      const freshStore = await MedHub.api.getStoreSettings(MedHub.state.user);
-      if (freshStore) {
-        MedHub.state.store = freshStore;
-        if (freshStore.id && MedHub.state.user) {
-          MedHub.state.user.store_id = freshStore.id;
+      if (MedHub.api?.syncUnsyncedLocalDataToCloud) {
+        await MedHub.api.syncUnsyncedLocalDataToCloud();
+      }
+      if (MedHub.api?.getStoreSettings) {
+        const freshStore = await MedHub.api.getStoreSettings(MedHub.state.user);
+        if (freshStore) {
+          MedHub.state.store = freshStore;
+          if (MedHub.state.user) {
+            if (freshStore.id) MedHub.state.user.store_id = freshStore.id;
+            if (freshStore.pharmacist_name) {
+              MedHub.state.user.name = freshStore.pharmacist_name;
+              try { localStorage.setItem("medhub_user_name", freshStore.pharmacist_name); } catch (e) {}
+            }
+            if (freshStore.user_email && (!MedHub.state.user.email || MedHub.state.user.email === "admin@mededuhub.com")) {
+              MedHub.state.user.email = freshStore.user_email;
+              try { localStorage.setItem("medhub_current_user", freshStore.user_email); } catch (e) {}
+            }
+          }
         }
       }
     } catch (e) {}

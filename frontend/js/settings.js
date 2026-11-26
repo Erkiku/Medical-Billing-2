@@ -19,6 +19,9 @@ MedHub.settings = {
             <p class="page-subtitle">Configure medical store profile, DL/GST compliance numbers & Supabase cloud sync</p>
           </div>
           <div class="header-action-btns">
+            <button type="button" class="btn-outline" id="btn-sync-cloud-now">
+              ☁️ Sync Device Data to Cloud
+            </button>
             <button type="submit" form="full-store-settings-form" class="btn-primary" id="btn-save-settings-top">
               ${MedHub.icons.check} Save Store Profile
             </button>
@@ -215,8 +218,41 @@ MedHub.settings = {
       MedHub.updateUserBadge(pharmacistName);
 
       // SAVE TO SUPABASE & LOCAL
-      await MedHub.api.saveStoreSettings(payload);
-      MedHub.toast(`Store "${storeName}" profile successfully saved! Topbar updated in real time.`, "success");
+      const saved = await MedHub.api.saveStoreSettings(payload);
+      if (saved && saved._cloudSynced) {
+        MedHub.toast(`Store "${storeName}" profile cloud Supabase me save ho gaya!`, "success");
+      } else {
+        MedHub.toast(`Store "${storeName}" locally save hua (${saved?._cloudError || "Cloud offline"}).`, "warning");
+      }
+    });
+
+    container.querySelector("#btn-sync-cloud-now")?.addEventListener("click", async () => {
+      const btn = container.querySelector("#btn-sync-cloud-now");
+      if (btn) {
+        btn.disabled = true;
+        btn.innerText = "Syncing...";
+      }
+      try {
+        const res = await MedHub.api.syncUnsyncedLocalDataToCloud({ force: true });
+        if (res && res.synced) {
+          MedHub.toast(
+            `Cloud Sync Complete! Store: ${res.storeSynced ? "Yes" : "Up-to-date"}, Users: ${res.usersSynced}, Meds: ${res.medicinesSynced}, Bills: ${res.billsSynced}, Purchases: ${res.purchasesSynced}`,
+            "success"
+          );
+          await MedHub.api.getStoreSettings(MedHub.state.user);
+          MedHub.updateStoreHeader();
+          MedHub.updateUserBadge();
+        } else {
+          MedHub.toast("Cloud DB offline hai — internet ya Supabase connection check karein.", "warning");
+        }
+      } catch (err) {
+        MedHub.toast("Cloud sync error: " + (err?.message || err), "danger");
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerText = "☁️ Sync Device Data to Cloud";
+        }
+      }
     });
 
     // QR Code Image Upload and Reset Handlers
