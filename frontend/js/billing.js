@@ -6,231 +6,258 @@
 window.MedHub = window.MedHub || {};
 
 MedHub.billing = {
+  inspectedItem: null,
+
   render(container) {
     const store = { ...MedHub.defaultStore, ...MedHub.state.store };
+    const todayStr = new Date().toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric"
+    }).replace(/\//g, "-");
+    const activeInspect = this.inspectedItem || MedHub.state.cart[MedHub.state.cart.length - 1] || null;
+    const fillerCount = Math.max(0, 6 - MedHub.state.cart.length);
+
     container.innerHTML = `
-      <div class="billing-page-wrap">
-        <!-- TOP SECTION: TWO CARDS (CUSTOMER DETAILS & PRESCRIBING DOCTOR) -->
-        <div class="billing-top-grid">
-          <!-- CARD 1: CUSTOMER / PATIENT DETAILS -->
-          <div class="card customer-card">
-            <div class="card-header-flex">
-              <div class="card-title-group">
-                <span class="card-icon blue-icon">${MedHub.icons.user}</span>
-                <h3 class="card-title">CUSTOMER / PATIENT DETAILS</h3>
-              </div>
-            </div>
-            <div class="card-body">
-              <div class="form-row-2">
-                <div class="form-group">
-                  <label class="form-label">Patient / Customer Name <span class="req">*</span></label>
-                  <input type="text" id="cust-name" class="input-field" 
-                    placeholder="e.g. Ramesh Kumar or Cash Customer" 
-                    value="${MedHub.state.customer.name || ""}" />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Mobile Number (for SMS & WhatsApp)</label>
-                  <input type="tel" id="cust-mobile" class="input-field" 
-                    placeholder="10-digit mobile number" maxlength="10" 
-                    value="${MedHub.state.customer.mobile || ""}" />
-                </div>
-              </div>
-              <div class="form-row-1" style="margin-top: 12px;">
-                <div class="form-group">
-                  <label class="form-label">Address / Town</label>
-                  <input type="text" id="cust-address" class="input-field" 
-                    placeholder="e.g. House 42, Civil Lines, Delhi" 
-                    value="${MedHub.state.customer.address || ""}" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- CARD 2: PRESCRIBING DOCTOR -->
-          <div class="card doctor-card">
-            <div class="card-header-flex">
-              <div class="card-title-group">
-                <span class="card-icon blue-icon">${MedHub.icons.stethoscope}</span>
-                <h3 class="card-title">PRESCRIBING DOCTOR</h3>
-              </div>
-            </div>
-            <div class="card-body">
-              <div class="form-row-1">
-                <div class="form-group">
-                  <label class="form-label">Doctor Name & Hospital</label>
-                  <input type="text" id="doc-name" class="input-field" 
-                    placeholder="e.g. Dr. Rajesh Sharma" 
-                    value="${MedHub.state.doctor.name || ""}" />
-                </div>
-              </div>
-              <p class="doctor-helper-text">
-                Helps maintain Schedule H prescription records for drug control audit.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <!-- MARG ERP 9+ FAST SALE ENTRY CARD (BLUEPRINT REPLICA) -->
-        <div class="marg-blueprint-card" id="marg-sale-entry-container">
-          <div class="marg-blue-header">
+      <div class="billing-page-wrap marg-full-blueprint">
+        <!-- TOP MARG ERP 9+ TITLE BAR -->
+        <div class="marg-erp-shell">
+          <div class="marg-blue-header marg-erp-topbar">
             <div class="marg-header-left">
-              <span class="marg-logo-text">⚡ MARG ERP 9+ SALE ENTRY</span>
-              <span class="marg-mode-badge">SALE TYPE: LOCAL / RETAIL</span>
+              <span class="marg-logo-text">⚡ MARG ERP 9+ • SALE / BILLING ENTRY</span>
+              <span class="marg-mode-badge">TYPE: LOCAL / RETAIL</span>
             </div>
             <div class="marg-header-right">
-              <span class="marg-shortcut-hint">⌨️ <strong>ENTER ↵</strong> shifts to next box • Empty Product + Enter ➔ Bill Summary</span>
+              <span class="marg-shortcut-hint"><strong>${store.store_name || "SAGAR MEDICAL STORE"}</strong> • Date: <strong>${todayStr}</strong> • Enter ↵ shifts box</span>
             </div>
           </div>
-          <div class="marg-entry-row-grid">
-            <div class="marg-cell marg-cell-product">
-              <label class="marg-lbl" for="marg-prod-name">PRODUCT *</label>
-              <input type="text" id="marg-prod-name" class="marg-input" placeholder="Type medicine / brand name..." autocomplete="off" />
-              <div id="marg-prod-dropdown" class="medicine-dropdown-results" style="display: none;"></div>
-            </div>
-            <div class="marg-cell marg-cell-pack">
-              <label class="marg-lbl" for="marg-prod-pack">PACK</label>
-              <input type="text" id="marg-prod-pack" class="marg-input" placeholder="1x10" />
-            </div>
-            <div class="marg-cell marg-cell-batch">
-              <label class="marg-lbl" for="marg-prod-batch">BATCH</label>
-              <input type="text" id="marg-prod-batch" class="marg-input" placeholder="Batch No" />
-            </div>
-            <div class="marg-cell marg-cell-exp">
-              <label class="marg-lbl" for="marg-prod-exp">EXPIRY</label>
-              <input type="text" id="marg-prod-exp" class="marg-input" placeholder="MM/YY" maxlength="7" />
-            </div>
-            <div class="marg-cell marg-cell-qty">
-              <label class="marg-lbl" for="marg-prod-qty">QTY *</label>
-              <input type="number" id="marg-prod-qty" class="marg-input" value="1" min="1" />
-            </div>
-            <div class="marg-cell marg-cell-rate">
-              <label class="marg-lbl" for="marg-prod-rate">MRP (₹) *</label>
-              <input type="number" step="0.01" id="marg-prod-rate" class="marg-input" placeholder="0.00" />
-            </div>
-            <div class="marg-cell marg-cell-amount">
-              <label class="marg-lbl" for="marg-prod-amount">AMOUNT (₹)</label>
-              <input type="text" id="marg-prod-amount" class="marg-input marg-readonly" readonly placeholder="0.00" />
-            </div>
-            <div class="marg-cell marg-cell-action">
-              <button type="button" id="btn-marg-add" class="btn-primary" style="height: 36px; padding: 0 14px; white-space: nowrap; font-weight: 700;">
-                ↵ Add Item
-              </button>
-            </div>
-          </div>
-        </div>
 
-        <!-- CART ITEMS & SUMMARY SECTION -->
-        <div class="billing-main-grid" style="margin-top: 18px;">
-          <!-- CART TABLE -->
-          <div class="card cart-card">
-            <div class="cart-header">
-              <h3 class="cart-title">Bill Items (<span id="cart-count">${MedHub.state.cart.length}</span>)</h3>
-              ${MedHub.state.cart.length > 0 ? `
-                <button type="button" class="btn-text-danger" id="btn-clear-cart">
-                  ${MedHub.icons.trash} Clear Cart
-                </button>
-              ` : ""}
+          <!-- PARTY / CUSTOMER & DOCTOR LEDGER HEADER (MARG BLUEPRINT) -->
+          <div class="marg-party-header">
+            <div class="marg-party-row">
+              <div class="marg-party-field marg-pf-name">
+                <label class="marg-pf-lbl" for="cust-name">Name / Patient <span class="req">*</span></label>
+                <input type="text" id="cust-name" class="marg-erp-input"
+                  placeholder="Ramesh Kumar or Walk-in Customer"
+                  value="${MedHub.state.customer.name || ""}" />
+              </div>
+              <div class="marg-party-field marg-pf-mobile">
+                <label class="marg-pf-lbl" for="cust-mobile">Mobile</label>
+                <input type="tel" id="cust-mobile" class="marg-erp-input"
+                  placeholder="10-digit mobile" maxlength="10"
+                  value="${MedHub.state.customer.mobile || ""}" />
+              </div>
+              <div class="marg-party-field marg-pf-date">
+                <label class="marg-pf-lbl">Date</label>
+                <div class="marg-pf-static">${todayStr}</div>
+              </div>
             </div>
-            <div class="cart-table-wrap">
-              <table class="data-table" id="cart-table">
-                <thead>
-                  <tr>
-                    <th style="width: 36px;">#</th>
-                    <th>PRODUCT & COMPOSITION</th>
-                    <th>PACK</th>
-                    <th>BATCH</th>
-                    <th>EXPIRY</th>
-                    <th>QTY</th>
-                    <th>MRP (₹)</th>
-                    <th>AMOUNT (₹)</th>
-                    <th style="width: 44px;"></th>
+            <div class="marg-party-row">
+              <div class="marg-party-field marg-pf-addr">
+                <label class="marg-pf-lbl" for="cust-address">Address</label>
+                <input type="text" id="cust-address" class="marg-erp-input"
+                  placeholder="Address / Town / Village"
+                  value="${MedHub.state.customer.address || ""}" />
+              </div>
+              <div class="marg-party-field marg-pf-doc">
+                <label class="marg-pf-lbl" for="doc-name">Doctor</label>
+                <input type="text" id="doc-name" class="marg-erp-input"
+                  placeholder="Dr. Name & Hospital (for Sch-H)"
+                  value="${MedHub.state.doctor.name || ""}" />
+              </div>
+              <div class="marg-party-field marg-pf-meta">
+                <label class="marg-pf-lbl">Items</label>
+                <div class="marg-pf-static"><span id="cart-count">${MedHub.state.cart.length}</span> Added</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- UNIFIED MARG ERP SPREADSHEET ENTRY + LEDGER TABLE -->
+          <div class="marg-spreadsheet-wrap">
+            <table class="marg-spreadsheet-table" id="cart-table">
+              <thead>
+                <tr>
+                  <th style="width: 34px;">#</th>
+                  <th class="col-prod">PRODUCT</th>
+                  <th class="col-pack">PACK</th>
+                  <th class="col-batch">BATCH</th>
+                  <th class="col-exp">EXPIRY</th>
+                  <th class="col-qty">QTY</th>
+                  <th class="col-free">FREE</th>
+                  <th class="col-mrp">MRP (₹)</th>
+                  <th class="col-dis">DIS %</th>
+                  <th class="col-amt">AMOUNT (₹)</th>
+                  <th style="width: 64px;">ACT</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- LIVE ACTIVE ENTRY ROW (ALWAYS AT TOP FOR RAPID KEYBOARD ENTRY) -->
+                <tr class="marg-active-entry-row" id="marg-sale-entry-container">
+                  <td class="marg-sn-cell">↵</td>
+                  <td class="marg-cell-td" style="position: relative;">
+                    <input type="text" id="marg-prod-name" class="marg-grid-input" placeholder="Type medicine / brand..." autocomplete="off" />
+                    <div id="marg-prod-dropdown" class="medicine-dropdown-results" style="display: none;"></div>
+                  </td>
+                  <td class="marg-cell-td">
+                    <input type="text" id="marg-prod-pack" class="marg-grid-input text-center" placeholder="1x10" />
+                  </td>
+                  <td class="marg-cell-td">
+                    <input type="text" id="marg-prod-batch" class="marg-grid-input text-center" placeholder="Batch" />
+                  </td>
+                  <td class="marg-cell-td">
+                    <input type="text" id="marg-prod-exp" class="marg-grid-input text-center" placeholder="MM/YY" maxlength="7" />
+                  </td>
+                  <td class="marg-cell-td">
+                    <input type="number" id="marg-prod-qty" class="marg-grid-input text-right" value="1" min="1" />
+                  </td>
+                  <td class="marg-cell-td">
+                    <input type="number" id="marg-prod-free" class="marg-grid-input text-right" value="0" min="0" />
+                  </td>
+                  <td class="marg-cell-td">
+                    <input type="number" step="0.01" id="marg-prod-rate" class="marg-grid-input text-right" placeholder="0.00" />
+                  </td>
+                  <td class="marg-cell-td">
+                    <input type="number" step="0.01" min="0" max="100" id="marg-prod-dis" class="marg-grid-input text-right" value="0" />
+                  </td>
+                  <td class="marg-cell-td">
+                    <input type="text" id="marg-prod-amount" class="marg-grid-input marg-readonly text-right" readonly placeholder="0.00" tabindex="-1" />
+                  </td>
+                  <td class="marg-cell-td text-center">
+                    <button type="button" id="btn-marg-add" class="marg-add-btn" title="Add Item (Enter)">+ Add</button>
+                  </td>
+                </tr>
+              </tbody>
+              <!-- ADDED BILL ITEMS ROWS -->
+              <tbody id="cart-items-body">
+                ${this.renderCartRows()}
+              </tbody>
+              <!-- EMPTY SPREADSHEET FILLER ROWS (MARG ERP LEDGER LOOK) -->
+              <tbody id="marg-filler-rows">
+                ${Array.from({ length: fillerCount }).map(() => `
+                  <tr class="marg-filler-tr">
+                    <td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
                   </tr>
-                </thead>
-                <tbody id="cart-items-body">
-                  ${this.renderCartRows()}
-                </tbody>
-              </table>
-              <div id="cart-empty-state" class="cart-empty" style="${MedHub.state.cart.length ? "display:none;" : ""}">
-                <p>No medicine added to cart</p>
-                <span class="cart-empty-sub">Type medicine name in Marg entry row above and press Enter ↵</span>
-              </div>
-            </div>
+                `).join("")}
+              </tbody>
+            </table>
           </div>
 
-          <!-- SUMMARY & CHECKOUT CARD -->
-          <div class="card checkout-card">
-            <h3 class="checkout-title">Payment Summary</h3>
-            <div class="summary-rows">
-              <div class="summary-row">
-                <span>Items Subtotal:</span>
-                <span id="summary-subtotal" class="summary-val">${MedHub.rupee(this.calculateSubtotal())}</span>
-              </div>
-              <div class="summary-row">
-                <div class="discount-label-wrap">
-                  <span>Discount:</span>
-                  <div class="disc-type-toggle" id="bill-discount-type-toggle">
-                    <button type="button" class="disc-type-btn ${(MedHub.state.discountType || 'AMOUNT') === 'AMOUNT' ? 'active' : ''}" data-type="AMOUNT" title="Discount in Rupees (₹)">₹</button>
-                    <button type="button" class="disc-type-btn ${MedHub.state.discountType === 'PERCENT' ? 'active' : ''}" data-type="PERCENT" title="Discount in Percentage (%)">%</button>
-                  </div>
-                </div>
-                <input type="number" id="bill-discount" class="input-inline" min="0" step="0.01"
-                  ${MedHub.state.discountType === 'PERCENT' ? 'max="100"' : ''}
-                  value="${MedHub.state.discount || 0}" style="width: 84px; text-align: right;" />
-              </div>
-              <div class="summary-row discount-preview-row" id="summary-discount-preview-row" style="${this.calculateDiscountAmount() > 0 ? '' : 'display:none;'}">
-                <span id="summary-discount-label" style="font-size: 11.5px; color: #16a34a; font-weight: 600;">
-                  Discount Applied${MedHub.state.discountType === 'PERCENT' ? ` (${Math.min(100, Number(MedHub.state.discount || 0))}%)` : ''}:
-                </span>
-                <span id="summary-discount-applied" style="font-size: 12px; font-weight: 700; color: #16a34a;">
-                  -${MedHub.rupee(this.calculateDiscountAmount())}
-                </span>
-              </div>
-              <div class="summary-row divider-row">
-                <span class="total-label">Grand Total:</span>
-                <span id="summary-grand-total" class="grand-total-val">${MedHub.rupee(this.calculateGrandTotal())}</span>
-              </div>
+          <!-- BOTTOM 3-PANEL MARG ERP FOOTER: ITEM INSPECTOR | PAYMENT & QR | TOTALS & PRINT -->
+          <div class="marg-footer-panels">
+            <!-- PANEL 1: ACTIVE ITEM DETAILS (BOTTOM LEFT OF MARG BLUEPRINT) -->
+            <div class="marg-foot-panel marg-panel-inspector" id="marg-item-inspector">
+              ${this.renderItemInspector(activeInspect)}
             </div>
 
-            <!-- PAYMENT MODE SELECTOR -->
-            <div class="payment-mode-section" style="margin-top: 16px;">
-              <label class="form-label">Payment Mode</label>
-              <div class="pay-mode-chips">
+            <!-- PANEL 2: PAYMENT MODE, QR & AMOUNT RECEIVED -->
+            <div class="marg-foot-panel marg-panel-payment">
+              <div class="marg-panel-title-row">
+                <span class="marg-panel-title">Payment & Settlement</span>
+                ${MedHub.state.cart.length > 0 ? `
+                  <button type="button" class="btn-text-danger" id="btn-clear-cart" style="font-size: 11px; padding: 2px 6px;">
+                    ${MedHub.icons.trash} Clear
+                  </button>
+                ` : ""}
+              </div>
+              <div class="pay-mode-chips" style="margin-top: 6px;">
                 <button type="button" class="pay-chip ${MedHub.state.paymentMode === 'CASH' ? 'active' : ''}" data-mode="CASH">Cash</button>
                 <button type="button" class="pay-chip ${MedHub.state.paymentMode === 'UPI' ? 'active' : ''}" data-mode="UPI">UPI / QR</button>
                 <button type="button" class="pay-chip ${MedHub.state.paymentMode === 'CARD' ? 'active' : ''}" data-mode="CARD">Card</button>
                 <button type="button" class="pay-chip ${MedHub.state.paymentMode === 'CREDIT' ? 'active' : ''}" data-mode="CREDIT">Udhaar</button>
               </div>
-
-              <!-- LIVE SHOP COUNTER QR DISPLAY -->
-              <div id="pos-counter-qr" style="margin-top: 10px; padding: 10px 14px; background: var(--cream-hover); border-radius: 8px; border: 1.5px dashed var(--cream-border-dark); display: ${MedHub.state.paymentMode === 'UPI' ? 'flex' : 'none'}; align-items: center; gap: 12px;">
-                <img src="${(store.custom_qr_image && store.custom_qr_image.trim()) ? store.custom_qr_image : `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(`upi://pay?pa=${encodeURIComponent(store.upi_id || "sagarstore@upi")}&pn=${encodeURIComponent(store.payee_name || store.store_name || "Pharmacy")}&am=${this.calculateGrandTotal()}&cu=INR`)}`}" alt="Shop QR" style="width: 58px; height: 58px; object-fit: contain; background: #ffffff; padding: 2px; border-radius: 4px; border: 1px solid var(--cream-border); flex-shrink: 0;" />
-                <div>
-                  <div style="font-size: 11px; font-weight: 800; color: var(--black-deep);">STORE COUNTER QR</div>
-                  <div style="font-size: 10.5px; color: var(--black-soft);">${store.upi_id || "sagarstore@upi"}</div>
-                  <div style="font-size: 11px; font-weight: 700; color: var(--pink-primary); margin-top: 2px;">Scan to Pay: ${MedHub.rupee(this.calculateGrandTotal())}</div>
+              <div class="marg-received-row">
+                <label class="marg-pf-lbl" for="amt-received">Amount Received (₹):</label>
+                <input type="number" step="0.01" min="0" id="amt-received" class="marg-erp-input text-right"
+                  placeholder="Enter amount received"
+                  value="${MedHub.state.amountReceived !== undefined && MedHub.state.amountReceived !== null ? MedHub.state.amountReceived : ''}" />
+              </div>
+              <div id="pos-counter-qr" style="margin-top: 8px; padding: 8px 10px; background: var(--cream-hover); border-radius: 6px; border: 1px dashed var(--cream-border-dark); display: ${MedHub.state.paymentMode === 'UPI' ? 'flex' : 'none'}; align-items: center; gap: 10px;">
+                <img src="${(store.custom_qr_image && store.custom_qr_image.trim()) ? store.custom_qr_image : `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(`upi://pay?pa=${encodeURIComponent(store.upi_id || "sagarstore@upi")}&pn=${encodeURIComponent(store.payee_name || store.store_name || "Pharmacy")}&am=${this.calculateGrandTotal()}&cu=INR`)}`}" alt="Shop QR" style="width: 48px; height: 48px; object-fit: contain; background: #ffffff; padding: 2px; border-radius: 4px; border: 1px solid var(--cream-border); flex-shrink: 0;" />
+                <div style="font-size: 11px;">
+                  <div style="font-weight: 800; color: var(--black-deep);">STORE COUNTER QR</div>
+                  <div style="color: var(--black-soft);">${store.upi_id || "sagarstore@upi"}</div>
+                  <div style="font-weight: 700; color: var(--pink-primary);">Pay: ${MedHub.rupee(this.calculateGrandTotal())}</div>
                 </div>
               </div>
             </div>
 
-            <div class="form-group" style="margin-top: 12px;">
-              <label class="form-label">Amount Received (₹)</label>
-              <input type="number" step="0.01" min="0" id="amt-received" class="input-field" 
-                placeholder="Enter amount received" 
-                value="${MedHub.state.amountReceived !== undefined && MedHub.state.amountReceived !== null ? MedHub.state.amountReceived : ''}" />
-            </div>
-
-            <!-- ACTION BUTTONS -->
-            <div class="checkout-actions" style="margin-top: 20px;">
-              <button type="button" id="btn-save-print" class="btn-primary-large" ${MedHub.state.cart.length === 0 ? 'disabled' : ''}>
+            <!-- PANEL 3: VALUE OF GOODS, DISCOUNT & GRAND TOTAL (BOTTOM RIGHT OF MARG BLUEPRINT) -->
+            <div class="marg-foot-panel marg-panel-totals checkout-card">
+              <div class="summary-rows">
+                <div class="summary-row">
+                  <span>Value of Goods (Subtotal):</span>
+                  <span id="summary-subtotal" class="summary-val">${MedHub.rupee(this.calculateSubtotal())}</span>
+                </div>
+                <div class="summary-row">
+                  <div class="discount-label-wrap">
+                    <span>Discount:</span>
+                    <div class="disc-type-toggle" id="bill-discount-type-toggle">
+                      <button type="button" class="disc-type-btn ${(MedHub.state.discountType || 'AMOUNT') === 'AMOUNT' ? 'active' : ''}" data-type="AMOUNT" title="Discount in Rupees (₹)">₹</button>
+                      <button type="button" class="disc-type-btn ${MedHub.state.discountType === 'PERCENT' ? 'active' : ''}" data-type="PERCENT" title="Discount in Percentage (%)">%</button>
+                    </div>
+                  </div>
+                  <input type="number" id="bill-discount" class="marg-erp-input text-right" min="0" step="0.01"
+                    ${MedHub.state.discountType === 'PERCENT' ? 'max="100"' : ''}
+                    value="${MedHub.state.discount || 0}" style="width: 88px;" />
+                </div>
+                <div class="summary-row discount-preview-row" id="summary-discount-preview-row" style="${this.calculateDiscountAmount() > 0 ? '' : 'display:none;'}">
+                  <span id="summary-discount-label" style="font-size: 11.5px; color: #16a34a; font-weight: 600;">
+                    Discount Applied${MedHub.state.discountType === 'PERCENT' ? ` (${Math.min(100, Number(MedHub.state.discount || 0))}%)` : ''}:
+                  </span>
+                  <span id="summary-discount-applied" style="font-size: 12px; font-weight: 700; color: #16a34a;">
+                    -${MedHub.rupee(this.calculateDiscountAmount())}
+                  </span>
+                </div>
+                <div class="summary-row divider-row">
+                  <span class="total-label">NET GRAND TOTAL:</span>
+                  <span id="summary-grand-total" class="grand-total-val">${MedHub.rupee(this.calculateGrandTotal())}</span>
+                </div>
+              </div>
+              <button type="button" id="btn-save-print" class="btn-primary-large" style="margin-top: 10px;" ${MedHub.state.cart.length === 0 ? 'disabled' : ''}>
                 ${MedHub.icons.print} Complete & Print Bill (F9)
               </button>
             </div>
+          </div>
+
+          <!-- BOTTOM ERP KEYBOARD SHORTCUT BAR -->
+          <div class="marg-shortcut-bar">
+            <span><strong>ENTER ↵</strong> Next Input Box</span>
+            <span><strong>SHIFT + ENTER</strong> Previous Box</span>
+            <span><strong>↑ ↓</strong> Select Medicine</span>
+            <span><strong>Empty Product + ENTER</strong> Jump to Discount</span>
+            <span><strong>F9</strong> Complete & Print Bill</span>
           </div>
         </div>
       </div>
     `;
 
     this.bindEvents(container);
+  },
+
+  renderItemInspector(item) {
+    if (!item) {
+      return `
+        <div class="marg-inspector-grid">
+          <div class="marg-insp-row"><span>Item :</span><strong>—</strong></div>
+          <div class="marg-insp-row"><span>Batch :</span><strong>—</strong><span>Stock :</span><strong>—</strong></div>
+          <div class="marg-insp-row"><span>Expiry :</span><strong>—</strong><span>MRP :</span><strong>₹0.00</strong></div>
+          <div class="marg-insp-row"><span>Company :</span><strong>—</strong><span>Schedule :</span><strong>General</strong></div>
+        </div>
+      `;
+    }
+    const stockQty = item.available_qty ?? item.max_stock ?? item.chosenBatch?.quantity ?? "—";
+    const batch = item.batch_no || item.chosenBatch?.batch_no || "BT-DEFAULT";
+    const exp = MedHub.formatExpiry(item.expiry_date || item.chosenBatch?.expiry_date || item.nearest_expiry || "");
+    const mrpVal = Number(item.mrp ?? item.selling_rate ?? item.rate ?? 0).toFixed(2);
+    const sch = item.drug_schedule || "General";
+    return `
+      <div class="marg-inspector-grid">
+        <div class="marg-insp-row"><span>Item :</span><strong>${item.name || "—"} (${item.pack_size || "1x10"})</strong></div>
+        <div class="marg-insp-row"><span>Batch :</span><strong>${batch}</strong><span>Stock :</span><strong style="color:#1d4ed8;">${stockQty}</strong></div>
+        <div class="marg-insp-row"><span>Expiry :</span><strong>${exp || "—"}</strong><span>MRP :</span><strong>₹${mrpVal}</strong></div>
+        <div class="marg-insp-row"><span>Company :</span><strong>${item.company || "—"}</strong><span>Schedule :</span><strong>${sch}</strong></div>
+      </div>
+    `;
   },
 
   calculateSubtotal() {
@@ -257,24 +284,34 @@ MedHub.billing = {
     if (!MedHub.state.cart.length) return "";
     return MedHub.state.cart.map((it, idx) => {
       const isScheduleH = it.drug_schedule && it.drug_schedule.includes("H");
+      const freeVal = Number(it.free_qty || 0);
+      const disVal = Number(it.discount_percent || 0);
       return `
-        <tr data-index="${idx}">
-          <td>${idx + 1}</td>
+        <tr data-index="${idx}" class="marg-cart-row">
+          <td class="text-center">${idx + 1}</td>
           <td>
             <strong>${it.name}</strong>
             ${it.salt_composition ? `<div class="sub-text">${it.salt_composition}</div>` : ""}
             ${isScheduleH ? `<span class="badge-schedule schedule-h" style="margin-left: 6px;">Sch-H</span>` : ""}
           </td>
-          <td>${it.pack_size || "1x10"}</td>
-          <td><span class="badge-code">${it.batch_no || "BT-DEFAULT"}</span></td>
-          <td><span class="badge-exp-month">${MedHub.formatExpiry(it.expiry_date)}</span></td>
-          <td>
-            <input type="number" class="cart-qty-input" min="1" max="${it.max_stock || 999}" 
-              value="${it.quantity}" data-index="${idx}" style="width: 60px;" />
+          <td class="text-center">${it.pack_size || "1x10"}</td>
+          <td class="text-center"><span class="badge-code">${it.batch_no || "BT-DEFAULT"}</span></td>
+          <td class="text-center"><span class="badge-exp-month">${MedHub.formatExpiry(it.expiry_date)}</span></td>
+          <td class="text-right">
+            <input type="number" class="marg-grid-input cart-qty-input text-right" min="1" max="${it.max_stock || 999}"
+              value="${it.quantity}" data-index="${idx}" />
           </td>
-          <td>₹${Number(it.mrp ?? it.rate).toFixed(2)}</td>
-          <td><strong>₹${Number(it.line_total).toFixed(2)}</strong></td>
-          <td>
+          <td class="text-right">
+            <input type="number" class="marg-grid-input cart-free-input text-right" min="0"
+              value="${freeVal}" data-index="${idx}" />
+          </td>
+          <td class="text-right">₹${Number(it.mrp ?? it.rate).toFixed(2)}</td>
+          <td class="text-right">
+            <input type="number" step="0.01" min="0" max="100" class="marg-grid-input cart-dis-input text-right"
+              value="${disVal}" data-index="${idx}" />
+          </td>
+          <td class="text-right"><strong>₹${Number(it.line_total).toFixed(2)}</strong></td>
+          <td class="text-center">
             <button type="button" class="btn-icon-danger btn-remove-item" data-index="${idx}" title="Remove">
               ${MedHub.icons.trash}
             </button>
@@ -298,34 +335,74 @@ MedHub.billing = {
     custAddress?.addEventListener("input", (e) => { MedHub.state.customer.address = e.target.value; });
     docName?.addEventListener("input", (e) => { MedHub.state.doctor.name = e.target.value; });
 
-    // Enter Key Navigation Chain: Customer Details -> Marg Item Row
-    custName?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        custMobile?.focus();
-      }
-    });
-    custMobile?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        custAddress?.focus();
-      }
-    });
-    custAddress?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        docName?.focus();
-      }
-    });
-    docName?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        container.querySelector("#marg-prod-name")?.focus();
-      }
-    });
+    // MARG ERP 9+ ENTRY INPUTS
+    const prodInput = container.querySelector("#marg-prod-name");
+    const packInput = container.querySelector("#marg-prod-pack");
+    const batchInput = container.querySelector("#marg-prod-batch");
+    const expInput = container.querySelector("#marg-prod-exp");
+    const qtyInput = container.querySelector("#marg-prod-qty");
+    const freeInput = container.querySelector("#marg-prod-free");
+    const rateInput = container.querySelector("#marg-prod-rate");
+    const itemDisInput = container.querySelector("#marg-prod-dis");
+    const amountInput = container.querySelector("#marg-prod-amount");
+    const addBtn = container.querySelector("#btn-marg-add");
+    const prodDropdown = container.querySelector("#marg-prod-dropdown");
+    const inspectorEl = container.querySelector("#marg-item-inspector");
 
     // Discount & Received bindings
     const discInput = container.querySelector("#bill-discount");
+    const amtReceivedInput = container.querySelector("#amt-received");
+
+    const focusAndSelect = (el) => {
+      if (!el) return;
+      el.focus();
+      if (typeof el.select === "function") {
+        try { el.select(); } catch (e) {}
+      }
+    };
+
+    const orderedEntryInputs = [
+      custName,
+      custMobile,
+      custAddress,
+      docName,
+      prodInput,
+      packInput,
+      batchInput,
+      expInput,
+      qtyInput,
+      freeInput,
+      rateInput,
+      itemDisInput,
+      discInput,
+      amtReceivedInput
+    ].filter(Boolean);
+
+    // Universal Shift+Enter backward shift across ALL input boxes
+    orderedEntryInputs.forEach((inp, idx) => {
+      inp.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && e.shiftKey) {
+          e.preventDefault();
+          if (idx > 0) focusAndSelect(orderedEntryInputs[idx - 1]);
+        }
+      });
+    });
+
+    // Forward Enter Key Navigation Chain: Party/Doctor Header -> Product
+    custName?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); focusAndSelect(custMobile); }
+    });
+    custMobile?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); focusAndSelect(custAddress); }
+    });
+    custAddress?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); focusAndSelect(docName); }
+    });
+    docName?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); focusAndSelect(prodInput); }
+    });
+
+    // Discount type toggle & value
     const discTypeBtns = container.querySelectorAll(".disc-type-btn");
     discTypeBtns.forEach(btn => {
       btn.addEventListener("click", () => {
@@ -358,20 +435,19 @@ MedHub.billing = {
       self.updateTotals();
     });
 
-    const amtReceivedInput = container.querySelector("#amt-received");
     amtReceivedInput?.addEventListener("input", (e) => {
       MedHub.state.amountReceived = e.target.value;
     });
 
     // Enter Key Navigation: Discount -> Received -> Complete & Print
     discInput?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
+      if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
-        amtReceivedInput?.focus();
+        focusAndSelect(amtReceivedInput);
       }
     });
     amtReceivedInput?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
+      if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         self.submitBill();
       }
@@ -390,31 +466,23 @@ MedHub.billing = {
       });
     });
 
-    // MARG ERP 9+ SALE ENTRY ROW LOGIC & ENTER SHIFTING
-    const prodInput = container.querySelector("#marg-prod-name");
-    const packInput = container.querySelector("#marg-prod-pack");
-    const batchInput = container.querySelector("#marg-prod-batch");
-    const expInput = container.querySelector("#marg-prod-exp");
-    const qtyInput = container.querySelector("#marg-prod-qty");
-    const rateInput = container.querySelector("#marg-prod-rate");
-    const amountInput = container.querySelector("#marg-prod-amount");
-    const addBtn = container.querySelector("#btn-marg-add");
-    const prodDropdown = container.querySelector("#marg-prod-dropdown");
-
     let currentSelectedMed = null;
     let currentSearchResults = [];
     let highlightedIndex = 0;
 
-    // Helper: Recalculate Marg Item Amount
+    // Helper: Recalculate Marg Item Amount (Qty * MRP * (1 - Dis%/100))
     const recalcMargAmount = () => {
       const q = parseFloat(qtyInput?.value) || 0;
       const r = parseFloat(rateInput?.value) || 0;
-      const net = Math.max(0, q * r);
+      const d = Math.min(100, Math.max(0, parseFloat(itemDisInput?.value) || 0));
+      const net = Math.max(0, q * r * (1 - d / 100));
       if (amountInput) amountInput.value = net.toFixed(2);
     };
 
     qtyInput?.addEventListener("input", recalcMargAmount);
+    freeInput?.addEventListener("input", recalcMargAmount);
     rateInput?.addEventListener("input", recalcMargAmount);
+    itemDisInput?.addEventListener("input", recalcMargAmount);
 
     // Live Search for Marg Product
     const searchMargProducts = MedHub.debounce(async (val) => {
@@ -453,7 +521,7 @@ MedHub.billing = {
             <span class="search-item-stock ${m.available_qty <= 0 ? 'stock-out' : (m.available_qty <= (m.reorder_level || 10) ? 'stock-low' : 'stock-in')}">
               Stock: ${m.available_qty || 0}
             </span>
-            <span class="search-item-mrp">₹${Number(m.selling_rate || m.mrp).toFixed(2)}</span>
+            <span class="search-item-mrp">₹${Number(m.mrp || m.selling_rate || 0).toFixed(2)}</span>
           </div>
         </div>
       `).join("");
@@ -462,6 +530,9 @@ MedHub.billing = {
       const highlightedEl = prodDropdown.querySelector(`.search-item[data-idx="${highlightedIndex}"]`);
       if (highlightedEl) {
         highlightedEl.scrollIntoView({ block: "nearest" });
+      }
+      if (inspectorEl && currentSearchResults[highlightedIndex]) {
+        inspectorEl.innerHTML = self.renderItemInspector(currentSearchResults[highlightedIndex]);
       }
 
       prodDropdown.querySelectorAll(".search-item").forEach(itemEl => {
@@ -476,12 +547,10 @@ MedHub.billing = {
     const selectMargProduct = async (med) => {
       if (!med) return;
       currentSelectedMed = med;
+      self.inspectedItem = med;
       if (prodInput) prodInput.value = med.name;
-
-      // Pack
       if (packInput) packInput.value = med.pack_size || "1x10";
 
-      // FEFO Batch lookup
       const batches = await MedHub.api.getBatches(med.id);
       const chosenBatch = (batches && batches.length) ? batches[0] : null;
       currentSelectedMed.chosenBatch = chosenBatch;
@@ -489,27 +558,23 @@ MedHub.billing = {
       if (batchInput) {
         batchInput.value = chosenBatch ? chosenBatch.batch_no : ("BT-" + (med.barcode || "01"));
       }
-
-      // Expiry formatted strictly as MM/YY
       const rawExp = chosenBatch ? chosenBatch.expiry_date : (med.nearest_expiry || "2028-11");
       if (expInput) {
         expInput.value = MedHub.formatExpiry(rawExp);
       }
 
-      // MRP
       const selMrp = Number(med.mrp || med.selling_rate || (chosenBatch ? chosenBatch.selling_price : 0) || 0);
       if (rateInput) rateInput.value = selMrp.toFixed(2);
-
-      // Qty
       if (qtyInput) qtyInput.value = 1;
+      if (freeInput) freeInput.value = 0;
+      if (itemDisInput) itemDisInput.value = 0;
 
       recalcMargAmount();
-
+      if (inspectorEl) inspectorEl.innerHTML = self.renderItemInspector(currentSelectedMed);
       if (prodDropdown) prodDropdown.style.display = "none";
 
-      // Instantly shift focus to QTY box for fast Marg workflow
-      qtyInput?.focus();
-      qtyInput?.select();
+      // Automatically shift to QTY box for fast Marg workflow
+      focusAndSelect(qtyInput);
     };
 
     prodInput?.addEventListener("input", (e) => searchMargProducts(e.target.value));
@@ -521,6 +586,7 @@ MedHub.billing = {
 
     // Keyboard navigation in Product Search: ArrowUp, ArrowDown, Enter
     prodInput?.addEventListener("keydown", (e) => {
+      if (e.shiftKey) return;
       if (prodDropdown && prodDropdown.style.display !== "none" && currentSearchResults.length > 0) {
         if (e.key === "ArrowDown") {
           e.preventDefault();
@@ -542,45 +608,40 @@ MedHub.billing = {
         }
       }
 
-      // If Enter pressed when input is empty -> Shift focus to Bill Summary (Discount)
       if (e.key === "Enter") {
         e.preventDefault();
         if (!prodInput.value || !prodInput.value.trim()) {
-          discInput?.focus();
+          focusAndSelect(discInput);
         } else if (currentSelectedMed) {
-          qtyInput?.focus();
+          focusAndSelect(qtyInput);
+        } else {
+          focusAndSelect(packInput);
         }
       }
     });
 
-    // Enter Key Chain within Marg Entry Row: Pack -> Batch -> Exp -> Qty -> MRP -> Add
+    // Complete Enter Key Chain in Marg Entry Row:
+    // Pack -> Batch -> Expiry -> Qty -> Free -> MRP -> Dis % -> Commit Item & Return to Product
     packInput?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        batchInput?.focus();
-      }
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); focusAndSelect(batchInput); }
     });
     batchInput?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        expInput?.focus();
-      }
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); focusAndSelect(expInput); }
     });
     expInput?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        qtyInput?.focus();
-      }
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); focusAndSelect(qtyInput); }
     });
     qtyInput?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        rateInput?.focus();
-        rateInput?.select();
-      }
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); focusAndSelect(freeInput); }
+    });
+    freeInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); focusAndSelect(rateInput); }
     });
     rateInput?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); focusAndSelect(itemDisInput); }
+    });
+    itemDisInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         commitMargItem();
       }
@@ -591,16 +652,18 @@ MedHub.billing = {
       const prodName = prodInput?.value?.trim();
       if (!prodName) {
         MedHub.toast("Kripya dawai ka naam select karein", "warning");
-        prodInput?.focus();
+        focusAndSelect(prodInput);
         return;
       }
 
       const q = parseFloat(qtyInput?.value) || 1;
+      const freeQty = Math.max(0, parseFloat(freeInput?.value) || 0);
       const r = parseFloat(rateInput?.value) || 0;
+      const disPct = Math.min(100, Math.max(0, parseFloat(itemDisInput?.value) || 0));
       const pack = packInput?.value?.trim() || "1x10";
       const batch = batchInput?.value?.trim() || "BT-DEFAULT";
       const exp = expInput?.value?.trim() || "11/28";
-      const net = Math.max(0, q * r);
+      const net = Math.max(0, Number((q * r * (1 - disPct / 100)).toFixed(2)));
 
       const medId = currentSelectedMed ? currentSelectedMed.id : ("m-" + Date.now());
       const batchId = currentSelectedMed?.chosenBatch?.id || null;
@@ -608,16 +671,17 @@ MedHub.billing = {
       const sch = currentSelectedMed?.drug_schedule || "General";
       const comp = currentSelectedMed?.salt_composition || "";
 
-      // Check if existing item in cart
       const existing = MedHub.state.cart.find(it => it.medicine_id === medId && it.batch_no === batch);
       if (existing) {
         existing.quantity += q;
+        existing.free_qty = (Number(existing.free_qty) || 0) + freeQty;
         existing.mrp = r;
         existing.rate = r;
-        existing.discount_percent = 0;
-        existing.line_total = Math.max(0, existing.quantity * existing.rate);
+        existing.discount_percent = disPct;
+        existing.line_total = Math.max(0, Number((existing.quantity * existing.rate * (1 - disPct / 100)).toFixed(2)));
+        self.inspectedItem = existing;
       } else {
-        MedHub.state.cart.push({
+        const added = {
           medicine_id: medId,
           name: prodName,
           company: currentSelectedMed?.company || "",
@@ -630,10 +694,13 @@ MedHub.billing = {
           mrp: r,
           rate: r,
           quantity: q,
-          discount_percent: 0,
+          free_qty: freeQty,
+          discount_percent: disPct,
           line_total: net,
           max_stock: maxStock
-        });
+        };
+        MedHub.state.cart.push(added);
+        self.inspectedItem = added;
       }
 
       if (sch && sch.includes("H")) {
@@ -641,6 +708,7 @@ MedHub.billing = {
       }
 
       self.updateCartUI();
+      if (inspectorEl) inspectorEl.innerHTML = self.renderItemInspector(self.inspectedItem);
 
       // Reset Marg Row inputs
       if (prodInput) prodInput.value = "";
@@ -648,14 +716,16 @@ MedHub.billing = {
       if (batchInput) batchInput.value = "";
       if (expInput) expInput.value = "";
       if (qtyInput) qtyInput.value = 1;
+      if (freeInput) freeInput.value = 0;
       if (rateInput) rateInput.value = "";
+      if (itemDisInput) itemDisInput.value = 0;
       if (amountInput) amountInput.value = "";
       currentSelectedMed = null;
       currentSearchResults = [];
       if (prodDropdown) prodDropdown.style.display = "none";
 
       // Refocus product search input immediately for next item entry!
-      prodInput?.focus();
+      focusAndSelect(prodInput);
     };
 
     addBtn?.addEventListener("click", commitMargItem);
@@ -667,26 +737,77 @@ MedHub.billing = {
       }
     });
 
-    // Cart Quantity change in table
+    // Cart inline edits (Qty / Free / Dis %)
     container.addEventListener("input", (e) => {
-      if (e.target.classList.contains("cart-qty-input")) {
-        const idx = Number(e.target.dataset.index);
-        let newQty = parseInt(e.target.value, 10);
-        if (isNaN(newQty) || newQty <= 0) newQty = 1;
+      const target = e.target;
+      if (
+        target.classList.contains("cart-qty-input") ||
+        target.classList.contains("cart-free-input") ||
+        target.classList.contains("cart-dis-input")
+      ) {
+        const idx = Number(target.dataset.index);
         const it = MedHub.state.cart[idx];
-        it.quantity = newQty;
-        it.line_total = Math.max(0, newQty * (Number(it.rate) || 0));
-        self.updateCartUI();
+        if (!it) return;
+        const rowEl = target.closest("tr");
+        const q = Math.max(1, parseFloat(rowEl?.querySelector(".cart-qty-input")?.value) || 1);
+        const f = Math.max(0, parseFloat(rowEl?.querySelector(".cart-free-input")?.value) || 0);
+        const d = Math.min(100, Math.max(0, parseFloat(rowEl?.querySelector(".cart-dis-input")?.value) || 0));
+        it.quantity = q;
+        it.free_qty = f;
+        it.discount_percent = d;
+        it.line_total = Math.max(0, Number((q * (Number(it.rate) || 0) * (1 - d / 100)).toFixed(2)));
+        const amtCell = rowEl?.querySelector("td:nth-child(10) strong");
+        if (amtCell) amtCell.innerText = `₹${it.line_total.toFixed(2)}`;
+        self.inspectedItem = it;
+        if (inspectorEl) inspectorEl.innerHTML = self.renderItemInspector(it);
+        self.updateTotals();
       }
     });
 
-    // Remove Item
+    // Enter shifting inside Cart table inputs -> next cell or back to Product
+    container.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      const target = e.target;
+      if (
+        target.classList.contains("cart-qty-input") ||
+        target.classList.contains("cart-free-input") ||
+        target.classList.contains("cart-dis-input")
+      ) {
+        e.preventDefault();
+        const rowEl = target.closest("tr");
+        const cells = Array.from(rowEl?.querySelectorAll(".cart-qty-input, .cart-free-input, .cart-dis-input") || []);
+        const pos = cells.indexOf(target);
+        if (e.shiftKey) {
+          if (pos > 0) focusAndSelect(cells[pos - 1]);
+          return;
+        }
+        if (pos >= 0 && pos + 1 < cells.length) {
+          focusAndSelect(cells[pos + 1]);
+        } else {
+          focusAndSelect(prodInput);
+        }
+      }
+    });
+
+    // Row click updates inspector
     container.addEventListener("click", (e) => {
       const btn = e.target.closest(".btn-remove-item");
       if (btn) {
         const idx = Number(btn.dataset.index);
         MedHub.state.cart.splice(idx, 1);
         self.updateCartUI();
+        if (inspectorEl) {
+          inspectorEl.innerHTML = self.renderItemInspector(MedHub.state.cart[MedHub.state.cart.length - 1] || null);
+        }
+        return;
+      }
+      const row = e.target.closest(".marg-cart-row");
+      if (row) {
+        const idx = Number(row.dataset.index);
+        if (MedHub.state.cart[idx] && inspectorEl) {
+          self.inspectedItem = MedHub.state.cart[idx];
+          inspectorEl.innerHTML = self.renderItemInspector(self.inspectedItem);
+        }
       }
     });
 
@@ -694,7 +815,9 @@ MedHub.billing = {
     container.querySelector("#btn-clear-cart")?.addEventListener("click", () => {
       if (confirm("Kya aap poora cart clear karna chahte hain?")) {
         MedHub.state.cart = [];
+        self.inspectedItem = null;
         self.updateCartUI();
+        if (inspectorEl) inspectorEl.innerHTML = self.renderItemInspector(null);
       }
     });
 
@@ -709,6 +832,11 @@ MedHub.billing = {
       }
     };
     window.addEventListener("keydown", f9Handler);
+
+    // Focus Patient/Customer Name on initial render for zero-mouse Marg ERP entry
+    setTimeout(() => {
+      focusAndSelect(custName);
+    }, 40);
   },
 
   async addMedicineToCart(med) {
@@ -754,13 +882,20 @@ MedHub.billing = {
 
   updateCartUI() {
     const tableBody = document.getElementById("cart-items-body");
+    const fillerBody = document.getElementById("marg-filler-rows");
     const countEl = document.getElementById("cart-count");
-    const emptyState = document.getElementById("cart-empty-state");
     const printBtn = document.getElementById("btn-save-print");
 
     if (tableBody) tableBody.innerHTML = this.renderCartRows();
+    if (fillerBody) {
+      const fillerCount = Math.max(0, 6 - MedHub.state.cart.length);
+      fillerBody.innerHTML = Array.from({ length: fillerCount }).map(() => `
+        <tr class="marg-filler-tr">
+          <td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+        </tr>
+      `).join("");
+    }
     if (countEl) countEl.innerText = MedHub.state.cart.length;
-    if (emptyState) emptyState.style.display = MedHub.state.cart.length ? "none" : "block";
     if (printBtn) printBtn.disabled = MedHub.state.cart.length === 0;
 
     this.updateTotals();

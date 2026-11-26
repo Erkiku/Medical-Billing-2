@@ -4164,6 +4164,329 @@ button {
   min-width: 165px;
 }
 
+/* ============================================================================
+   FULL MARG ERP 9+ BILLING BLUEPRINT (ROYAL BLUE, WHITE & CREAMY)
+   ============================================================================ */
+.marg-full-blueprint {
+  width: 100%;
+}
+
+.marg-erp-shell {
+  background: #ffffff;
+  border: 1.5px solid #2563eb;
+  border-radius: 10px;
+  overflow: visible;
+  box-shadow: 0 6px 20px rgba(30, 64, 175, 0.12);
+}
+
+.marg-erp-topbar {
+  border-radius: 8px 8px 0 0;
+}
+
+.marg-party-header {
+  background: #fdfbf7;
+  border-bottom: 1.5px solid #cbd5e1;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.marg-party-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.marg-party-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.marg-pf-name,
+.marg-pf-addr {
+  flex: 2 1 280px;
+}
+
+.marg-pf-mobile,
+.marg-pf-doc {
+  flex: 1.2 1 190px;
+}
+
+.marg-pf-date,
+.marg-pf-meta {
+  flex: 0 0 140px;
+}
+
+.marg-pf-lbl {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #1e3a8a;
+  white-space: nowrap;
+}
+
+.marg-pf-static {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #0f172a;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  padding: 4px 10px;
+  border-radius: 5px;
+}
+
+.marg-erp-input {
+  width: 100%;
+  height: 33px;
+  padding: 4px 9px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 5px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.marg-erp-input:focus {
+  border-color: #2563eb !important;
+  background: #eff6ff !important;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.28) !important;
+}
+
+.marg-spreadsheet-wrap {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  background: #ffffff;
+  border-bottom: 1.5px solid #cbd5e1;
+}
+
+.marg-spreadsheet-table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.marg-spreadsheet-table thead th {
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 8px 6px;
+  border: 1px solid #cbd5e1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.marg-spreadsheet-table thead th.col-prod {
+  min-width: 245px;
+  text-align: left;
+  padding-left: 10px;
+}
+
+.marg-spreadsheet-table thead th.col-pack { width: 76px; }
+.marg-spreadsheet-table thead th.col-batch { width: 112px; }
+.marg-spreadsheet-table thead th.col-exp { width: 82px; }
+.marg-spreadsheet-table thead th.col-qty { width: 72px; }
+.marg-spreadsheet-table thead th.col-free { width: 64px; }
+.marg-spreadsheet-table thead th.col-mrp { width: 92px; }
+.marg-spreadsheet-table thead th.col-dis { width: 68px; }
+.marg-spreadsheet-table thead th.col-amt { width: 98px; }
+
+.marg-spreadsheet-table tbody td {
+  border: 1px solid #e2e8f0;
+  padding: 5px 6px;
+  vertical-align: middle;
+}
+
+.marg-active-entry-row {
+  background: #f8fafc;
+}
+
+.marg-sn-cell {
+  text-align: center;
+  font-weight: 800;
+  color: #2563eb;
+  background: #eff6ff;
+}
+
+.marg-cell-td {
+  padding: 3px !important;
+}
+
+.marg-grid-input {
+  width: 100%;
+  height: 31px;
+  padding: 3px 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #0f172a;
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 4px;
+  outline: none;
+  box-sizing: border-box;
+  transition: all 0.12s ease;
+}
+
+/* Marg Blueprint Active Focused Cell Highlight */
+.marg-grid-input:focus {
+  background: #1d4ed8 !important;
+  color: #ffffff !important;
+  border: 2px solid #dc2626 !important;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25) !important;
+}
+
+.marg-grid-input:focus::placeholder {
+  color: #dbeafe;
+}
+
+.marg-active-entry-row .medicine-dropdown-results {
+  top: calc(100% + 2px);
+  left: 0;
+  width: 560px;
+  max-width: 90vw;
+  max-height: 310px;
+  overflow-y: auto;
+  position: absolute;
+  z-index: 999999;
+  background: #ffffff;
+  border: 1.5px solid #2563eb;
+  border-radius: 8px;
+  box-shadow: 0 12px 26px rgba(30, 64, 175, 0.25);
+}
+
+.marg-add-btn {
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.marg-add-btn:hover {
+  background: #1e40af;
+}
+
+.marg-cart-row {
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.marg-cart-row:hover {
+  background: #f0f7ff;
+}
+
+.marg-filler-tr td {
+  height: 28px;
+  background: #fdfbf7;
+  border-color: #eef2f7 !important;
+}
+
+.text-right { text-align: right !important; }
+.text-center { text-align: center !important; }
+
+.marg-footer-panels {
+  display: grid;
+  grid-template-columns: 1.15fr 1.1fr 1fr;
+  gap: 0;
+  background: #fdfbf7;
+  border-bottom: 1.5px solid #cbd5e1;
+}
+
+@media (max-width: 1100px) {
+  .marg-footer-panels {
+    grid-template-columns: 1fr;
+  }
+}
+
+.marg-foot-panel {
+  padding: 12px 14px;
+  border-right: 1px solid #cbd5e1;
+}
+
+.marg-foot-panel:last-child {
+  border-right: none;
+}
+
+.marg-panel-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.marg-panel-title {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #1e3a8a;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.marg-inspector-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 12px;
+  color: #334155;
+}
+
+.marg-insp-row {
+  display: grid;
+  grid-template-columns: 62px 1fr 56px 1fr;
+  gap: 6px;
+  align-items: center;
+  border-bottom: 1px dashed #e2e8f0;
+  padding-bottom: 4px;
+}
+
+.marg-insp-row:first-child {
+  grid-template-columns: 62px 1fr;
+}
+
+.marg-insp-row:last-child {
+  border-bottom: none;
+}
+
+.marg-received-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.marg-received-row .marg-erp-input {
+  max-width: 165px;
+}
+
+.marg-shortcut-bar {
+  background: #1e3a8a;
+  color: #eff6ff;
+  padding: 6px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  font-size: 11px;
+  border-radius: 0 0 8px 8px;
+}
+
+.marg-shortcut-bar strong {
+  color: #fde047;
+}
+
+
 
 
 
