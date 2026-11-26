@@ -1078,10 +1078,7 @@ MedHub.billing = {
             <!-- 1. NORMAL BILL VIEW (EXACT REPLICA OF USER PHOTO) -->
             <div id="normal-bill-container" class="printable-bill-view">
               <div id="printable-invoice" class="classic-receipt-paper">
-                <!-- PURPLE SLANTED PAID / DUE STAMP -->
-                ${isPaid ? `<div class="classic-stamp-paid">PAID</div>` : `<div class="classic-stamp-due">DUE</div>`}
-
-                <!-- STORE HEADER WITH TOP-RIGHT UPI ID & QR CODE -->
+                <!-- STORE HEADER: LEFT = STORE NAME & ADDRESS, RIGHT = QR CODE & UPI ID -->
                 <div class="classic-receipt-header classic-receipt-header-with-qr">
                   <div class="classic-header-info">
                     <h2 class="classic-store-title">${store.store_name || "MEDICAL STORE"}</h2>
@@ -1096,7 +1093,7 @@ MedHub.billing = {
                     </div>
                     <div class="classic-top-qr-meta">
                       <strong>SCAN & PAY</strong>
-                      <span>UPI: ${upiId}</span>
+                      <span>UPI ID: ${upiId}</span>
                     </div>
                   </div>
                 </div>
@@ -1110,6 +1107,9 @@ MedHub.billing = {
                     <p><strong>Doctor Address :</strong> ${bill.doctor_hospital || ""}</p>
                   </div>
                   <div style="text-align: right;">
+                    <div style="margin-bottom: 4px;">
+                      ${isPaid ? `<span class="classic-stamp-paid">PAID</span>` : `<span class="classic-stamp-due">DUE</span>`}
+                    </div>
                     <p><strong>Invoice No :</strong> A01${String(bill.bill_no).padStart(4, "0")}</p>
                     <p><strong>Date :</strong> ${invoiceDateStr}</p>
                   </div>
