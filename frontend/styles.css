@@ -3419,6 +3419,53 @@ button {
     display: none !important;
   }
 
+  /* When printing a single Purchase Record Details modal, hide ALL background Purchase list & cards */
+  body.printing-purchase-detail .purchases-page-wrap,
+  body:has(#printable-purchase-detail) .purchases-page-wrap,
+  body:has(#printable-purchase-detail) .page-header-flex,
+  body:has(#printable-purchase-detail) .stats-grid,
+  body:has(#printable-purchase-detail) .table-card,
+  body:has(#printable-purchase-detail) .purchase-detail-screen-head,
+  body:has(#printable-purchase-detail) .purchase-detail-actions,
+  body:has(#printable-purchase-detail) .btn-dialog-close {
+    display: none !important;
+  }
+
+  body.printing-purchase-detail #app,
+  body.printing-purchase-detail .main-viewport,
+  body.printing-purchase-detail #page-content,
+  body.printing-purchase-detail #new-purchase-modal-wrap,
+  body:has(#printable-purchase-detail) #app,
+  body:has(#printable-purchase-detail) .main-viewport,
+  body:has(#printable-purchase-detail) #page-content,
+  body:has(#printable-purchase-detail) #new-purchase-modal-wrap,
+  .purchase-detail-overlay,
+  .purchase-detail-modal-box,
+  .purchase-detail-body,
+  #printable-purchase-detail {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .purchase-print-store-head {
+    display: block !important;
+    border-bottom: 1.5px solid #0f172a;
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+    color: #0f172a;
+  }
+
   /* When printing from modal, completely unconstrain all containers */
   body.modal-open,
   body.modal-open #invoice-modal-container,
@@ -5079,6 +5126,10 @@ button {
   font-size: 12px;
   font-weight: 700;
   color: #334155;
+}
+
+.purchase-print-store-head {
+  display: none;
 }
 
 .medhub-dialog-footer {

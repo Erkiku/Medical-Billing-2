@@ -1102,11 +1102,12 @@ MedHub.purchases = {
     const totalFree = items.reduce((sum, it) => sum + Math.max(0, Number(it.free_qty) || 0), 0);
     const totalStockUnits = totalQty + totalFree;
     const isPaid = (purchase.status || "").toUpperCase().includes("PAID");
+    const store = MedHub.state.store || {};
 
     modalWrap.innerHTML = `
-      <div class="modal-overlay">
-        <div class="modal-box" style="max-width: 850px; width: 95vw;">
-          <div class="modal-header-dialog" style="padding: 16px 24px; border-bottom: 1.5px solid var(--cream-border); display: flex; justify-content: space-between; align-items: center;">
+      <div class="modal-overlay purchase-detail-overlay">
+        <div class="modal-box purchase-detail-modal-box" style="max-width: 850px; width: 95vw;">
+          <div class="modal-header-dialog purchase-detail-screen-head" style="padding: 16px 24px; border-bottom: 1.5px solid var(--cream-border); display: flex; justify-content: space-between; align-items: center;">
             <div>
               <h3 class="modal-dialog-title" style="margin: 0; font-size: 18px; color: var(--black-deep);">
                 Purchase Invoice Details — ${purchase.invoice_no || "INV-DETAILS"}
@@ -1118,31 +1119,43 @@ MedHub.purchases = {
             <button type="button" class="btn-dialog-close" id="btn-close-pur-view">${MedHub.icons.close}</button>
           </div>
 
-          <div class="modal-dialog-body" style="padding: 20px 24px; max-height: 75vh; overflow-y: auto;">
-            <!-- Meta Details Card -->
-            <div style="background: #f8fafc; border: 1px solid var(--cream-border); border-radius: 8px; padding: 14px 18px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px;">
-              <div>
-                <span style="font-size: 11px; color: var(--black-soft); font-weight: 600; text-transform: uppercase;">Invoice No</span>
-                <div style="font-size: 14px; font-weight: 800; color: var(--black-deep); margin-top: 2px;">${purchase.invoice_no || "—"}</div>
+          <div class="modal-dialog-body purchase-detail-body" style="padding: 20px 24px; max-height: 75vh; overflow-y: auto;">
+            <div id="printable-purchase-detail" class="printable-purchase-sheet">
+              <div class="purchase-print-store-head">
+                <div style="font-size: 17px; font-weight: 900; text-transform: uppercase;">${store.store_name || "MEDICAL STORE"}</div>
+                ${store.address ? `<div style="font-size: 11px;">${store.address}${store.city ? `, ${store.city}` : ""}</div>` : ""}
+                <div style="font-size: 10.5px; margin-top: 2px;">
+                  ${store.phone ? `Ph: ${store.phone} ` : ""}${store.gstin ? `| GSTIN: ${store.gstin} ` : ""}${store.dl_no_20b ? `| D.L.: ${store.dl_no_20b}` : ""}
+                </div>
+                <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed #94a3b8; font-size: 13px; font-weight: 800;">
+                  PURCHASE INVOICE RECORD — ${purchase.invoice_no || "INV-DETAILS"} (${purchase.supplier_name || "Pharma Distributor"})
+                </div>
               </div>
-              <div>
-                <span style="font-size: 11px; color: var(--black-soft); font-weight: 600; text-transform: uppercase;">Purchase Date</span>
-                <div style="font-size: 14px; font-weight: 800; color: var(--black-deep); margin-top: 2px;">${MedHub.formatDate(purchase.purchase_date)}</div>
-              </div>
-              <div>
-                <span style="font-size: 11px; color: var(--black-soft); font-weight: 600; text-transform: uppercase;">Payment Status</span>
-                <div style="margin-top: 2px;"><span class="badge-status ${isPaid ? 'status-in' : 'status-low'}">${purchase.status || "RECEIVED"}</span></div>
-              </div>
-              <div>
-                <span style="font-size: 11px; color: var(--black-soft); font-weight: 600; text-transform: uppercase;">Payment Mode</span>
-                <div style="font-size: 14px; font-weight: 800; color: var(--black-deep); margin-top: 2px;">${purchase.payment_mode || "BANK TRANSFER"}</div>
-              </div>
-            </div>
 
-            <!-- Medicines Breakdown Table -->
-            <h4 style="font-size: 14px; font-weight: 700; color: var(--black-deep); margin: 0 0 8px;">
-              Medicine Breakdown (${items.length} items, ${totalQty}${totalFree > 0 ? ` + ${totalFree} Free = ${totalStockUnits}` : ""} units)
-            </h4>
+              <!-- Meta Details Card -->
+              <div style="background: #f8fafc; border: 1px solid var(--cream-border); border-radius: 8px; padding: 14px 18px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px;">
+                <div>
+                  <span style="font-size: 11px; color: var(--black-soft); font-weight: 600; text-transform: uppercase;">Invoice No</span>
+                  <div style="font-size: 14px; font-weight: 800; color: var(--black-deep); margin-top: 2px;">${purchase.invoice_no || "—"}</div>
+                </div>
+                <div>
+                  <span style="font-size: 11px; color: var(--black-soft); font-weight: 600; text-transform: uppercase;">Purchase Date</span>
+                  <div style="font-size: 14px; font-weight: 800; color: var(--black-deep); margin-top: 2px;">${MedHub.formatDate(purchase.purchase_date)}</div>
+                </div>
+                <div>
+                  <span style="font-size: 11px; color: var(--black-soft); font-weight: 600; text-transform: uppercase;">Payment Status</span>
+                  <div style="margin-top: 2px;"><span class="badge-status ${isPaid ? 'status-in' : 'status-low'}">${purchase.status || "RECEIVED"}</span></div>
+                </div>
+                <div>
+                  <span style="font-size: 11px; color: var(--black-soft); font-weight: 600; text-transform: uppercase;">Payment Mode</span>
+                  <div style="font-size: 14px; font-weight: 800; color: var(--black-deep); margin-top: 2px;">${purchase.payment_mode || "BANK TRANSFER"}</div>
+                </div>
+              </div>
+
+              <!-- Medicines Breakdown Table -->
+              <h4 style="font-size: 14px; font-weight: 700; color: var(--black-deep); margin: 0 0 8px;">
+                Medicine Breakdown (${items.length} items, ${totalQty}${totalFree > 0 ? ` + ${totalFree} Free = ${totalStockUnits}` : ""} units)
+              </h4>
 
             <div style="overflow-x: auto; border: 1px solid var(--cream-border); border-radius: 8px;">
               <table class="data-table" style="width: 100%;">
@@ -1207,8 +1220,9 @@ MedHub.purchases = {
                 </tfoot>
               </table>
             </div>
+            </div>
 
-            <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
+            <div class="purchase-detail-actions" style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
               <button type="button" class="btn-outline" id="btn-print-pur-invoice">
                 ${MedHub.icons.print} Print Purchase Record
               </button>
@@ -1221,12 +1235,22 @@ MedHub.purchases = {
       </div>
     `;
 
-    const closeDetail = () => { modalWrap.innerHTML = ""; };
+    const closeDetail = () => {
+      document.body.classList.remove("printing-purchase-detail");
+      modalWrap.innerHTML = "";
+    };
     document.getElementById("btn-close-pur-view")?.addEventListener("click", closeDetail);
     document.getElementById("btn-close-pur-view-ok")?.addEventListener("click", closeDetail);
 
     document.getElementById("btn-print-pur-invoice")?.addEventListener("click", () => {
+      document.body.classList.add("printing-purchase-detail");
+      const cleanupPrint = () => {
+        document.body.classList.remove("printing-purchase-detail");
+        window.removeEventListener("afterprint", cleanupPrint);
+      };
+      window.addEventListener("afterprint", cleanupPrint);
       window.print();
+      setTimeout(cleanupPrint, 1200);
     });
   },
 
