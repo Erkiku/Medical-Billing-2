@@ -27,16 +27,14 @@ MedHub.suppliers = {
               <button type="button" class="btn-unlock-edit" id="btn-unlock-sup-edit">
                 🔒 Unlock Edit Options
               </button>
-            ` : `
-              ${lockActive ? `
-                <button type="button" class="btn-lock-edit" id="btn-lock-sup-edit" title="Hide and lock edit options">
-                  🔓 Lock Edit
-                </button>
-              ` : ""}
-              <button type="button" class="btn-primary" id="btn-open-supplier-modal">
-                ${MedHub.icons.plus} Add New Supplier
+            ` : (lockActive ? `
+              <button type="button" class="btn-lock-edit" id="btn-lock-sup-edit" title="Hide and lock edit options">
+                🔓 Lock Edit
               </button>
-            `}
+            ` : "")}
+            <button type="button" class="btn-primary" id="btn-open-supplier-modal">
+              ${MedHub.icons.plus} Add New Supplier
+            </button>
           </div>
         </div>
 
@@ -142,8 +140,7 @@ MedHub.suppliers = {
       MedHub.toast("Edit options are now hidden and locked.", "info");
       self.render(container);
     });
-    container.querySelector("#btn-open-supplier-modal")?.addEventListener("click", async () => {
-      if (!(await MedHub.api.requireEditSecurityAuth("Add New Supplier"))) return;
+    container.querySelector("#btn-open-supplier-modal")?.addEventListener("click", () => {
       self.openModal();
     });
 

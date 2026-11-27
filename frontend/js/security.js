@@ -61,10 +61,10 @@ MedHub.security = {
               </div>
               <div class="security-hero-desc">
                 ${!isLocked
-                  ? "Set a security password and a recovery security question below. Once enabled, edit buttons stay hidden by default."
+                  ? "Set a security password and a recovery security question below. Once enabled, adding new records stays available while editing or deleting stays protected behind your PIN."
                   : (isEditUnlocked
-                    ? "You can add, edit, or delete medicines, stock, purchases, and bills during this session. Click Lock Now when finished."
-                    : "Enter your security password once to temporarily show edit controls across Medicines & Stock, Purchases, and Bills.")}
+                    ? "You can edit or delete existing medicines, stock, purchases, suppliers, and bills during this session. Click Lock Now when finished."
+                    : "Adding new records works normally without a PIN. Enter your security password once to show edit and delete controls across the app.")}
               </div>
             </div>
           </div>

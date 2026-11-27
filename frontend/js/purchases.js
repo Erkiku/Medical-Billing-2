@@ -35,16 +35,14 @@ MedHub.purchases = {
               <button type="button" class="btn-unlock-edit" id="btn-unlock-purchase-edit">
                 🔒 Unlock Edit Options
               </button>
-            ` : `
-              ${lockActive ? `
-                <button type="button" class="btn-lock-edit" id="btn-lock-purchase-edit" title="Hide and lock edit options">
-                  🔓 Lock Edit
-                </button>
-              ` : ""}
-              <button type="button" class="btn-primary" id="btn-open-purchase-modal">
-                ${MedHub.icons.plus} Record New Purchase
+            ` : (lockActive ? `
+              <button type="button" class="btn-lock-edit" id="btn-lock-purchase-edit" title="Hide and lock edit options">
+                🔓 Lock Edit
               </button>
-            `}
+            ` : "")}
+            <button type="button" class="btn-primary" id="btn-open-purchase-modal">
+              ${MedHub.icons.plus} Record New Purchase
+            </button>
           </div>
         </div>
 
@@ -159,9 +157,8 @@ MedHub.purchases = {
       MedHub.exportToExcel(data, "Purchases_Record", "Purchases");
     });
 
-    // Open New Purchase Modal
-    container.querySelector("#btn-open-purchase-modal")?.addEventListener("click", async () => {
-      if (!(await MedHub.api.requireEditSecurityAuth("Record New Purchase"))) return;
+    // Open New Purchase Modal (allowed directly even when Edit Lock is active)
+    container.querySelector("#btn-open-purchase-modal")?.addEventListener("click", () => {
       self.openNewPurchaseModal();
     });
 

@@ -55,16 +55,14 @@ MedHub.inventory = {
               <button type="button" class="btn-unlock-edit" id="btn-unlock-edit-mode">
                 🔒 Unlock Edit Options
               </button>
-            ` : `
-              ${lockActive ? `
-                <button type="button" class="btn-lock-edit" id="btn-lock-edit-mode" title="Hide and lock edit options">
-                  🔓 Lock Edit
-                </button>
-              ` : ""}
-              <button type="button" class="btn-primary" id="btn-open-add-modal">
-                ${MedHub.icons.plus} Add New Medicine
+            ` : (lockActive ? `
+              <button type="button" class="btn-lock-edit" id="btn-lock-edit-mode" title="Hide and lock edit options">
+                🔓 Lock Edit
               </button>
-            `}
+            ` : "")}
+            <button type="button" class="btn-primary" id="btn-open-add-modal">
+              ${MedHub.icons.plus} Add New Medicine
+            </button>
           </div>
         </div>
 
@@ -343,9 +341,8 @@ MedHub.inventory = {
       self.exportFormalStockPdf();
     });
 
-    // Open Add Medicine Modal
-    container.querySelector("#btn-open-add-modal")?.addEventListener("click", async () => {
-      if (!(await MedHub.api.requireEditSecurityAuth("Add New Medicine"))) return;
+    // Open Add Medicine Modal (allowed directly even when Edit Lock is active)
+    container.querySelector("#btn-open-add-modal")?.addEventListener("click", () => {
       self.openAddMedicineModal();
     });
 
