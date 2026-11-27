@@ -67,9 +67,9 @@ MedHub.purchases = {
                   <th>Invoice No</th>
                   <th>Date</th>
                   <th>Supplier Name</th>
-                  <th>Purchased Medicines (Details)</th>
+                  ${canEdit ? `<th>Purchased Medicines (Details)</th>` : ""}
                   <th>Total Amount</th>
-                  <th>Payment Done</th>
+                  ${canEdit ? `<th>Payment Done</th>` : ""}
                   <th>Payment Dues</th>
                   <th>Status</th>
                   <th style="width: 185px; text-align: center;">Actions</th>
@@ -89,21 +89,23 @@ MedHub.purchases = {
                       <td><strong>${p.invoice_no || "INV-NEW"}</strong></td>
                       <td>${MedHub.formatDate(p.purchase_date)}</td>
                       <td>${p.supplier_name || "Pharma Distributor"}</td>
-                      <td>
-                        ${hasItems ? `
-                          <div class="pur-items-cell">
-                            ${p.items.map(it => `
-                              <span class="pur-med-badge" title="Batch: ${it.batch_no || '—'} | Exp: ${MedHub.formatExpiry ? MedHub.formatExpiry(it.expiry_date) : it.expiry_date}">
-                                💊 <strong>${it.medicine_name || it.name}</strong> (${it.quantity}${Number(it.free_qty) > 0 ? ` + ${it.free_qty} free` : ""} ${it.pack_size || "packs"} @ ₹${Number(it.purchase_rate || 0).toFixed(2)})
-                              </span>
-                            `).join("")}
-                          </div>
-                        ` : `
-                          <span style="color:#64748b;font-size:12px;">General Invoice (₹${total.toFixed(2)})</span>
-                        `}
-                      </td>
+                      ${canEdit ? `
+                        <td>
+                          ${hasItems ? `
+                            <div class="pur-items-cell">
+                              ${p.items.map(it => `
+                                <span class="pur-med-badge" title="Batch: ${it.batch_no || '—'} | Exp: ${MedHub.formatExpiry ? MedHub.formatExpiry(it.expiry_date) : it.expiry_date}">
+                                  💊 <strong>${it.medicine_name || it.name}</strong> (${it.quantity}${Number(it.free_qty) > 0 ? ` + ${it.free_qty} free` : ""} ${it.pack_size || "packs"} @ ₹${Number(it.purchase_rate || 0).toFixed(2)})
+                                </span>
+                              `).join("")}
+                            </div>
+                          ` : `
+                            <span style="color:#64748b;font-size:12px;">General Invoice (₹${total.toFixed(2)})</span>
+                          `}
+                        </td>
+                      ` : ""}
                       <td><strong>${MedHub.rupee(total)}</strong></td>
-                      <td><span style="color:#1d4ed8;font-weight:700;">${MedHub.rupee(paid)}</span></td>
+                      ${canEdit ? `<td><span style="color:#1d4ed8;font-weight:700;">${MedHub.rupee(paid)}</span></td>` : ""}
                       <td>
                         ${dues > 0 
                           ? `<span style="color:#dc2626;font-weight:800;background:#fee2e2;padding:2px 8px;border-radius:4px;">${MedHub.rupee(dues)}</span>`
@@ -126,7 +128,7 @@ MedHub.purchases = {
                       </td>
                     </tr>
                   `;
-                }).join("") : `<tr><td colspan="9" class="table-empty">Koi purchase record nahi hai. "Record New Purchase" par click karein.</td></tr>`}
+                }).join("") : `<tr><td colspan="${canEdit ? 9 : 7}" class="table-empty">Koi purchase record nahi hai. "Record New Purchase" par click karein.</td></tr>`}
               </tbody>
             </table>
           </div>
@@ -145,15 +147,23 @@ MedHub.purchases = {
 
     // Export Excel
     container.querySelector("#btn-export-purchases")?.addEventListener("click", () => {
-      const data = self.purchasesList.map(p => ({
-        "Invoice No": p.invoice_no,
-        "Purchase Date": p.purchase_date,
-        "Supplier Name": p.supplier_name,
-        "Total Amount (₹)": p.total_amount,
-        "Paid Amount (₹)": p.paid_amount,
-        "Status": p.status,
-        "Items Count": Array.isArray(p.items) ? p.items.length : 0
-      }));
+      const unlocked = MedHub.api.canShowEditControls();
+      const data = self.purchasesList.map(p => {
+        const row = {
+          "Invoice No": p.invoice_no,
+          "Purchase Date": p.purchase_date,
+          "Supplier Name": p.supplier_name,
+          "Total Amount (₹)": p.total_amount
+        };
+        if (unlocked) {
+          row["Paid Amount (₹)"] = p.paid_amount;
+        }
+        row["Status"] = p.status;
+        if (unlocked) {
+          row["Items Count"] = Array.isArray(p.items) ? p.items.length : 0;
+        }
+        return row;
+      });
       MedHub.exportToExcel(data, "Purchases_Record", "Purchases");
     });
 
