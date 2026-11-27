@@ -2343,9 +2343,13 @@ MedHub.api = {
               quantity: Math.max(0, Number(initialBatch.quantity) || 0)
             };
             if (storeId) batchPayload.store_id = storeId;
-            const { error: bErr } = await MedHub.supabaseClient.from("medicine_batches").insert(batchPayload);
-            if (bErr && batchPayload.store_id) {
+            let bRes = await MedHub.supabaseClient.from("medicine_batches").insert(batchPayload);
+            if (bRes.error && batchPayload.store_id) {
               delete batchPayload.store_id;
+              bRes = await MedHub.supabaseClient.from("medicine_batches").insert(batchPayload);
+            }
+            if (bRes.error && !Number.isInteger(batchPayload.quantity)) {
+              batchPayload.quantity = batchPayload.quantity > 0 ? Math.max(1, Math.round(batchPayload.quantity)) : 0;
               await MedHub.supabaseClient.from("medicine_batches").insert(batchPayload);
             }
           }
@@ -2494,13 +2498,18 @@ MedHub.api = {
 
         if (existingBatches && existingBatches.length > 0) {
           const cur = existingBatches[0];
+          const nextQty = Number(((Number(cur.quantity) || 0) + qty).toFixed(4));
           const updPayload = {
-            quantity: (Number(cur.quantity) || 0) + qty,
+            quantity: nextQty,
             expiry_date: normExp
           };
           if (purRate > 0) updPayload.purchase_price = purRate;
           if (selRate > 0) updPayload.selling_price = selRate;
-          await MedHub.supabaseClient.from("medicine_batches").update(updPayload).eq("id", cur.id);
+          const updRes = await MedHub.supabaseClient.from("medicine_batches").update(updPayload).eq("id", cur.id);
+          if (updRes.error && !Number.isInteger(updPayload.quantity)) {
+            updPayload.quantity = updPayload.quantity > 0 ? Math.max(1, Math.round(updPayload.quantity)) : 0;
+            await MedHub.supabaseClient.from("medicine_batches").update(updPayload).eq("id", cur.id);
+          }
         } else {
           const batchPayload = {
             medicine_id: medicineId,
@@ -2511,9 +2520,13 @@ MedHub.api = {
             quantity: qty
           };
           if (storeId) batchPayload.store_id = storeId;
-          const { error: bErr } = await MedHub.supabaseClient.from("medicine_batches").insert(batchPayload);
-          if (bErr && batchPayload.store_id) {
+          let bRes = await MedHub.supabaseClient.from("medicine_batches").insert(batchPayload);
+          if (bRes.error && batchPayload.store_id) {
             delete batchPayload.store_id;
+            bRes = await MedHub.supabaseClient.from("medicine_batches").insert(batchPayload);
+          }
+          if (bRes.error && !Number.isInteger(batchPayload.quantity)) {
+            batchPayload.quantity = batchPayload.quantity > 0 ? Math.max(1, Math.round(batchPayload.quantity)) : 0;
             await MedHub.supabaseClient.from("medicine_batches").insert(batchPayload);
           }
         }
@@ -3295,6 +3308,79 @@ MedHub.api = {
     }
     this._saveLocalBills(localList);
     return mergedLocal;
+  },
+
+  async deleteBill(billIdOrNo) {
+    let deletedCloud = false;
+    if (MedHub.supabaseClient && billIdOrNo) {
+      try {
+        let billUuid = this._isUuid(String(billIdOrNo)) ? String(billIdOrNo) : null;
+        if (!billUuid) {
+          const { data: foundBill } = await MedHub.supabaseClient
+            .from("bills")
+            .select("id")
+            .eq("bill_no", billIdOrNo)
+            .maybeSingle();
+          if (foundBill?.id) billUuid = foundBill.id;
+        }
+
+        if (billUuid) {
+          const { data: oldItems } = await MedHub.supabaseClient
+            .from("bill_items")
+            .select("batch_id, quantity")
+            .eq("bill_id", billUuid);
+
+          if (Array.isArray(oldItems) && oldItems.length > 0) {
+            for (const oi of oldItems) {
+              if (oi.batch_id && this._isUuid(String(oi.batch_id))) {
+                const { data: bRow } = await MedHub.supabaseClient
+                  .from("medicine_batches")
+                  .select("quantity")
+                  .eq("id", oi.batch_id)
+                  .maybeSingle();
+                if (bRow) {
+                  await MedHub.supabaseClient
+                    .from("medicine_batches")
+                    .update({ quantity: Number(((Number(bRow.quantity) || 0) + (Number(oi.quantity) || 0)).toFixed(4)) })
+                    .eq("id", oi.batch_id);
+                }
+              }
+            }
+          }
+
+          await MedHub.supabaseClient.from("payments").delete().eq("bill_id", billUuid);
+          await MedHub.supabaseClient.from("bill_items").delete().eq("bill_id", billUuid);
+          const { error: delErr } = await MedHub.supabaseClient.from("bills").delete().eq("id", billUuid);
+          if (!delErr) deletedCloud = true;
+        }
+      } catch (e) {
+        console.warn("deleteBill Supabase error:", e);
+      }
+    }
+
+    const localList = this._getLocalBills();
+    const targetBill = localList.find(b => String(b.id) === String(billIdOrNo) || String(b.bill_no) === String(billIdOrNo));
+    if (targetBill && !deletedCloud) {
+      const localMeds = this._getLocalMedicines();
+      const localBatches = this._getLocalBatches();
+      (targetBill.items || targetBill.bill_items || []).forEach(oi => {
+        const med = localMeds.find(m => String(m.id) === String(oi.medicine_id));
+        if (med) {
+          med.available_qty = Number(((Number(med.available_qty) || 0) + (Number(oi.quantity) || 0)).toFixed(4));
+          med.status = MedHub.computeStockStatus ? MedHub.computeStockStatus(med.available_qty) : (med.available_qty <= 0 ? "out" : (med.available_qty <= 1 ? "low" : "in"));
+        }
+        const bat = localBatches.find(b => String(b.id) === String(oi.batch_id));
+        if (bat) {
+          bat.quantity = Number(((Number(bat.quantity) || 0) + (Number(oi.quantity) || 0)).toFixed(4));
+        }
+      });
+      this._saveLocalMedicines(localMeds);
+      this._saveLocalBatches(localBatches);
+    }
+
+    const filtered = localList.filter(b => String(b.id) !== String(billIdOrNo) && String(b.bill_no) !== String(billIdOrNo));
+    this._saveLocalBills(filtered);
+    return true;
   },
 
   // 5. SUPPLIERS (With full edit, delete & local persistence)

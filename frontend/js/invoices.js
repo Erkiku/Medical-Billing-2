@@ -87,7 +87,7 @@ MedHub.invoices = {
                   <th>Paid (₹)</th>
                   <th>Due (₹)</th>
                   <th>Status</th>
-                  <th style="width: 170px; text-align: center;">Action</th>
+                  <th style="width: 220px; text-align: center;">Action</th>
                 </tr>
               </thead>
               <tbody id="bills-tbody">
@@ -155,6 +155,9 @@ MedHub.invoices = {
             ${canEdit ? `
               <button type="button" class="btn-action-edit btn-edit-invoice" data-id="${b.id || b.bill_no}" title="Edit Invoice & Items">
                 ✏️ Edit
+              </button>
+              <button type="button" class="btn-action-delete btn-delete-invoice" data-id="${b.id || b.bill_no}" title="Delete Invoice / Bill">
+                Delete
               </button>
             ` : ""}
           </td>
@@ -251,6 +254,27 @@ MedHub.invoices = {
         } else {
           MedHub.toast("Invoice edit karne ke liye data nahi mila", "warning");
         }
+        return;
+      }
+
+      const deleteBtn = e.target.closest(".btn-delete-invoice");
+      if (deleteBtn) {
+        const id = deleteBtn.dataset.id;
+        const bill = self.billsList.find(b => String(b.id) === String(id) || String(b.bill_no) === String(id));
+        if (!bill) {
+          MedHub.toast("Invoice delete karne ke liye data nahi mila", "warning");
+          return;
+        }
+        if (!(await MedHub.api.requireEditSecurityAuth(`Delete Invoice #${bill.bill_no}`))) return;
+        const okConfirm = await MedHub.confirm(
+          `Kya aap Invoice #${bill.bill_no} (${bill.customer_name || "Walk-in Customer"}, ${MedHub.rupee(bill.grand_total)}) ko permanently delete karna chahte hain? Stock automatically restore ho jayega.`,
+          { confirmText: "Yes, Delete Bill" }
+        );
+        if (!okConfirm) return;
+        await MedHub.api.deleteBill(bill.id || bill.bill_no);
+        self.billsList = await MedHub.api.getBills();
+        self.updateStatsAndTable();
+        MedHub.toast(`Invoice #${bill.bill_no} permanently delete ho gaya aur stock restore ho gaya.`, "success");
       }
     });
   },

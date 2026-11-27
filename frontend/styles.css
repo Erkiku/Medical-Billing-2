@@ -2470,6 +2470,56 @@ button {
   color: var(--black-deep);
 }
 
+.stock-pack-tab-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.stock-unit-box {
+  display: flex;
+  align-items: stretch;
+  border: 1.5px solid var(--cream-border-dark);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.stock-unit-box:focus-within {
+  border-color: var(--pink-primary);
+  box-shadow: 0 0 0 3px var(--pink-soft-glow);
+}
+
+.stock-unit-box .input-field {
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  min-width: 0;
+  flex: 1;
+  padding: 7px 6px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.stock-unit-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 7px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--pink-dark);
+  background: var(--pink-light);
+  border-left: 1px solid var(--cream-border-dark);
+  white-space: nowrap;
+}
+
+.stock-total-hint {
+  font-size: 11px;
+  font-weight: 700;
+  color: #1d4ed8;
+  margin-top: 4px;
+}
+
 .modal-dialog-footer {
   display: flex;
   align-items: center;
