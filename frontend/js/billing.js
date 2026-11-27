@@ -240,26 +240,36 @@ MedHub.billing = {
         <div class="marg-inspector-grid">
           <div class="marg-insp-row"><span>Item :</span><strong>—</strong></div>
           <div class="marg-insp-row"><span>Batch :</span><strong>—</strong><span>Stock :</span><strong>—</strong></div>
-          <div class="marg-insp-row"><span>Expiry :</span><strong>—</strong><span>MRP :</span><strong>₹0.00</strong></div>
+          <div class="marg-insp-row"><span>Expiry :</span><strong>—</strong><span>MRP/Tab :</span><strong>₹0.00</strong></div>
           <div class="marg-insp-row"><span>Company :</span><strong>—</strong><span>Schedule :</span><strong>General</strong></div>
         </div>
       `;
     }
-    const stockQty = item.available_qty ?? item.max_stock ?? item.chosenBatch?.quantity ?? "—";
+    const stockRaw = item.chosenBatch?.quantity ?? item.available_qty ?? item.max_stock;
     const batch = item.batch_no || item.chosenBatch?.batch_no || "BT-DEFAULT";
     const exp = MedHub.formatExpiry(item.expiry_date || item.chosenBatch?.expiry_date || item.nearest_expiry || "");
-    const mrpVal = Number(item.mrp ?? item.selling_rate ?? item.rate ?? 0);
     const sch = item.drug_schedule || "General";
     const packInfo = MedHub.parsePackSize ? MedHub.parsePackSize(item.pack_size || "1x10") : { unitsPerPack: 10 };
     const unitsPerPack = Math.max(1, Number(item.units_per_pack || packInfo.unitsPerPack || 10));
-    const perTabPrice = unitsPerPack > 0 ? (mrpVal / unitsPerPack) : mrpVal;
-    const qtyNum = Number(item.quantity || 1);
+
+    const hasExplicitPerTab = item.per_tab_mrp !== undefined;
+    const stripMrp = Number(
+      item.strip_mrp ?? (hasExplicitPerTab ? (Number(item.per_tab_mrp) * unitsPerPack) : (item.mrp ?? item.selling_rate ?? item.rate ?? 0))
+    );
+    const perTabPrice = hasExplicitPerTab
+      ? Number(item.per_tab_mrp)
+      : (unitsPerPack > 0 ? stripMrp / unitsPerPack : stripMrp);
+
+    const stockDisplay = (stockRaw !== undefined && stockRaw !== null && stockRaw !== "" && !isNaN(Number(stockRaw)))
+      ? `${Number(stockRaw)} pk (${Number((Number(stockRaw) * unitsPerPack).toFixed(0))} tabs)`
+      : "—";
+
     return `
       <div class="marg-inspector-grid">
         <div class="marg-insp-row"><span>Item :</span><strong>${item.name || "—"} (${item.pack_size || "1x10"} • ${unitsPerPack} tabs/pk)</strong></div>
-        <div class="marg-insp-row"><span>Batch :</span><strong>${batch}</strong><span>Stock :</span><strong style="color:#1d4ed8;">${stockQty}</strong></div>
-        <div class="marg-insp-row"><span>Expiry :</span><strong>${exp || "—"}</strong><span>MRP :</span><strong>₹${mrpVal.toFixed(2)} (₹${perTabPrice.toFixed(2)}/tab)</strong></div>
-        <div class="marg-insp-row"><span>Company :</span><strong>${item.company || "—"}</strong><span>Total Tabs :</span><strong>${qtyNum * unitsPerPack} tabs (${sch})</strong></div>
+        <div class="marg-insp-row"><span>Batch :</span><strong>${batch}</strong><span>Stock :</span><strong style="color:#1d4ed8;">${stockDisplay}</strong></div>
+        <div class="marg-insp-row"><span>Expiry :</span><strong>${exp || "—"}</strong><span>MRP/Tab :</span><strong>₹${perTabPrice.toFixed(2)}${unitsPerPack > 1 ? ` (Pack: ₹${stripMrp.toFixed(2)})` : ""}</strong></div>
+        <div class="marg-insp-row"><span>Company :</span><strong>${item.company || "—"}</strong><span>Schedule :</span><strong>${sch}</strong></div>
       </div>
     `;
   },
@@ -476,8 +486,35 @@ MedHub.billing = {
     let manualRateOverride = false;
     let currentSearchResults = [];
     let highlightedIndex = 0;
+    let inspectorLookupToken = 0;
 
-    // Helper: Recalculate Marg Item Amount (Qty * MRP * (1 - Dis%/100))
+    // Helper: Sync bottom inspector box cleanly for active entry row or matched medicine
+    const syncEntryInspector = (medObj) => {
+      if (!inspectorEl) return;
+      if (!medObj) {
+        inspectorEl.innerHTML = self.renderItemInspector(MedHub.state.cart[MedHub.state.cart.length - 1] || null);
+        return;
+      }
+      const packStr = packInput?.value?.trim() || medObj.pack_size || "1x10";
+      const parsedPack = MedHub.parsePackSize ? MedHub.parsePackSize(packStr) : { unitsPerPack: 10 };
+      const catalogStripMrp = Number(medObj.strip_mrp ?? medObj.mrp ?? medObj.selling_rate ?? baseCatalogMrp ?? 0);
+      const livePerTab = rateInput && rateInput.value !== "" && !isNaN(parseFloat(rateInput.value))
+        ? parseFloat(rateInput.value)
+        : (parsedPack.unitsPerPack > 0 ? catalogStripMrp / parsedPack.unitsPerPack : catalogStripMrp);
+
+      inspectorEl.innerHTML = self.renderItemInspector({
+        ...medObj,
+        pack_size: packStr,
+        units_per_pack: parsedPack.unitsPerPack,
+        strip_mrp: catalogStripMrp,
+        per_tab_mrp: livePerTab,
+        batch_no: (batchInput?.value?.trim()) || medObj.batch_no || medObj.chosenBatch?.batch_no,
+        expiry_date: (expInput?.value?.trim()) || medObj.expiry_date || medObj.chosenBatch?.expiry_date || medObj.nearest_expiry,
+        quantity: parseFloat(qtyInput?.value) || 1
+      });
+    };
+
+    // Helper: Recalculate Marg Item Amount (Qty * Per-Tablet MRP * (1 - Dis%/100))
     const recalcMargAmount = () => {
       const q = parseFloat(qtyInput?.value) || 0;
       const r = parseFloat(rateInput?.value) || 0;
@@ -486,39 +523,68 @@ MedHub.billing = {
       if (amountInput) amountInput.value = net.toFixed(2);
     };
 
+    // Recompute 1-Tablet MRP dynamically when pack size changes
     const recalcPackMrp = () => {
       const packStr = packInput?.value?.trim() || "1x10";
       const parsedPack = MedHub.parsePackSize ? MedHub.parsePackSize(packStr) : { unitsPerPack: 10 };
-      if (!manualRateOverride && currentSelectedMed && basePackUnits > 0 && baseCatalogMrp > 0) {
-        const scaledMrp = (baseCatalogMrp / basePackUnits) * parsedPack.unitsPerPack;
-        if (rateInput) rateInput.value = scaledMrp.toFixed(2);
+      if (!manualRateOverride && currentSelectedMed && baseCatalogMrp > 0) {
+        const perTabMrp = parsedPack.unitsPerPack > 0 ? (baseCatalogMrp / parsedPack.unitsPerPack) : baseCatalogMrp;
+        if (rateInput) rateInput.value = perTabMrp.toFixed(2);
       }
-      if (currentSelectedMed && inspectorEl) {
-        inspectorEl.innerHTML = self.renderItemInspector({
-          ...currentSelectedMed,
-          pack_size: packStr,
-          units_per_pack: parsedPack.unitsPerPack,
-          mrp: parseFloat(rateInput?.value) || baseCatalogMrp,
-          quantity: parseFloat(qtyInput?.value) || 1
-        });
-      }
+      if (currentSelectedMed) syncEntryInspector(currentSelectedMed);
       recalcMargAmount();
     };
 
     packInput?.addEventListener("input", recalcPackMrp);
+    batchInput?.addEventListener("input", () => { if (currentSelectedMed) syncEntryInspector(currentSelectedMed); });
+    expInput?.addEventListener("input", () => { if (currentSelectedMed) syncEntryInspector(currentSelectedMed); });
     qtyInput?.addEventListener("input", recalcMargAmount);
     freeInput?.addEventListener("input", recalcMargAmount);
     rateInput?.addEventListener("input", () => {
       manualRateOverride = true;
       recalcMargAmount();
+      if (currentSelectedMed) syncEntryInspector(currentSelectedMed);
     });
     itemDisInput?.addEventListener("input", recalcMargAmount);
+
+    const previewMatchedMedicine = (val) => {
+      const q = String(val || "").trim().toLowerCase();
+      if (!q) {
+        currentSelectedMed = null;
+        basePackUnits = 0;
+        baseCatalogMrp = 0;
+        syncEntryInspector(null);
+        return;
+      }
+      const pool = (currentSearchResults && currentSearchResults.length)
+        ? currentSearchResults
+        : (MedHub.state.medicines || []);
+      const exact = pool.find(m => m.name && m.name.toLowerCase() === q);
+      const prefix = exact || pool.find(m => m.name && m.name.toLowerCase().startsWith(q)) || pool.find(m => m.name && m.name.toLowerCase().includes(q));
+      if (!prefix) return;
+
+      const token = ++inspectorLookupToken;
+      if (prefix.chosenBatch || !MedHub.api?.getBatches) {
+        self.inspectedItem = prefix;
+        if (inspectorEl) inspectorEl.innerHTML = self.renderItemInspector(prefix);
+        return;
+      }
+      self.inspectedItem = prefix;
+      if (inspectorEl) inspectorEl.innerHTML = self.renderItemInspector(prefix);
+      Promise.resolve(MedHub.api.getBatches(prefix.id)).then((batches) => {
+        if (token !== inspectorLookupToken) return;
+        const chosenBatch = (batches && batches.length) ? batches[0] : null;
+        prefix.chosenBatch = chosenBatch;
+        if (inspectorEl) inspectorEl.innerHTML = self.renderItemInspector(prefix);
+      }).catch(() => {});
+    };
 
     // Live Search for Marg Product
     const searchMargProducts = MedHub.debounce(async (val) => {
       if (!val || val.trim().length === 0) {
         if (prodDropdown) prodDropdown.style.display = "none";
         currentSearchResults = [];
+        syncEntryInspector(null);
         return;
       }
       const results = await MedHub.api.searchMedicines(val);
@@ -534,11 +600,15 @@ MedHub.billing = {
       }
 
       renderMargDropdown();
-    }, 100);
+    }, 80);
 
     const renderMargDropdown = () => {
       if (!prodDropdown) return;
-      prodDropdown.innerHTML = currentSearchResults.map((m, idx) => `
+      prodDropdown.innerHTML = currentSearchResults.map((m, idx) => {
+        const pInfo = MedHub.parsePackSize ? MedHub.parsePackSize(m.pack_size || "1x10") : { unitsPerPack: 10 };
+        const stripM = Number(m.mrp || m.selling_rate || 0);
+        const tabM = pInfo.unitsPerPack > 0 ? (stripM / pInfo.unitsPerPack) : stripM;
+        return `
         <div class="search-item ${idx === highlightedIndex ? 'highlighted' : ''}" data-id="${m.id}" data-idx="${idx}">
           <div class="search-item-left">
             <span class="search-item-name">${m.name}</span>
@@ -551,18 +621,19 @@ MedHub.billing = {
             <span class="search-item-stock ${m.available_qty <= 0 ? 'stock-out' : (m.available_qty <= (m.reorder_level || 10) ? 'stock-low' : 'stock-in')}">
               Stock: ${m.available_qty || 0}
             </span>
-            <span class="search-item-mrp">₹${Number(m.mrp || m.selling_rate || 0).toFixed(2)}</span>
+            <span class="search-item-mrp">₹${tabM.toFixed(2)}/tab</span>
           </div>
         </div>
-      `).join("");
+      `;
+      }).join("");
       prodDropdown.style.display = "block";
 
       const highlightedEl = prodDropdown.querySelector(`.search-item[data-idx="${highlightedIndex}"]`);
       if (highlightedEl) {
         highlightedEl.scrollIntoView({ block: "nearest" });
       }
-      if (inspectorEl && currentSearchResults[highlightedIndex]) {
-        inspectorEl.innerHTML = self.renderItemInspector(currentSearchResults[highlightedIndex]);
+      if (currentSearchResults[highlightedIndex]) {
+        previewMatchedMedicine(currentSearchResults[highlightedIndex].name);
       }
 
       prodDropdown.querySelectorAll(".search-item").forEach(itemEl => {
@@ -573,7 +644,7 @@ MedHub.billing = {
       });
     };
 
-    // Populate Marg Item Row from selected medicine
+    // Populate Marg Item Row from selected medicine (with per-tablet MRP & live inspector)
     const selectMargProduct = async (med) => {
       if (!med) return;
       currentSelectedMed = med;
@@ -581,39 +652,62 @@ MedHub.billing = {
       if (prodInput) prodInput.value = med.name;
       if (packInput) packInput.value = med.pack_size || "1x10";
 
-      const batches = await MedHub.api.getBatches(med.id);
-      const chosenBatch = (batches && batches.length) ? batches[0] : null;
-      currentSelectedMed.chosenBatch = chosenBatch;
-
-      if (batchInput) {
-        batchInput.value = chosenBatch ? chosenBatch.batch_no : ("BT-" + (med.barcode || "01"));
-      }
-      const rawExp = chosenBatch ? chosenBatch.expiry_date : (med.nearest_expiry || "2028-11");
-      if (expInput) {
-        expInput.value = MedHub.formatExpiry(rawExp);
-      }
-
-      const selMrp = Number(med.mrp || med.selling_rate || (chosenBatch ? chosenBatch.selling_price : 0) || 0);
+      const initMrp = Number(med.mrp || med.selling_rate || med.chosenBatch?.selling_price || 0);
       const basePackInfo = MedHub.parsePackSize ? MedHub.parsePackSize(med.pack_size || "1x10") : { unitsPerPack: 10 };
-      basePackUnits = basePackInfo.unitsPerPack;
-      baseCatalogMrp = selMrp;
+      basePackUnits = Math.max(1, basePackInfo.unitsPerPack || 1);
+      baseCatalogMrp = initMrp;
+      const initPerTabMrp = basePackUnits > 0 ? (initMrp / basePackUnits) : initMrp;
       manualRateOverride = false;
-      if (rateInput) rateInput.value = selMrp.toFixed(2);
+      if (rateInput) rateInput.value = initPerTabMrp.toFixed(2);
       if (qtyInput) qtyInput.value = 1;
       if (freeInput) freeInput.value = 0;
       if (itemDisInput) itemDisInput.value = 0;
+      if (batchInput) batchInput.value = med.chosenBatch ? med.chosenBatch.batch_no : ("BT-" + (med.barcode || "01"));
+      if (expInput) expInput.value = MedHub.formatExpiry(med.chosenBatch ? med.chosenBatch.expiry_date : (med.nearest_expiry || "2028-11"));
 
       recalcMargAmount();
-      if (inspectorEl) inspectorEl.innerHTML = self.renderItemInspector(currentSelectedMed);
+      syncEntryInspector(currentSelectedMed);
       if (prodDropdown) prodDropdown.style.display = "none";
 
-      // Automatically shift to QTY box for fast Marg workflow
+      // Shift to QTY immediately for crisp zero-lag keyboard flow
       focusAndSelect(qtyInput);
+
+      // Hydrate latest batch/expiry asynchronously if not already attached
+      if (MedHub.api?.getBatches) {
+        const batches = await MedHub.api.getBatches(med.id);
+        const chosenBatch = (batches && batches.length) ? batches[0] : (med.chosenBatch || null);
+        if (currentSelectedMed && currentSelectedMed.id === med.id && chosenBatch) {
+          currentSelectedMed.chosenBatch = chosenBatch;
+          if (batchInput) batchInput.value = chosenBatch.batch_no;
+          if (expInput) expInput.value = MedHub.formatExpiry(chosenBatch.expiry_date);
+          syncEntryInspector(currentSelectedMed);
+        }
+      }
     };
 
-    prodInput?.addEventListener("input", (e) => searchMargProducts(e.target.value));
+    prodInput?.addEventListener("input", (e) => {
+      previewMatchedMedicine(e.target.value);
+      searchMargProducts(e.target.value);
+    });
+    prodInput?.addEventListener("change", async (e) => {
+      const val = String(e.target.value || "").trim().toLowerCase();
+      if (!val) return;
+      if (currentSelectedMed && currentSelectedMed.name?.toLowerCase() === val) return;
+      const list = (currentSearchResults && currentSearchResults.length)
+        ? currentSearchResults
+        : (MedHub.state.medicines && MedHub.state.medicines.length
+          ? MedHub.state.medicines
+          : (MedHub.api?.searchMedicines ? await MedHub.api.searchMedicines(val) : []));
+      const exact = (list || []).find(m => m.name && m.name.toLowerCase() === val);
+      if (exact) {
+        await selectMargProduct(exact);
+      } else {
+        previewMatchedMedicine(e.target.value);
+      }
+    });
     prodInput?.addEventListener("focus", (e) => {
       if (e.target.value && e.target.value.trim().length > 0) {
+        previewMatchedMedicine(e.target.value);
         searchMargProducts(e.target.value);
       }
     });
@@ -644,10 +738,22 @@ MedHub.billing = {
 
       if (e.key === "Enter") {
         e.preventDefault();
-        if (!prodInput.value || !prodInput.value.trim()) {
+        const typedName = (prodInput.value || "").trim();
+        if (!typedName) {
           focusAndSelect(discInput);
-        } else if (currentSelectedMed) {
+          return;
+        }
+        if (currentSelectedMed && currentSelectedMed.name?.toLowerCase() === typedName.toLowerCase()) {
+          syncEntryInspector(currentSelectedMed);
           focusAndSelect(qtyInput);
+          return;
+        }
+        const pool = (currentSearchResults && currentSearchResults.length)
+          ? currentSearchResults
+          : (MedHub.state.medicines || []);
+        const exact = pool.find(m => m.name && m.name.toLowerCase() === typedName.toLowerCase());
+        if (exact) {
+          selectMargProduct(exact);
         } else {
           focusAndSelect(packInput);
         }
@@ -730,6 +836,8 @@ MedHub.billing = {
           batch_id: batchId,
           batch_no: batch,
           expiry_date: exp,
+          strip_mrp: currentSelectedMed && baseCatalogMrp > 0 ? baseCatalogMrp : (r * unitsPerPack),
+          per_tab_mrp: r,
           mrp: r,
           rate: r,
           quantity: q,
