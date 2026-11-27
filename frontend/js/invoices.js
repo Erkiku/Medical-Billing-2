@@ -18,40 +18,6 @@ MedHub.invoices = {
     const lockActive = MedHub.api.isEditSecurityEnabled();
     const canEdit = MedHub.api.canShowEditControls();
 
-    if (lockActive && !canEdit) {
-      container.innerHTML = `
-        <div class="invoices-page-wrap">
-          <div class="page-header-flex">
-            <div>
-              <h2 class="page-title">Invoices & Bills</h2>
-              <p class="page-subtitle">Past sales receipts, customer billing history & revenue details are protected</p>
-            </div>
-            <div class="header-action-btns">
-              <button type="button" class="btn-unlock-edit" id="btn-unlock-invoice-edit">
-                🔒 Unlock Full Details
-              </button>
-            </div>
-          </div>
-          ${MedHub.renderSecurityLockedPanel({
-            title: "Invoice & Bill Details Hidden",
-            message: "All invoice records, revenue totals, customer dues, Print, and Edit actions remain hidden until you enter your Security PIN.",
-            metaBadge: `${totalBills} Invoices Stored`,
-            buttonId: "btn-unlock-invoice-panel",
-            buttonLabel: "🔒 Enter PIN to View Invoice Details"
-          })}
-        </div>
-        <div id="edit-invoice-modal-wrap"></div>
-      `;
-      const doUnlock = async () => {
-        if (await MedHub.api.promptUnlockEditMode("Invoices Full Details")) {
-          this.render(container);
-        }
-      };
-      container.querySelector("#btn-unlock-invoice-edit")?.addEventListener("click", doUnlock);
-      container.querySelector("#btn-unlock-invoice-panel")?.addEventListener("click", doUnlock);
-      return;
-    }
-
     container.innerHTML = `
       <div class="invoices-page-wrap">
         <div class="page-header-flex">
@@ -66,11 +32,15 @@ MedHub.invoices = {
             <button type="button" class="btn-outline" id="btn-export-bills-pdf">
               ${MedHub.icons.print} Download PDF
             </button>
-            ${lockActive ? `
-              <button type="button" class="btn-lock-edit" id="btn-lock-invoice-edit" title="Hide and lock details">
-                🔓 Lock Details
+            ${lockActive && !canEdit ? `
+              <button type="button" class="btn-unlock-edit" id="btn-unlock-invoice-edit">
+                🔒 Unlock Bill Edit
               </button>
-            ` : ""}
+            ` : (lockActive ? `
+              <button type="button" class="btn-lock-edit" id="btn-lock-invoice-edit" title="Hide and lock bill edit option">
+                🔓 Lock Edit
+              </button>
+            ` : "")}
           </div>
         </div>
 

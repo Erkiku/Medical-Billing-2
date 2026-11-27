@@ -35,40 +35,7 @@ MedHub.ledger = {
     const customers = Object.values(customerMap);
     const totalDueAcrossAll = customers.reduce((sum, c) => sum + c.totalDue, 0);
     const lockActive = MedHub.api.isEditSecurityEnabled();
-    const canViewDetails = MedHub.api.canShowEditControls();
-
-    if (lockActive && !canViewDetails) {
-      container.innerHTML = `
-        <div class="ledger-page-wrap">
-          <div class="page-header-flex">
-            <div>
-              <h2 class="page-title">Customers & Udhaar Ledger</h2>
-              <p class="page-subtitle">Patient credit accounts, phone numbers, dues & settlement details are protected</p>
-            </div>
-            <div class="header-action-btns">
-              <button type="button" class="btn-unlock-edit" id="btn-unlock-ledger-edit">
-                🔒 Unlock Full Details
-              </button>
-            </div>
-          </div>
-          ${MedHub.renderSecurityLockedPanel({
-            title: "Customer Ledger Details Hidden",
-            message: "Customer phone numbers, addresses, billed totals, and Udhaar balances remain hidden until you enter your Security PIN.",
-            metaBadge: `${customers.length} Customer Accounts`,
-            buttonId: "btn-unlock-ledger-panel",
-            buttonLabel: "🔒 Enter PIN to View Ledger Details"
-          })}
-        </div>
-      `;
-      const doUnlock = async () => {
-        if (await MedHub.api.promptUnlockEditMode("Customers & Ledger Full Details")) {
-          this.render(container);
-        }
-      };
-      container.querySelector("#btn-unlock-ledger-edit")?.addEventListener("click", doUnlock);
-      container.querySelector("#btn-unlock-ledger-panel")?.addEventListener("click", doUnlock);
-      return;
-    }
+    const canEdit = MedHub.api.canShowEditControls();
 
     container.innerHTML = `
       <div class="ledger-page-wrap">
@@ -78,11 +45,15 @@ MedHub.ledger = {
             <p class="page-subtitle">Track patient credit accounts, bill history, outstanding dues & collect settlements</p>
           </div>
           <div class="header-action-btns">
-            ${lockActive ? `
-              <button type="button" class="btn-lock-edit" id="btn-lock-ledger-edit" title="Hide and lock details">
-                🔓 Lock Details
+            ${lockActive && !canEdit ? `
+              <button type="button" class="btn-unlock-edit" id="btn-unlock-ledger-edit">
+                🔒 Unlock Edit Options
               </button>
-            ` : ""}
+            ` : (lockActive ? `
+              <button type="button" class="btn-lock-edit" id="btn-lock-ledger-edit" title="Hide and lock edit options">
+                🔓 Lock Edit
+              </button>
+            ` : "")}
             <button type="button" class="btn-outline" id="btn-export-ledger">
               ${MedHub.icons.download} Download Ledger Excel
             </button>
@@ -115,7 +86,7 @@ MedHub.ledger = {
                   <th>Total Billed</th>
                   <th>Paid</th>
                   <th>Current Due (Udhaar)</th>
-                  <th>Action</th>
+                  ${canEdit ? `<th>Action</th>` : ""}
                 </tr>
               </thead>
               <tbody>
@@ -129,13 +100,15 @@ MedHub.ledger = {
                     <td>${MedHub.rupee(c.totalBilled)}</td>
                     <td>${MedHub.rupee(c.totalPaid)}</td>
                     <td style="${c.totalDue > 0 ? 'color:#ef4444;font-weight:700;' : ''}">${MedHub.rupee(c.totalDue)}</td>
-                    <td>
-                      ${c.totalDue > 0 ? `
-                        <button type="button" class="btn-primary-sm btn-settle-due" data-cust="${c.name}" data-due="${c.totalDue}">
-                          Collect Payment
-                        </button>
-                      ` : `<span class="badge-status status-paid">All Clear</span>`}
-                    </td>
+                    ${canEdit ? `
+                      <td>
+                        ${c.totalDue > 0 ? `
+                          <button type="button" class="btn-primary-sm btn-settle-due" data-cust="${c.name}" data-due="${c.totalDue}">
+                            Collect Payment
+                          </button>
+                        ` : `<span class="badge-status status-paid">All Clear</span>`}
+                      </td>
+                    ` : ""}
                   </tr>
                 `).join("")}
               </tbody>
@@ -145,9 +118,14 @@ MedHub.ledger = {
       </div>
     `;
 
+    container.querySelector("#btn-unlock-ledger-edit")?.addEventListener("click", async () => {
+      if (await MedHub.api.promptUnlockEditMode("Ledger Edit Options")) {
+        this.render(container);
+      }
+    });
     container.querySelector("#btn-lock-ledger-edit")?.addEventListener("click", () => {
       MedHub.api.lockEditSession();
-      MedHub.toast("Details are now hidden and locked.", "info");
+      MedHub.toast("Edit options are now hidden and locked.", "info");
       this.render(container);
     });
 

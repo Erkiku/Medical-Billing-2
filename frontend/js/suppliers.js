@@ -13,41 +13,7 @@ MedHub.suppliers = {
     const totalSuppliers = this.suppliersList.length;
     const totalPayable = this.suppliersList.reduce((sum, s) => sum + (Number(s.balance) || 0), 0);
     const lockActive = MedHub.api.isEditSecurityEnabled();
-    const canViewDetails = MedHub.api.canShowEditControls();
-
-    if (lockActive && !canViewDetails) {
-      container.innerHTML = `
-        <div class="suppliers-page-wrap">
-          <div class="page-header-flex">
-            <div>
-              <h2 class="page-title">Pharma Suppliers & Distributors</h2>
-              <p class="page-subtitle">Vendor contacts, GSTIN, Drug License & outstanding payables are protected</p>
-            </div>
-            <div class="header-action-btns">
-              <button type="button" class="btn-unlock-edit" id="btn-unlock-sup-edit">
-                🔒 Unlock Full Details
-              </button>
-            </div>
-          </div>
-          ${MedHub.renderSecurityLockedPanel({
-            title: "Supplier Details Hidden",
-            message: "All supplier contact numbers, GSTIN, Drug Licenses, payables, and Edit/Delete options remain hidden until you enter your Security PIN.",
-            metaBadge: `${totalSuppliers} Active Suppliers`,
-            buttonId: "btn-unlock-sup-panel",
-            buttonLabel: "🔒 Enter PIN to View Supplier Details"
-          })}
-        </div>
-        <div id="supplier-modal-wrap"></div>
-      `;
-      const doUnlock = async () => {
-        if (await MedHub.api.promptUnlockEditMode("Suppliers Full Details")) {
-          this.render(container);
-        }
-      };
-      container.querySelector("#btn-unlock-sup-edit")?.addEventListener("click", doUnlock);
-      container.querySelector("#btn-unlock-sup-panel")?.addEventListener("click", doUnlock);
-      return;
-    }
+    const canEdit = MedHub.api.canShowEditControls();
 
     container.innerHTML = `
       <div class="suppliers-page-wrap">
@@ -57,14 +23,20 @@ MedHub.suppliers = {
             <p class="page-subtitle">Manage medicine vendors, GSTIN, Drug License numbers & outstanding payables</p>
           </div>
           <div class="header-action-btns">
-            ${lockActive ? `
-              <button type="button" class="btn-lock-edit" id="btn-lock-sup-edit" title="Hide and lock details">
-                🔓 Lock Details
+            ${lockActive && !canEdit ? `
+              <button type="button" class="btn-unlock-edit" id="btn-unlock-sup-edit">
+                🔒 Unlock Edit Options
               </button>
-            ` : ""}
-            <button type="button" class="btn-primary" id="btn-open-supplier-modal">
-              ${MedHub.icons.plus} Add New Supplier
-            </button>
+            ` : `
+              ${lockActive ? `
+                <button type="button" class="btn-lock-edit" id="btn-lock-sup-edit" title="Hide and lock edit options">
+                  🔓 Lock Edit
+                </button>
+              ` : ""}
+              <button type="button" class="btn-primary" id="btn-open-supplier-modal">
+                ${MedHub.icons.plus} Add New Supplier
+              </button>
+            `}
           </div>
         </div>
 
@@ -93,7 +65,7 @@ MedHub.suppliers = {
                   <th>Drug License (DL)</th>
                   <th>Address</th>
                   <th>Balance Due</th>
-                  <th style="width: 145px; text-align: center;">Actions</th>
+                  ${canEdit ? `<th style="width: 145px; text-align: center;">Actions</th>` : ""}
                 </tr>
               </thead>
               <tbody id="suppliers-tbody">
@@ -111,8 +83,9 @@ MedHub.suppliers = {
   },
 
   renderTableRows() {
+    const canEdit = MedHub.api.canShowEditControls();
     if (!this.suppliersList.length) {
-      return `<tr><td colspan="8" class="table-empty">Koi supplier nahi mila. "Add New Supplier" par click karein.</td></tr>`;
+      return `<tr><td colspan="${canEdit ? 8 : 7}" class="table-empty">Koi supplier nahi mila. ${canEdit ? '"Add New Supplier" par click karein.' : ""}</td></tr>`;
     }
     return this.suppliersList.map((s, idx) => `
       <tr>
@@ -123,14 +96,16 @@ MedHub.suppliers = {
         <td>${s.dl_no || "—"}</td>
         <td>${s.address || "—"}</td>
         <td style="${s.balance > 0 ? 'color:#ef4444;font-weight:700;' : ''}">${MedHub.rupee(s.balance || 0)}</td>
-        <td class="cell-nowrap table-actions-cell" style="justify-content: center;">
-          <button type="button" class="btn-action-edit btn-edit-supplier" data-id="${s.id}" title="Edit Supplier Details">
-            Edit
-          </button>
-          <button type="button" class="btn-action-delete btn-delete-supplier" data-id="${s.id}" title="Delete Supplier">
-            Delete
-          </button>
-        </td>
+        ${canEdit ? `
+          <td class="cell-nowrap table-actions-cell">
+            <button type="button" class="btn-action-edit btn-edit-supplier" data-id="${s.id}" title="Edit Supplier Details">
+              Edit
+            </button>
+            <button type="button" class="btn-action-delete btn-delete-supplier" data-id="${s.id}" title="Delete Supplier">
+              Delete
+            </button>
+          </td>
+        ` : ""}
       </tr>
     `).join("");
   },
@@ -157,12 +132,18 @@ MedHub.suppliers = {
 
   bindEvents(container) {
     const self = this;
+    container.querySelector("#btn-unlock-sup-edit")?.addEventListener("click", async () => {
+      if (await MedHub.api.promptUnlockEditMode("Suppliers Edit Options")) {
+        self.render(container);
+      }
+    });
     container.querySelector("#btn-lock-sup-edit")?.addEventListener("click", () => {
       MedHub.api.lockEditSession();
-      MedHub.toast("Details are now hidden and locked.", "info");
+      MedHub.toast("Edit options are now hidden and locked.", "info");
       self.render(container);
     });
-    container.querySelector("#btn-open-supplier-modal")?.addEventListener("click", () => {
+    container.querySelector("#btn-open-supplier-modal")?.addEventListener("click", async () => {
+      if (!(await MedHub.api.requireEditSecurityAuth("Add New Supplier"))) return;
       self.openModal();
     });
 
@@ -171,7 +152,10 @@ MedHub.suppliers = {
       if (editBtn) {
         const id = editBtn.dataset.id;
         const sup = self.suppliersList.find(s => String(s.id) === String(id));
-        if (sup) self.openEditModal(sup);
+        if (sup) {
+          if (!(await MedHub.api.requireEditSecurityAuth(`Edit supplier ${sup.name}`))) return;
+          self.openEditModal(sup);
+        }
         return;
       }
 
@@ -179,14 +163,17 @@ MedHub.suppliers = {
       if (delBtn) {
         const id = delBtn.dataset.id;
         const sup = self.suppliersList.find(s => String(s.id) === String(id));
-        if (sup && await MedHub.confirm(`Kya aap supplier '${sup.name}' ko delete karna chahte hain?`)) {
-          const ok = await MedHub.api.deleteSupplier(id);
-          if (ok) {
-            MedHub.toast(`Supplier '${sup.name}' delete ho gaya`, "success");
-            self.suppliersList = await MedHub.api.getSuppliers();
-            self.updateStatsAndTable();
-          } else {
-            MedHub.toast("Supplier delete karne me samasya aayi", "error");
+        if (sup) {
+          if (!(await MedHub.api.requireEditSecurityAuth(`Delete supplier ${sup.name}`))) return;
+          if (await MedHub.confirm(`Kya aap supplier '${sup.name}' ko delete karna chahte hain?`)) {
+            const ok = await MedHub.api.deleteSupplier(id);
+            if (ok) {
+              MedHub.toast(`Supplier '${sup.name}' delete ho gaya`, "success");
+              self.suppliersList = await MedHub.api.getSuppliers();
+              self.updateStatsAndTable();
+            } else {
+              MedHub.toast("Supplier delete karne me samasya aayi", "error");
+            }
           }
         }
         return;
