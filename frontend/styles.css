@@ -2924,14 +2924,14 @@ button {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
-/* Classic Receipt Container matching user's photo - Minimal outer padding, Maximum inner content */
+/* Classic Receipt Container matching A5 Landscape format - Clean outer border box */
 .classic-receipt-paper {
   background: #fbfbf8;
   color: #111111;
   font-family: "Courier New", Courier, monospace, monospace;
   border: 1.5px solid #222222;
   padding: 10px 12px;
-  max-width: 100%;
+  max-width: 790px;
   width: 100%;
   margin: 0 auto;
   position: relative;
@@ -3058,9 +3058,10 @@ button {
   z-index: 2;
 }
 
-/* Maximized Medicine Entry Area (A4 110mm slip body) */
+/* Auto-adjusted Medicine Entry Area (no artificial empty gap) */
 .classic-medicine-area {
-  min-height: 110mm;
+  min-height: 0;
+  height: auto;
   display: flex;
   flex-direction: column;
 }
@@ -3069,8 +3070,8 @@ button {
 .classic-receipt-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12.5px;
-  margin-bottom: 10px;
+  font-size: 12px;
+  margin-bottom: 4px;
 }
 
 .classic-receipt-table th {
@@ -3372,8 +3373,8 @@ button {
    ============================================================================ */
 @media print {
   @page {
-    margin: 2mm 3mm;
-    size: A4 portrait;
+    margin: 5mm;
+    size: A5 landscape;
   }
 
   html, body {
@@ -3473,8 +3474,7 @@ button {
   .modal-overlay,
   .modal-box,
   .invoice-modal-box,
-  .modal-body-scroll,
-  #normal-bill-container {
+  .modal-body-scroll {
     position: static !important;
     display: block !important;
     height: auto !important;
@@ -3486,6 +3486,22 @@ button {
     padding: 0 !important;
     margin: 0 !important;
     background: transparent !important;
+  }
+
+  /* Inset #normal-bill-container slightly inside @page so outer box border never clips at printer edge */
+  #normal-bill-container {
+    position: static !important;
+    display: block !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 1mm !important;
+    margin: 0 !important;
+    background: transparent !important;
+    box-sizing: border-box !important;
   }
 
   /* NEVER PRINT DIGITAL E-BILL - ONLY PRINT CLASSIC NORMAL BILL */
@@ -3503,12 +3519,13 @@ button {
     overflow: hidden !important;
   }
 
-  /* Full-width maximized A4 Print Bill with Minimal Outer Margins */
+  /* Crisp A5 Landscape Print Bill with Visible 4-Sided Outer Box Border & Auto Height */
   .classic-receipt-paper {
     position: relative !important;
     display: block !important;
     box-shadow: none !important;
     border: 1.5px solid #000000 !important;
+    outline: 0 !important;
     margin: 0 !important;
     max-width: 100% !important;
     width: 100% !important;
@@ -3519,26 +3536,61 @@ button {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     background: #ffffff !important;
-    padding: 8px 10px !important;
+    padding: 7px 9px !important;
     box-sizing: border-box !important;
   }
 
+  .classic-store-title {
+    font-size: 16px !important;
+  }
+
+  .classic-store-address {
+    font-size: 10px !important;
+  }
+
+  .classic-store-reg {
+    font-size: 9.5px !important;
+  }
+
+  .classic-top-qr-card {
+    padding: 3px 6px !important;
+  }
+
+  .classic-top-qr-card .classic-qr-box {
+    width: 46px !important;
+    height: 46px !important;
+  }
+
+  .classic-meta-grid {
+    font-size: 10.5px !important;
+    padding-bottom: 4px !important;
+    margin-bottom: 4px !important;
+  }
+
   .classic-medicine-area {
-    min-height: 110mm !important;
+    min-height: 0 !important;
+    height: auto !important;
   }
 
   .classic-receipt-table {
-    font-size: 13px !important;
+    font-size: 11px !important;
+    margin-bottom: 4px !important;
+    width: 100% !important;
   }
 
   .classic-receipt-table th {
-    font-size: 12px !important;
-    padding: 7px 5px !important;
+    font-size: 10.5px !important;
+    padding: 4px 4px !important;
   }
 
   .classic-receipt-table td {
-    font-size: 13px !important;
-    padding: 8px 5px !important;
+    font-size: 11px !important;
+    padding: 5px 4px !important;
+  }
+
+  .classic-receipt-table th:nth-child(2),
+  .classic-receipt-table td:nth-child(2) {
+    min-width: 0 !important;
   }
 
   .classic-qr-container,

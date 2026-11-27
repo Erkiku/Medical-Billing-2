@@ -7,6 +7,11 @@ window.MedHub = window.MedHub || {};
 
 MedHub.billing = {
   inspectedItem: null,
+  _isSubmittingBill: false,
+  _f9Handler: null,
+  _printKeyHandler: null,
+  _lastBillSig: "",
+  _lastBillAt: 0,
 
   render(container) {
     const store = { ...MedHub.defaultStore, ...MedHub.state.store };
@@ -985,14 +990,20 @@ MedHub.billing = {
     // Complete & Print Bill
     container.querySelector("#btn-save-print")?.addEventListener("click", () => self.submitBill());
 
-    // Global Shortcut F9 to Print Bill
-    const f9Handler = (e) => {
-      if (e.key === "F9") {
+    // Global Shortcut F9 to Print Bill (deduplicated across re-renders)
+    if (this._f9Handler) {
+      window.removeEventListener?.("keydown", this._f9Handler);
+    }
+    this._f9Handler = (e) => {
+      if (e.key === "F9" && !e.repeat) {
+        const modalOpen = document.querySelector("#invoice-modal-container .modal-overlay");
+        const saveBtn = document.getElementById("btn-save-print");
+        if (modalOpen || !saveBtn) return;
         e.preventDefault();
         self.submitBill();
       }
     };
-    window.addEventListener("keydown", f9Handler);
+    window.addEventListener("keydown", this._f9Handler);
 
     // Focus Patient/Customer Name on initial render for zero-mouse Marg ERP entry
     setTimeout(() => {
@@ -1086,6 +1097,7 @@ MedHub.billing = {
   },
 
   async submitBill() {
+    if (this._isSubmittingBill) return;
     if (!MedHub.state.cart.length) {
       MedHub.toast("Cart me koi dawai nahi hai", "warning");
       return;
@@ -1102,6 +1114,7 @@ MedHub.billing = {
       ? 0
       : (amtStr === "" ? grandTotal : Math.max(0, Number(amtStr) || 0));
 
+    const itemsSnapshot = MedHub.state.cart.map(it => ({ ...it }));
     const billPayload = {
       customer_name: MedHub.state.customer.name || "Walk-in Customer",
       customer_mobile: MedHub.state.customer.mobile || "",
@@ -1113,29 +1126,54 @@ MedHub.billing = {
       grand_total: grandTotal,
       paid_amount: paidAmount,
       payment_mode: MedHub.state.paymentMode,
-      items: MedHub.state.cart
+      items: itemsSnapshot
     };
 
-    const savedBill = await MedHub.api.createBill(billPayload);
-    if (savedBill) {
-      if (discountPctApplied > 0) {
-        savedBill.discount_percent_applied = discountPctApplied;
-      }
-      MedHub.toast(`Bill #${savedBill.bill_no} successfully generated!`, "success");
-      
-      // Show Invoice Preview / Print Modal
-      this.showInvoiceModal(savedBill);
+    const billSig = JSON.stringify({
+      c: billPayload.customer_name,
+      m: billPayload.customer_mobile,
+      d: billPayload.doctor_name,
+      t: Number(billPayload.grand_total).toFixed(2),
+      p: Number(billPayload.paid_amount).toFixed(2),
+      i: itemsSnapshot.map(it => [it.medicine_id, it.batch_no, it.quantity, it.free_qty || 0, it.line_total])
+    });
+    const nowMs = Date.now();
+    if (this._lastBillSig === billSig && (nowMs - this._lastBillAt) < 2500) {
+      return;
+    }
 
-      // Reset cart and fields
-      MedHub.state.cart = [];
-      MedHub.state.customer = { name: "", mobile: "", address: "" };
-      MedHub.state.doctor = { name: "", hospital: "" };
-      MedHub.state.discount = 0;
-      MedHub.state.discountType = "AMOUNT";
-      MedHub.state.amountReceived = "";
-      this.render(document.getElementById("page-content"));
-    } else {
-      MedHub.toast("Bill save karne me samasya aayi", "error");
+    this._isSubmittingBill = true;
+    const saveBtn = document.getElementById("btn-save-print");
+    if (saveBtn) saveBtn.disabled = true;
+
+    try {
+      const savedBill = await MedHub.api.createBill(billPayload);
+      if (savedBill) {
+        this._lastBillSig = billSig;
+        this._lastBillAt = Date.now();
+        if (discountPctApplied > 0) {
+          savedBill.discount_percent_applied = discountPctApplied;
+        }
+        MedHub.toast(`Bill #${savedBill.bill_no} successfully generated!`, "success");
+
+        // Show Invoice Preview / Print Modal
+        this.showInvoiceModal(savedBill);
+
+        // Reset cart and fields
+        MedHub.state.cart = [];
+        MedHub.state.customer = { name: "", mobile: "", address: "" };
+        MedHub.state.doctor = { name: "", hospital: "" };
+        MedHub.state.discount = 0;
+        MedHub.state.discountType = "AMOUNT";
+        MedHub.state.amountReceived = "";
+        this.render(document.getElementById("page-content"));
+      } else {
+        MedHub.toast("Bill save karne me samasya aayi", "error");
+      }
+    } finally {
+      this._isSubmittingBill = false;
+      const btnNow = document.getElementById("btn-save-print");
+      if (btnNow) btnNow.disabled = false;
     }
   },
 
@@ -1501,9 +1539,22 @@ MedHub.billing = {
     document.getElementById("btn-enter-print-now")?.addEventListener("click", triggerDirectPrint);
     document.getElementById("btn-banner-print-now")?.addEventListener("click", triggerDirectPrint);
 
+    // Close Modal helper
+    const cleanupModal = () => {
+      if (this._printKeyHandler) {
+        window.removeEventListener?.("keydown", this._printKeyHandler);
+        this._printKeyHandler = null;
+      }
+      modalWrap.innerHTML = "";
+      document.body.classList.remove("modal-open");
+    };
+
     // Keyboard shortcut: Pressing Enter triggers Direct Print immediately
-    const printKeyHandler = (e) => {
-      if (e.key === "Enter" && !["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) {
+    if (this._printKeyHandler) {
+      window.removeEventListener?.("keydown", this._printKeyHandler);
+    }
+    this._printKeyHandler = (e) => {
+      if (e.key === "Enter" && !e.repeat && !["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) {
         e.preventDefault();
         e.stopPropagation();
         triggerDirectPrint();
@@ -1511,14 +1562,7 @@ MedHub.billing = {
         cleanupModal();
       }
     };
-    window.addEventListener("keydown", printKeyHandler);
-
-    // Close Modal helper
-    const cleanupModal = () => {
-      window.removeEventListener("keydown", printKeyHandler);
-      modalWrap.innerHTML = "";
-      document.body.classList.remove("modal-open");
-    };
+    window.addEventListener("keydown", this._printKeyHandler);
 
     document.getElementById("btn-close-modal")?.addEventListener("click", cleanupModal);
     modalWrap.querySelector(".modal-overlay")?.addEventListener("click", (e) => {
