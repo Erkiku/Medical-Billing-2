@@ -96,7 +96,7 @@ MedHub.purchases = {
                           <div class="pur-items-cell">
                             ${p.items.map(it => `
                               <span class="pur-med-badge" title="Batch: ${it.batch_no || '—'} | Exp: ${MedHub.formatExpiry ? MedHub.formatExpiry(it.expiry_date) : it.expiry_date}">
-                                💊 <strong>${it.medicine_name || it.name}</strong> (${it.quantity} ${it.pack_size || "packs"} @ ₹${Number(it.purchase_rate || 0).toFixed(2)})
+                                💊 <strong>${it.medicine_name || it.name}</strong> (${it.quantity}${Number(it.free_qty) > 0 ? ` + ${it.free_qty} free` : ""} ${it.pack_size || "packs"} @ ₹${Number(it.purchase_rate || 0).toFixed(2)})
                               </span>
                             `).join("")}
                           </div>
@@ -237,6 +237,7 @@ MedHub.purchases = {
 
   calculatePurchaseSummary(rowsData, billDiscountVal = 0, billDiscountType = "AMOUNT") {
     let totalQty = 0;
+    let totalFreeQty = 0;
     let totalTablets = 0;
     let rawTaxable = 0;
     let itemDiscTotal = 0;
@@ -244,15 +245,17 @@ MedHub.purchases = {
     const computedRows = [];
 
     (rowsData || []).forEach(row => {
-      const hasContent = (row.name && String(row.name).trim()) || Number(row.qty) > 0 || Number(row.rate) > 0;
+      const freeQ = Math.max(0, Number(row.free_qty ?? row.freeQty) || 0);
+      const hasContent = (row.name && String(row.name).trim()) || Number(row.qty) > 0 || freeQ > 0 || Number(row.rate) > 0;
       if (!hasContent) return;
       itemCount++;
       const q = Math.max(0, Number(row.qty) || 0);
       totalQty += q;
+      totalFreeQty += freeQ;
       const packInfo = MedHub.parsePackSize
         ? MedHub.parsePackSize(row.pack_size || row.packSize || "1x10")
         : { unitsPerPack: 10 };
-      totalTablets += Math.max(0, Number((q * packInfo.unitsPerPack).toFixed(2)));
+      totalTablets += Math.max(0, Number(((q + freeQ) * packInfo.unitsPerPack).toFixed(2)));
       const calc = this.calculatePurchaseItem({
         qty: q,
         rate: row.rate,
@@ -274,10 +277,13 @@ MedHub.purchases = {
     const finalGst = computedRows.reduce((sum, r) => sum + ((r.taxable * factor * r.gstPct) / 100), 0);
     const totalDiscount = itemDiscTotal + extraDisc;
     const netTotal = finalTaxable + finalGst;
+    const totalStockPacks = totalQty + totalFreeQty;
 
     return {
       itemCount,
       totalQty,
+      totalFreeQty,
+      totalStockPacks,
       totalTablets,
       rawTaxable,
       itemDiscTotal,
@@ -396,6 +402,7 @@ MedHub.purchases = {
                       <th style="min-width: 130px;">Expiry *</th>
                       <th style="min-width: 112px;">Pack</th>
                       <th style="min-width: 82px;">Qty *</th>
+                      <th style="min-width: 72px;">Free</th>
                       <th style="min-width: 108px;">Pur. Rate (₹) *</th>
                       <th style="min-width: 100px;">MRP (₹)</th>
                       <th style="min-width: 84px;">Dis %</th>
@@ -553,14 +560,29 @@ MedHub.purchases = {
           <input 
             type="number" 
             class="pur-item-qty" 
-            min="1" 
+            min="0" 
             step="1" 
-            value="${prefill?.quantity || 10}" 
+            value="${prefill?.quantity ?? 10}" 
             required 
             style="font-weight: 700; text-align: center;" 
           />
           <div class="pur-qty-tablets-hint" style="font-size: 10px; color: #475569; font-weight: 600; text-align: center; margin-top: 2px;">
-            = ${(prefill?.quantity || 10) * (MedHub.parsePackSize ? MedHub.parsePackSize(`${packA}x${packB}`).unitsPerPack : 10)} tabs
+            = ${((Number(prefill?.quantity ?? 10)) + (Number(prefill?.free_qty || 0))) * (MedHub.parsePackSize ? MedHub.parsePackSize(`${packA}x${packB}`).unitsPerPack : 10)} tabs
+          </div>
+        </td>
+        <td>
+          <input 
+            type="number" 
+            class="pur-item-free" 
+            min="0" 
+            step="1" 
+            placeholder="0"
+            value="${prefill?.free_qty ?? 0}" 
+            title="Free Bonus Packs (₹0 cost, added to stock)"
+            style="font-weight: 700; text-align: center; color: #059669;" 
+          />
+          <div class="pur-free-hint" style="font-size: 10px; color: #059669; font-weight: 600; text-align: center; margin-top: 2px;">
+            ${Number(prefill?.free_qty || 0) > 0 ? `+${Number(prefill?.free_qty)} free` : "0 free"}
           </div>
         </td>
         <td>
@@ -630,6 +652,7 @@ MedHub.purchases = {
       const packAInput = tr.querySelector(".pur-item-pack-a");
       const packBInput = tr.querySelector(".pur-item-pack-b");
       const qtyInput = tr.querySelector(".pur-item-qty");
+      const freeInput = tr.querySelector(".pur-item-free");
       const rateInput = tr.querySelector(".pur-item-rate");
       const mrpInput = tr.querySelector(".pur-item-mrp");
       const discInput = tr.querySelector(".pur-item-disc");
@@ -673,10 +696,14 @@ MedHub.purchases = {
         const pB = packBInput?.value.trim() || "10";
         const packInfo = MedHub.parsePackSize ? MedHub.parsePackSize(`${pA}x${pB}`) : { unitsPerPack: 10 };
         const qVal = Math.max(0, Number(qtyInput.value) || 0);
+        const fVal = Math.max(0, Number(freeInput?.value) || 0);
+        const totalPacks = qVal + fVal;
         const packHintEl = tr.querySelector(".pur-pack-units-hint");
         const qtyTabsHintEl = tr.querySelector(".pur-qty-tablets-hint");
+        const freeHintEl = tr.querySelector(".pur-free-hint");
         if (packHintEl) packHintEl.innerText = `1 pk = ${packInfo.unitsPerPack} tabs`;
-        if (qtyTabsHintEl) qtyTabsHintEl.innerText = `= ${Number((qVal * packInfo.unitsPerPack).toFixed(2))} tabs`;
+        if (qtyTabsHintEl) qtyTabsHintEl.innerText = `= ${Number((totalPacks * packInfo.unitsPerPack).toFixed(2))} tabs${fVal > 0 ? ` (${totalPacks} pks)` : ""}`;
+        if (freeHintEl) freeHintEl.innerText = fVal > 0 ? `+${fVal} free stock` : "0 free";
 
         const calc = self.calculatePurchaseItem({
           qty: qtyInput.value,
@@ -691,6 +718,7 @@ MedHub.purchases = {
       packAInput?.addEventListener("input", calcRow);
       packBInput?.addEventListener("input", calcRow);
       qtyInput.addEventListener("input", calcRow);
+      freeInput?.addEventListener("input", calcRow);
       rateInput.addEventListener("input", calcRow);
       discInput?.addEventListener("input", calcRow);
       gstInput.addEventListener("change", calcRow);
@@ -720,6 +748,7 @@ MedHub.purchases = {
           name: tr.querySelector(".pur-item-name")?.value.trim() || "",
           pack_size: `${pA}x${pB}`,
           qty: Number(tr.querySelector(".pur-item-qty")?.value) || 0,
+          free_qty: Math.max(0, Number(tr.querySelector(".pur-item-free")?.value) || 0),
           rate: Number(tr.querySelector(".pur-item-rate")?.value) || 0,
           discPct: Number(tr.querySelector(".pur-item-disc")?.value) || 0,
           gstPct: Number(tr.querySelector(".pur-item-gst")?.value) || 0
@@ -742,7 +771,11 @@ MedHub.purchases = {
       if (elItems) elItems.innerText = `${summary.itemCount} Medicines`;
 
       const elQty = document.getElementById("pur-total-qty-count");
-      if (elQty) elQty.innerText = `${summary.totalQty} Packs (${summary.totalTablets} Tabs)`;
+      if (elQty) {
+        elQty.innerText = summary.totalFreeQty > 0
+          ? `${summary.totalQty} + ${summary.totalFreeQty} Free = ${summary.totalStockPacks} Packs (${summary.totalTablets} Tabs)`
+          : `${summary.totalQty} Packs (${summary.totalTablets} Tabs)`;
+      }
 
       const elTaxable = document.getElementById("pur-taxable-amount-display");
       if (elTaxable) elTaxable.innerText = `₹${summary.finalTaxable.toFixed(2)}`;
@@ -938,20 +971,22 @@ MedHub.purchases = {
         const packB = tr.querySelector(".pur-item-pack-b")?.value.trim() || "10";
         const packSize = `${packA}x${packB}`;
         const packInfo = MedHub.parsePackSize ? MedHub.parsePackSize(packSize) : { unitsPerPack: 10 };
-        const qty = Number(tr.querySelector(".pur-item-qty")?.value) || 0;
+        const qty = Math.max(0, Number(tr.querySelector(".pur-item-qty")?.value) || 0);
+        const freeQty = Math.max(0, Number(tr.querySelector(".pur-item-free")?.value) || 0);
+        const totalStockPacks = qty + freeQty;
         const purchaseRate = Number(tr.querySelector(".pur-item-rate")?.value) || 0;
         const mrp = Number(tr.querySelector(".pur-item-mrp")?.value) || purchaseRate;
         const discPercent = Math.min(100, Math.max(0, Number(tr.querySelector(".pur-item-disc")?.value) || 0));
         const gstPercent = Number(tr.querySelector(".pur-item-gst")?.value) || 0;
 
-        if (name && qty > 0) {
+        if (name && totalStockPacks > 0) {
           const calc = self.calculatePurchaseItem({
             qty,
             rate: purchaseRate,
             discPct: discPercent,
             gstPct: gstPercent
           });
-          rowsForSummary.push({ name, pack_size: packSize, qty, rate: purchaseRate, discPct: discPercent, gstPct: gstPercent });
+          rowsForSummary.push({ name, pack_size: packSize, qty, free_qty: freeQty, rate: purchaseRate, discPct: discPercent, gstPct: gstPercent });
           items.push({
             medicine_name: name,
             name: name,
@@ -959,8 +994,10 @@ MedHub.purchases = {
             expiry_date: expDate || "2028-12-31",
             pack_size: packSize,
             units_per_pack: packInfo.unitsPerPack,
-            total_tablets: Number((qty * packInfo.unitsPerPack).toFixed(2)),
+            total_tablets: Number((totalStockPacks * packInfo.unitsPerPack).toFixed(2)),
             quantity: qty,
+            free_qty: freeQty,
+            total_stock_packs: totalStockPacks,
             purchase_rate: purchaseRate,
             mrp: mrp,
             discount_percent: discPercent,
@@ -1034,6 +1071,8 @@ MedHub.purchases = {
 
     const items = Array.isArray(purchase.items) ? purchase.items : [];
     const totalQty = items.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
+    const totalFree = items.reduce((sum, it) => sum + Math.max(0, Number(it.free_qty) || 0), 0);
+    const totalStockUnits = totalQty + totalFree;
     const isPaid = (purchase.status || "").toUpperCase().includes("PAID");
 
     modalWrap.innerHTML = `
@@ -1074,7 +1113,7 @@ MedHub.purchases = {
 
             <!-- Medicines Breakdown Table -->
             <h4 style="font-size: 14px; font-weight: 700; color: var(--black-deep); margin: 0 0 8px;">
-              Medicine Breakdown (${items.length} items, ${totalQty} units)
+              Medicine Breakdown (${items.length} items, ${totalQty}${totalFree > 0 ? ` + ${totalFree} Free = ${totalStockUnits}` : ""} units)
             </h4>
 
             <div style="overflow-x: auto; border: 1px solid var(--cream-border); border-radius: 8px;">
@@ -1087,6 +1126,7 @@ MedHub.purchases = {
                     <th>Expiry</th>
                     <th>Pack</th>
                     <th style="text-align: center;">Qty</th>
+                    <th style="text-align: center;">Free</th>
                     <th style="text-align: right;">Pur. Rate</th>
                     <th style="text-align: right;">MRP</th>
                     <th style="text-align: center;">Dis %</th>
@@ -1103,6 +1143,7 @@ MedHub.purchases = {
                       <td>${MedHub.formatExpiry ? MedHub.formatExpiry(it.expiry_date) : MedHub.formatDate(it.expiry_date)}</td>
                       <td>${it.pack_size || "1x10"}</td>
                       <td style="text-align: center; font-weight: 700;">${it.quantity}</td>
+                      <td style="text-align: center; font-weight: 700; color: #059669;">${Number(it.free_qty) > 0 ? `+${it.free_qty}` : "0"}</td>
                       <td style="text-align: right;">₹${Number(it.purchase_rate || 0).toFixed(2)}</td>
                       <td style="text-align: right;">₹${Number(it.mrp || 0).toFixed(2)}</td>
                       <td style="text-align: center;">${Number(it.discount_percent || 0)}%</td>
@@ -1111,7 +1152,7 @@ MedHub.purchases = {
                     </tr>
                   `).join("") : `
                     <tr>
-                      <td colspan="11" style="text-align: center; color: #64748b; padding: 18px;">
+                      <td colspan="12" style="text-align: center; color: #64748b; padding: 18px;">
                         Is invoice ke specific medicine items logged nahi hain. Total Invoice Amount: ₹${Number(purchase.total_amount).toFixed(2)}
                       </td>
                     </tr>
@@ -1120,7 +1161,7 @@ MedHub.purchases = {
                 <tfoot>
                   ${(Number(purchase.discount_amount) > 0 || Number(purchase.gst_amount) > 0) ? `
                     <tr style="background: #ffffff; font-size: 12.5px; color: var(--black-soft);">
-                      <td colspan="10" style="text-align: right;">
+                      <td colspan="11" style="text-align: right;">
                         ${Number(purchase.taxable_amount) > 0 ? `Taxable: <strong>₹${Number(purchase.taxable_amount).toFixed(2)}</strong> &nbsp;|&nbsp; ` : ""}
                         ${Number(purchase.discount_amount) > 0 ? `Total Discount: <strong style="color:#16a34a;">-₹${Number(purchase.discount_amount).toFixed(2)}</strong> &nbsp;|&nbsp; ` : ""}
                         ${Number(purchase.gst_amount) > 0 ? `GST: <strong>₹${Number(purchase.gst_amount).toFixed(2)}</strong>` : ""}
@@ -1131,6 +1172,7 @@ MedHub.purchases = {
                   <tr style="background: #f8fafc; font-weight: 800; font-size: 14px;">
                     <td colspan="5">Grand Total:</td>
                     <td style="text-align: center;">${totalQty}</td>
+                    <td style="text-align: center; color: #059669;">${totalFree > 0 ? `+${totalFree}` : "0"}</td>
                     <td colspan="4"></td>
                     <td style="text-align: right; color: #1d4ed8;">₹${Number(purchase.total_amount).toFixed(2)}</td>
                   </tr>

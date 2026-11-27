@@ -3467,7 +3467,9 @@ MedHub.api = {
     for (const item of items) {
       const medName = (item.medicine_name || item.name || "").trim();
       if (!medName) continue;
-      const qty = Number(item.quantity) || 0;
+      const paidQty = Math.max(0, Number(item.quantity) || 0);
+      const freeQty = Math.max(0, Number(item.free_qty) || 0);
+      const qty = paidQty + freeQty;
       if (qty <= 0) continue;
       const rate = Number(item.purchase_rate) || 0;
       const mrp = Number(item.mrp) || rate || 0;
@@ -3597,9 +3599,20 @@ MedHub.api = {
         if (parsed && parsed.__medhub_meta) meta = parsed;
       } catch (e) {}
     }
-    const items = (Array.isArray(p.items) && p.items.length)
+    const rawItems = (Array.isArray(p.items) && p.items.length)
       ? p.items
       : ((Array.isArray(p.purchase_items) && p.purchase_items.length) ? p.purchase_items : (meta?.items || []));
+    const metaItems = Array.isArray(meta?.items) ? meta.items : [];
+    const items = rawItems.map((it) => {
+      if (it && it.free_qty !== undefined) return it;
+      const nm = String(it?.medicine_name || it?.name || "").trim().toLowerCase();
+      const bt = String(it?.batch_no || "").trim().toLowerCase();
+      const mMatch = metaItems.find(m =>
+        String(m?.medicine_name || m?.name || "").trim().toLowerCase() === nm &&
+        String(m?.batch_no || "").trim().toLowerCase() === bt
+      );
+      return mMatch && mMatch.free_qty !== undefined ? { ...it, free_qty: Number(mMatch.free_qty) || 0 } : it;
+    });
     return {
       ...p,
       payment_mode: p.payment_mode || meta?.payment_mode || "BANK TRANSFER",
@@ -3629,6 +3642,7 @@ MedHub.api = {
         };
         const extItem = {
           ...baseItem,
+          free_qty: Math.max(0, Number(it.free_qty) || 0),
           pack_size: it.pack_size || "1x10",
           discount_percent: Number(it.discount_percent) || 0,
           discount_amount: Number(it.discount_amount) || 0,
@@ -3859,10 +3873,12 @@ MedHub.api = {
           (oldIt.medicine_name || oldIt.name || "").trim().toLowerCase() === nm &&
           (oldIt.batch_no || "").trim().toLowerCase() === bt
         );
-        const oldQty = prevMatch ? (Number(prevMatch.quantity) || 0) : 0;
-        const newQty = Number(newIt.quantity) || 0;
+        const oldQty = prevMatch
+          ? ((Number(prevMatch.quantity) || 0) + Math.max(0, Number(prevMatch.free_qty) || 0))
+          : 0;
+        const newQty = (Number(newIt.quantity) || 0) + Math.max(0, Number(newIt.free_qty) || 0);
         if (newQty > oldQty) {
-          deltaItems.push({ ...newIt, quantity: newQty - oldQty });
+          deltaItems.push({ ...newIt, quantity: newQty - oldQty, free_qty: 0 });
         }
       });
       if (deltaItems.length > 0) {

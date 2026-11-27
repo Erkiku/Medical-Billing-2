@@ -3877,8 +3877,9 @@ button {
 .pur-items-table .pur-item-batch {
   min-width: 108px;
 }
-.pur-items-table .pur-item-qty {
-  min-width: 72px;
+.pur-items-table .pur-item-qty,
+.pur-items-table .pur-item-free {
+  min-width: 66px;
   padding: 6px 6px !important;
 }
 .pur-items-table .pur-item-rate,
