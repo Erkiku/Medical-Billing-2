@@ -12,6 +12,8 @@ MedHub.dashboard = {
     const totalSales = bills.reduce((sum, b) => sum + (Number(b.grand_total) || 0), 0);
     const totalDue = bills.reduce((sum, b) => sum + (Number(b.due_amount) || 0), 0);
     const lowStockCount = medicines.filter(m => m.status === "low" || m.status === "out").length;
+    const lockActive = MedHub.api.isEditSecurityEnabled();
+    const canViewDetails = MedHub.api.canShowEditControls();
 
     container.innerHTML = `
       <div class="dashboard-wrap">
@@ -21,6 +23,15 @@ MedHub.dashboard = {
             <p class="page-subtitle">Real-time overview of sales, stock alerts, invoices & fast billing</p>
           </div>
           <div class="header-action-btns">
+            ${lockActive && !canViewDetails ? `
+              <button type="button" class="btn-unlock-edit" id="btn-dash-unlock">
+                🔒 Unlock Full Details
+              </button>
+            ` : (lockActive ? `
+              <button type="button" class="btn-lock-edit" id="btn-dash-lock">
+                🔓 Lock Details
+              </button>
+            ` : "")}
             <button type="button" class="btn-primary" id="btn-dash-pos">
               ${MedHub.icons.pos} Open POS Billing
             </button>
@@ -30,8 +41,8 @@ MedHub.dashboard = {
         <div class="stats-grid" style="margin-top: 20px;">
           <div class="stat-card">
             <span class="stat-label">Total Revenue</span>
-            <span class="stat-value">${MedHub.rupee(totalSales)}</span>
-            <span class="stat-note">${bills.length} invoices generated</span>
+            <span class="stat-value">${canViewDetails ? MedHub.rupee(totalSales) : "🔒 Locked"}</span>
+            <span class="stat-note">${canViewDetails ? `${bills.length} invoices generated` : "Enter PIN to view financials"}</span>
           </div>
           <div class="stat-card">
             <span class="stat-label">Catalog Medicines</span>
@@ -43,13 +54,20 @@ MedHub.dashboard = {
             <span class="stat-value">${lowStockCount}</span>
             <span class="stat-note">Needs urgent reorder</span>
           </div>
-          <div class="stat-card ${totalDue > 0 ? 'stat-out' : ''}">
+          <div class="stat-card ${totalDue > 0 && canViewDetails ? 'stat-out' : ''}">
             <span class="stat-label">Customer Dues (Udhaar)</span>
-            <span class="stat-value">${MedHub.rupee(totalDue)}</span>
-            <span class="stat-note">Credit pending collection</span>
+            <span class="stat-value">${canViewDetails ? MedHub.rupee(totalDue) : "🔒 Locked"}</span>
+            <span class="stat-note">${canViewDetails ? "Credit pending collection" : "Enter PIN to view dues"}</span>
           </div>
         </div>
 
+        ${lockActive && !canViewDetails ? MedHub.renderSecurityLockedPanel({
+          title: "Recent Invoices & Stock Breakdown Hidden",
+          message: "All detailed invoice amounts, customer lists, stock pricing, and back-office details remain hidden until you enter your Security PIN.",
+          metaBadge: `${bills.length} Invoices • ${medicines.length} Medicines`,
+          buttonId: "btn-dash-unlock-panel",
+          buttonLabel: "🔒 Enter PIN to View Full Details"
+        }) : `
         <!-- RECENT ACTIVITY GRID -->
         <div class="dashboard-bottom-grid" style="margin-top: 24px;">
           <!-- Recent Invoices -->
@@ -108,9 +126,22 @@ MedHub.dashboard = {
             </table>
           </div>
         </div>
+        `}
       </div>
     `;
 
+    const doUnlock = async () => {
+      if (await MedHub.api.promptUnlockEditMode("Dashboard Full Details")) {
+        this.render(container);
+      }
+    };
+    container.querySelector("#btn-dash-unlock")?.addEventListener("click", doUnlock);
+    container.querySelector("#btn-dash-unlock-panel")?.addEventListener("click", doUnlock);
+    container.querySelector("#btn-dash-lock")?.addEventListener("click", () => {
+      MedHub.api.lockEditSession();
+      MedHub.toast("Details are now hidden and locked.", "info");
+      this.render(container);
+    });
     container.querySelector("#btn-dash-pos")?.addEventListener("click", () => {
       MedHub.router.navigate("billing");
     });

@@ -20,6 +20,40 @@ MedHub.purchases = {
     const lockActive = MedHub.api.isEditSecurityEnabled();
     const canEdit = MedHub.api.canShowEditControls();
 
+    if (lockActive && !canEdit) {
+      container.innerHTML = `
+        <div class="purchases-page-wrap">
+          <div class="page-header-flex">
+            <div>
+              <h2 class="page-title">Purchases & Inward Stock</h2>
+              <p class="page-subtitle">Purchase invoices, supplier rates, medicine breakdown & stock inward details are protected</p>
+            </div>
+            <div class="header-action-btns">
+              <button type="button" class="btn-unlock-edit" id="btn-unlock-purchase-edit">
+                🔒 Unlock Full Details
+              </button>
+            </div>
+          </div>
+          ${MedHub.renderSecurityLockedPanel({
+            title: "Purchase Details Hidden",
+            message: "All purchased medicines, rates, payment amounts, dues, and Details buttons remain hidden until you enter your Security PIN.",
+            metaBadge: `${totalPurchases} Purchase Records`,
+            buttonId: "btn-unlock-purchase-panel",
+            buttonLabel: "🔒 Enter PIN to View Purchase Details"
+          })}
+        </div>
+        <div id="new-purchase-modal-wrap"></div>
+      `;
+      const doUnlock = async () => {
+        if (await MedHub.api.promptUnlockEditMode("Purchases Full Details")) {
+          this.render(container);
+        }
+      };
+      container.querySelector("#btn-unlock-purchase-edit")?.addEventListener("click", doUnlock);
+      container.querySelector("#btn-unlock-purchase-panel")?.addEventListener("click", doUnlock);
+      return;
+    }
+
     container.innerHTML = `
       <div class="purchases-page-wrap">
         <div class="page-header-flex">
@@ -31,20 +65,14 @@ MedHub.purchases = {
             <button type="button" class="btn-outline" id="btn-export-purchases">
               ${MedHub.icons.download} Download Excel
             </button>
-            ${lockActive && !canEdit ? `
-              <button type="button" class="btn-unlock-edit" id="btn-unlock-purchase-edit">
-                🔒 Unlock Edit Options
+            ${lockActive ? `
+              <button type="button" class="btn-lock-edit" id="btn-lock-purchase-edit" title="Hide and lock details">
+                🔓 Lock Details
               </button>
-            ` : `
-              ${lockActive ? `
-                <button type="button" class="btn-lock-edit" id="btn-lock-purchase-edit" title="Hide and lock edit options">
-                  🔓 Lock Edit
-                </button>
-              ` : ""}
-              <button type="button" class="btn-primary" id="btn-open-purchase-modal">
-                ${MedHub.icons.plus} Record New Purchase
-              </button>
-            `}
+            ` : ""}
+            <button type="button" class="btn-primary" id="btn-open-purchase-modal">
+              ${MedHub.icons.plus} Record New Purchase
+            </button>
           </div>
         </div>
 

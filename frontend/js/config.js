@@ -1152,3 +1152,28 @@ MedHub.alert = function (message, options = {}) {
     danger: Boolean(options.danger)
   });
 };
+
+MedHub.renderSecurityLockedPanel = function ({
+  title = "Details Locked by Security PIN",
+  message = "Full medicine, pricing, invoice, and financial details are hidden while Security Lock is active. Enter your Security PIN once to unlock full details.",
+  metaBadge = "",
+  buttonId = "btn-unlock-locked-panel",
+  buttonLabel = "🔒 Enter PIN to Show Full Details"
+} = {}) {
+  const esc = (s) => String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+  return `
+    <div class="security-locked-gate">
+      <div class="security-locked-gate-icon">🔒</div>
+      ${metaBadge ? `<div class="security-locked-gate-meta">${esc(metaBadge)}</div>` : ""}
+      <h3 class="security-locked-gate-title">${esc(title)}</h3>
+      <p class="security-locked-gate-desc">${esc(message)}</p>
+      <button type="button" class="btn-primary" id="${esc(buttonId)}">
+        ${esc(buttonLabel)}
+      </button>
+    </div>
+  `;
+};

@@ -12,6 +12,42 @@ MedHub.suppliers = {
 
     const totalSuppliers = this.suppliersList.length;
     const totalPayable = this.suppliersList.reduce((sum, s) => sum + (Number(s.balance) || 0), 0);
+    const lockActive = MedHub.api.isEditSecurityEnabled();
+    const canViewDetails = MedHub.api.canShowEditControls();
+
+    if (lockActive && !canViewDetails) {
+      container.innerHTML = `
+        <div class="suppliers-page-wrap">
+          <div class="page-header-flex">
+            <div>
+              <h2 class="page-title">Pharma Suppliers & Distributors</h2>
+              <p class="page-subtitle">Vendor contacts, GSTIN, Drug License & outstanding payables are protected</p>
+            </div>
+            <div class="header-action-btns">
+              <button type="button" class="btn-unlock-edit" id="btn-unlock-sup-edit">
+                🔒 Unlock Full Details
+              </button>
+            </div>
+          </div>
+          ${MedHub.renderSecurityLockedPanel({
+            title: "Supplier Details Hidden",
+            message: "All supplier contact numbers, GSTIN, Drug Licenses, payables, and Edit/Delete options remain hidden until you enter your Security PIN.",
+            metaBadge: `${totalSuppliers} Active Suppliers`,
+            buttonId: "btn-unlock-sup-panel",
+            buttonLabel: "🔒 Enter PIN to View Supplier Details"
+          })}
+        </div>
+        <div id="supplier-modal-wrap"></div>
+      `;
+      const doUnlock = async () => {
+        if (await MedHub.api.promptUnlockEditMode("Suppliers Full Details")) {
+          this.render(container);
+        }
+      };
+      container.querySelector("#btn-unlock-sup-edit")?.addEventListener("click", doUnlock);
+      container.querySelector("#btn-unlock-sup-panel")?.addEventListener("click", doUnlock);
+      return;
+    }
 
     container.innerHTML = `
       <div class="suppliers-page-wrap">
@@ -21,6 +57,11 @@ MedHub.suppliers = {
             <p class="page-subtitle">Manage medicine vendors, GSTIN, Drug License numbers & outstanding payables</p>
           </div>
           <div class="header-action-btns">
+            ${lockActive ? `
+              <button type="button" class="btn-lock-edit" id="btn-lock-sup-edit" title="Hide and lock details">
+                🔓 Lock Details
+              </button>
+            ` : ""}
             <button type="button" class="btn-primary" id="btn-open-supplier-modal">
               ${MedHub.icons.plus} Add New Supplier
             </button>
@@ -116,6 +157,11 @@ MedHub.suppliers = {
 
   bindEvents(container) {
     const self = this;
+    container.querySelector("#btn-lock-sup-edit")?.addEventListener("click", () => {
+      MedHub.api.lockEditSession();
+      MedHub.toast("Details are now hidden and locked.", "info");
+      self.render(container);
+    });
     container.querySelector("#btn-open-supplier-modal")?.addEventListener("click", () => {
       self.openModal();
     });

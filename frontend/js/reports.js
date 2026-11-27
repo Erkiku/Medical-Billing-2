@@ -7,6 +7,41 @@ window.MedHub = window.MedHub || {};
 MedHub.reports = {
   async render(container) {
     const bills = await MedHub.api.getBills();
+    const lockActive = MedHub.api.isEditSecurityEnabled();
+    const canViewDetails = MedHub.api.canShowEditControls();
+
+    if (lockActive && !canViewDetails) {
+      container.innerHTML = `
+        <div class="reports-page-wrap">
+          <div class="page-header-flex">
+            <div>
+              <h2 class="page-title">Reports & GST Compliance</h2>
+              <p class="page-subtitle">Sales turnover, tax breakdown & Schedule H audit details are protected</p>
+            </div>
+            <div class="header-action-btns">
+              <button type="button" class="btn-unlock-edit" id="btn-unlock-reports-edit">
+                🔒 Unlock Full Details
+              </button>
+            </div>
+          </div>
+          ${MedHub.renderSecurityLockedPanel({
+            title: "Reports & GST Details Hidden",
+            message: "Gross sales, GST tax totals, and Schedule H / H1 transaction registers remain hidden until you enter your Security PIN.",
+            metaBadge: `${bills.length} Sales Records`,
+            buttonId: "btn-unlock-reports-panel",
+            buttonLabel: "🔒 Enter PIN to View Reports & GST Details"
+          })}
+        </div>
+      `;
+      const doUnlock = async () => {
+        if (await MedHub.api.promptUnlockEditMode("Reports & GST Full Details")) {
+          this.render(container);
+        }
+      };
+      container.querySelector("#btn-unlock-reports-edit")?.addEventListener("click", doUnlock);
+      container.querySelector("#btn-unlock-reports-panel")?.addEventListener("click", doUnlock);
+      return;
+    }
 
     const totalSales = bills.reduce((sum, b) => sum + (Number(b.grand_total) || 0), 0);
     const taxableSales = totalSales / 1.12; // Approx 12% GST average
@@ -43,6 +78,11 @@ MedHub.reports = {
             <p class="page-subtitle">GSTR-1 sales tax breakdown & Schedule H / H1 drug audit register for FDA inspection</p>
           </div>
           <div class="header-action-btns">
+            ${lockActive ? `
+              <button type="button" class="btn-lock-edit" id="btn-lock-reports-edit" title="Hide and lock details">
+                🔓 Lock Details
+              </button>
+            ` : ""}
             <button type="button" class="btn-outline" id="btn-export-gst">
               ${MedHub.icons.download} Download GST Excel
             </button>
@@ -125,7 +165,12 @@ MedHub.reports = {
       </div>
     `;
 
-    // Bind exports
+    // Bind lock & exports
+    container.querySelector("#btn-lock-reports-edit")?.addEventListener("click", () => {
+      MedHub.api.lockEditSession();
+      MedHub.toast("Details are now hidden and locked.", "info");
+      this.render(container);
+    });
     container.querySelector("#btn-export-gst")?.addEventListener("click", () => {
       const gstData = bills.map(b => {
         const taxable = (Number(b.grand_total) || 0) / 1.12;

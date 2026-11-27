@@ -26,6 +26,40 @@ MedHub.inventory = {
     const lockActive = MedHub.api.isEditSecurityEnabled();
     const canEdit = MedHub.api.canShowEditControls();
 
+    if (lockActive && !canEdit) {
+      container.innerHTML = `
+        <div class="inventory-page-wrap">
+          <div class="page-header-flex">
+            <div>
+              <h2 class="page-title">Medicines & Stock Inventory</h2>
+              <p class="page-subtitle">Catalog pricing, batches, stock details & editing controls are protected</p>
+            </div>
+            <div class="header-action-btns">
+              <button type="button" class="btn-unlock-edit" id="btn-unlock-edit-mode">
+                🔒 Unlock Full Details
+              </button>
+            </div>
+          </div>
+          ${MedHub.renderSecurityLockedPanel({
+            title: "Medicines & Stock Details Hidden",
+            message: "Medicine catalog details, pricing, stock batches, Add, + Stock, Edit, Delete, and Exports remain hidden until you enter your Security PIN.",
+            metaBadge: `${totalSkus} Medicines in Catalog`,
+            buttonId: "btn-unlock-inv-panel",
+            buttonLabel: "🔒 Enter PIN to View Inventory Details"
+          })}
+        </div>
+        <div id="add-medicine-modal-wrap"></div>
+      `;
+      const doUnlock = async () => {
+        if (await MedHub.api.promptUnlockEditMode("Medicines & Stock Full Details")) {
+          this.render(container);
+        }
+      };
+      container.querySelector("#btn-unlock-edit-mode")?.addEventListener("click", doUnlock);
+      container.querySelector("#btn-unlock-inv-panel")?.addEventListener("click", doUnlock);
+      return;
+    }
+
     container.innerHTML = `
       <div class="inventory-page-wrap">
         <!-- HEADER WITH ACTIONS -->
@@ -41,20 +75,14 @@ MedHub.inventory = {
             <button type="button" class="btn-outline" id="btn-export-pdf">
               ${MedHub.icons.print} Download PDF
             </button>
-            ${lockActive && !canEdit ? `
-              <button type="button" class="btn-unlock-edit" id="btn-unlock-edit-mode">
-                🔒 Unlock Edit Options
+            ${lockActive ? `
+              <button type="button" class="btn-lock-edit" id="btn-lock-edit-mode" title="Hide and lock details">
+                🔓 Lock Details
               </button>
-            ` : `
-              ${lockActive ? `
-                <button type="button" class="btn-lock-edit" id="btn-lock-edit-mode" title="Hide and lock edit options">
-                  🔓 Lock Edit
-                </button>
-              ` : ""}
-              <button type="button" class="btn-primary" id="btn-open-add-modal">
-                ${MedHub.icons.plus} Add New Medicine
-              </button>
-            `}
+            ` : ""}
+            <button type="button" class="btn-primary" id="btn-open-add-modal">
+              ${MedHub.icons.plus} Add New Medicine
+            </button>
           </div>
         </div>
 

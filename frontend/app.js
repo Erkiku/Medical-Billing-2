@@ -284,11 +284,114 @@ MedHub.router = {
     };
     update();
     setInterval(update, 30000);
+  },
+
+  getLoadedBuildVersion() {
+    try {
+      const scripts = Array.from(document.querySelectorAll("script[src]"));
+      const appScript = scripts.find(s => String(s.src || "").includes("app.js"));
+      const m = appScript && String(appScript.src || "").match(/[?&]v=([^&#]+)/);
+      return m ? decodeURIComponent(m[1]) : "";
+    } catch (e) {
+      return "";
+    }
+  },
+
+  _isSafeToAutoReload() {
+    try {
+      if (document.querySelector(".modal-overlay")) return false;
+      if (Array.isArray(MedHub.state?.cart) && MedHub.state.cart.length > 0) return false;
+    } catch (e) {}
+    return true;
+  },
+
+  async checkForUpdates() {
+    const currentVer = this.getLoadedBuildVersion();
+    if (!currentVer || typeof fetch !== "function") return false;
+    try {
+      let latestVer = "";
+      try {
+        const vRes = await fetch(`version.json?t=${Date.now()}`, { cache: "no-store" });
+        if (vRes && vRes.ok) {
+          const data = await vRes.json();
+          if (data && data.version) latestVer = String(data.version).trim();
+        }
+      } catch (e) {}
+
+      if (!latestVer) {
+        const hRes = await fetch(`index.html?t=${Date.now()}`, { cache: "no-store" });
+        if (hRes && hRes.ok) {
+          const html = await hRes.text();
+          const m = html.match(/app\.js\?v=([^"'>&\s]+)/i);
+          if (m && m[1]) latestVer = m[1].trim();
+        }
+      }
+
+      if (latestVer && latestVer !== currentVer) {
+        this._pendingAppVersion = latestVer;
+        if (this._isSafeToAutoReload()) {
+          this.applyPendingUpdate(latestVer);
+        }
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  },
+
+  applyPendingUpdate(targetVersion) {
+    if (this._reloadingForUpdate) return;
+    this._reloadingForUpdate = true;
+    try {
+      if (typeof MedHub.toast === "function") {
+        MedHub.toast("New update available. Updating automatically...", "info");
+      }
+    } catch (e) {}
+    setTimeout(() => {
+      try {
+        const basePath = window.location.pathname || "/frontend/index.html";
+        const hash = window.location.hash || "";
+        window.location.replace(`${basePath}?upd=${encodeURIComponent(targetVersion || Date.now())}${hash}`);
+      } catch (e) {
+        window.location.reload();
+      }
+    }, 350);
+  },
+
+  initAutoUpdater() {
+    if (this._autoUpdaterStarted) return;
+    this._autoUpdaterStarted = true;
+
+    // Clean any ?upd= query parameter left after auto-reload
+    try {
+      if (window.location.search && window.location.search.includes("upd=") && window.history?.replaceState) {
+        window.history.replaceState({}, document.title, window.location.pathname + (window.location.hash || ""));
+      }
+    } catch (e) {}
+
+    setInterval(() => {
+      if (this._pendingAppVersion) {
+        if (this._isSafeToAutoReload()) {
+          this.applyPendingUpdate(this._pendingAppVersion);
+        }
+      } else {
+        this.checkForUpdates();
+      }
+    }, 25000);
+
+    window.addEventListener("focus", () => this.checkForUpdates());
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) this.checkForUpdates();
+      });
+    }
   }
 };
 
 // Application entrypoint on DOM load
 document.addEventListener("DOMContentLoaded", async () => {
+  if (MedHub.router && typeof MedHub.router.initAutoUpdater === "function") {
+    MedHub.router.initAutoUpdater();
+  }
   if (typeof MedHub.ensureSupabaseClient === "function") {
     await MedHub.ensureSupabaseClient();
   } else if (typeof MedHub.loadConfig === "function") {
