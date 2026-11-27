@@ -329,7 +329,7 @@ MedHub.invoices = {
             <div class="form-row-3">
               <div class="form-group">
                 <label class="form-label">Patient / Customer Name <span class="req">*</span></label>
-                <input type="text" id="eb-cust-name" class="input-field" value="${(bill.customer_name || "Walk-in Customer").replace(/"/g, "&quot;")}" required />
+                <input type="text" id="eb-cust-name" class="input-field" placeholder="Enter the patient name" value="${(bill.customer_name || "").replace(/"/g, "&quot;")}" required />
               </div>
               <div class="form-group">
                 <label class="form-label">Mobile Number</label>
@@ -344,7 +344,7 @@ MedHub.invoices = {
             <div class="form-row-3" style="margin-top: 12px;">
               <div class="form-group">
                 <label class="form-label">Prescribing Doctor</label>
-                <input type="text" id="eb-doc-name" class="input-field" placeholder="Dr. Name" value="${(bill.doctor_name || "").replace(/"/g, "&quot;")}" />
+                <input type="text" id="eb-doc-name" class="input-field" placeholder="Enter the doctor name" value="${(bill.doctor_name || "").replace(/"/g, "&quot;")}" />
               </div>
               <div class="form-group">
                 <label class="form-label">Doctor Hospital / Address</label>

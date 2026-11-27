@@ -43,7 +43,7 @@ MedHub.billing = {
               <div class="marg-party-field marg-pf-name">
                 <label class="marg-pf-lbl" for="cust-name">Name / Patient <span class="req">*</span></label>
                 <input type="text" id="cust-name" class="marg-erp-input"
-                  placeholder="Ramesh Kumar or Walk-in Customer"
+                  placeholder="Enter the patient name"
                   value="${MedHub.state.customer.name || ""}" />
               </div>
               <div class="marg-party-field marg-pf-mobile">
@@ -67,7 +67,7 @@ MedHub.billing = {
               <div class="marg-party-field marg-pf-doc">
                 <label class="marg-pf-lbl" for="doc-name">Doctor</label>
                 <input type="text" id="doc-name" class="marg-erp-input"
-                  placeholder="Dr. Name & Hospital (for Sch-H)"
+                  placeholder="Enter the doctor name"
                   value="${MedHub.state.doctor.name || ""}" />
               </div>
               <div class="marg-party-field marg-pf-meta">
