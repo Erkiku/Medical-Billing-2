@@ -3667,12 +3667,17 @@ button {
   border-left: 4px solid #2563eb !important;
 }
 
-/* INVENTORY ACTION BUTTONS (+ Stock, Edit, Delete) */
+/* INVENTORY & TABLE ACTION BUTTONS (+ Stock, Edit, Delete, Details) */
 .table-actions-cell {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  display: table-cell;
+  vertical-align: middle !important;
+  text-align: center !important;
   white-space: nowrap;
+}
+.table-actions-cell > button {
+  display: inline-flex;
+  vertical-align: middle;
+  margin: 0 3px;
 }
 .btn-action-stock {
   background: #ecfdf5;
