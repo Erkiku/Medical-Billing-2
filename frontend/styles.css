@@ -4395,14 +4395,14 @@ button {
   padding-left: 10px;
 }
 
-.marg-spreadsheet-table thead th.col-pack { width: 76px; }
-.marg-spreadsheet-table thead th.col-batch { width: 112px; }
-.marg-spreadsheet-table thead th.col-exp { width: 82px; }
-.marg-spreadsheet-table thead th.col-qty { width: 72px; }
-.marg-spreadsheet-table thead th.col-free { width: 64px; }
-.marg-spreadsheet-table thead th.col-mrp { width: 92px; }
-.marg-spreadsheet-table thead th.col-dis { width: 68px; }
-.marg-spreadsheet-table thead th.col-amt { width: 98px; }
+.marg-spreadsheet-table thead th.col-pack { width: 86px; min-width: 86px; }
+.marg-spreadsheet-table thead th.col-batch { width: 112px; min-width: 112px; }
+.marg-spreadsheet-table thead th.col-exp { width: 92px; min-width: 92px; }
+.marg-spreadsheet-table thead th.col-qty { width: 74px; min-width: 74px; }
+.marg-spreadsheet-table thead th.col-free { width: 68px; min-width: 68px; }
+.marg-spreadsheet-table thead th.col-mrp { width: 92px; min-width: 92px; }
+.marg-spreadsheet-table thead th.col-dis { width: 70px; min-width: 70px; }
+.marg-spreadsheet-table thead th.col-amt { width: 98px; min-width: 98px; }
 
 .marg-spreadsheet-table tbody td {
   border: 1px solid #e2e8f0;
@@ -4428,7 +4428,8 @@ button {
 .marg-grid-input {
   width: 100%;
   height: 31px;
-  padding: 3px 7px;
+  min-height: 31px;
+  padding: 3px 6px;
   font-size: 12.5px;
   font-weight: 600;
   color: #0f172a;
@@ -4438,6 +4439,11 @@ button {
   outline: none;
   box-sizing: border-box;
   transition: all 0.12s ease;
+}
+
+.marg-cart-row .sub-text,
+.marg-cart-row .badge-schedule {
+  display: none !important;
 }
 
 /* Marg Blueprint Active Focused Cell Highlight */

@@ -287,7 +287,6 @@ MedHub.billing = {
   renderCartRows() {
     if (!MedHub.state.cart.length) return "";
     return MedHub.state.cart.map((it, idx) => {
-      const isScheduleH = it.drug_schedule && it.drug_schedule.includes("H");
       const freeVal = Number(it.free_qty || 0);
       const disVal = Number(it.discount_percent || 0);
       return `
@@ -295,12 +294,10 @@ MedHub.billing = {
           <td class="text-center">${idx + 1}</td>
           <td>
             <strong>${it.name}</strong>
-            ${it.salt_composition ? `<div class="sub-text">${it.salt_composition}</div>` : ""}
-            ${isScheduleH ? `<span class="badge-schedule schedule-h" style="margin-left: 6px;">Sch-H</span>` : ""}
           </td>
           <td class="text-center">
             ${it.pack_size || "1x10"}
-            <div style="font-size:10px;color:#64748b;">${(MedHub.parsePackSize ? MedHub.parsePackSize(it.pack_size || "1x10").unitsPerPack : (it.units_per_pack || 10))} tabs/pk</div>
+            <div style="font-size:9.5px;color:#64748b;white-space:nowrap;">${(MedHub.parsePackSize ? MedHub.parsePackSize(it.pack_size || "1x10").unitsPerPack : (it.units_per_pack || 10))} tabs/pk</div>
           </td>
           <td class="text-center"><span class="badge-code">${it.batch_no || "BT-DEFAULT"}</span></td>
           <td class="text-center"><span class="badge-exp-month">${MedHub.formatExpiry(it.expiry_date)}</span></td>
