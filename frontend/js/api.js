@@ -2610,7 +2610,11 @@ MedHub.api = {
         if (expPg) upd.expiry_date = expPg;
         if (qty !== undefined) upd.quantity = qty;
         if (Object.keys(upd).length > 0) {
-          await MedHub.supabaseClient.from("medicine_batches").update(upd).eq("id", batchId);
+          const updRes = await MedHub.supabaseClient.from("medicine_batches").update(upd).eq("id", batchId);
+          if (updRes.error && upd.quantity !== undefined && !Number.isInteger(upd.quantity)) {
+            upd.quantity = upd.quantity > 0 ? Math.max(1, Math.round(upd.quantity)) : 0;
+            await MedHub.supabaseClient.from("medicine_batches").update(upd).eq("id", batchId);
+          }
         }
       } catch (e) {
         console.warn("updateMedicineBatch Supabase error:", e);
@@ -2618,14 +2622,19 @@ MedHub.api = {
     } else if (MedHub.supabaseClient && this._isUuid(String(medicineId)) && expPg) {
       // If no batchId existed yet, create one when user sets expiry/qty in Edit Medicine
       try {
-        await MedHub.supabaseClient.from("medicine_batches").insert({
+        const insPayload = {
           medicine_id: medicineId,
           batch_no: batchNo || "BT-" + Date.now().toString().slice(-4),
           expiry_date: expPg,
           purchase_price: Number(patchData.purchase_price) || 0,
           selling_price: Number(patchData.selling_price) || 0,
           quantity: qty !== undefined ? qty : 0
-        });
+        };
+        const insRes = await MedHub.supabaseClient.from("medicine_batches").insert(insPayload);
+        if (insRes.error && !Number.isInteger(insPayload.quantity)) {
+          insPayload.quantity = insPayload.quantity > 0 ? Math.max(1, Math.round(insPayload.quantity)) : 0;
+          await MedHub.supabaseClient.from("medicine_batches").insert(insPayload);
+        }
       } catch (e) {}
     }
 

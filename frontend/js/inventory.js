@@ -21,6 +21,22 @@ MedHub.inventory = {
     return { unitsPerPack, packsIn, tabsIn, totalPacks, totalTablets };
   },
 
+  splitPacksToPackAndUnits(totalPacksRaw, packSizeStr = "1x10") {
+    if (totalPacksRaw === "" || totalPacksRaw === null || totalPacksRaw === undefined) {
+      return { packs: "", tablets: "" };
+    }
+    const total = Math.max(0, Number(totalPacksRaw) || 0);
+    const pInfo = MedHub.parsePackSize ? MedHub.parsePackSize(packSizeStr) : { unitsPerPack: 10 };
+    const unitsPerPack = Math.max(1, Number(pInfo.unitsPerPack) || 1);
+    let packs = Math.floor(total + 1e-9);
+    let tablets = Math.round((total - packs) * unitsPerPack);
+    if (tablets >= unitsPerPack) {
+      packs += Math.floor(tablets / unitsPerPack);
+      tablets = tablets % unitsPerPack;
+    }
+    return { packs, tablets };
+  },
+
   async render(container) {
     this.medicinesList = await MedHub.api.getMedicines();
     await Promise.all([
@@ -1131,6 +1147,10 @@ MedHub.inventory = {
     const packParts = (med.pack_size || "1 × 10").split(/×|x/i).map(s => s.trim());
     const stripVal = packParts[0] || "1";
     const unitVal = packParts[1] || "10";
+    const initSplit = this.splitPacksToPackAndUnits(initQty, `${stripVal}x${unitVal}`);
+    const initUnitLbl = MedHub.getUnitLabels ? MedHub.getUnitLabels(med) : { singular: "tab", plural: "tabs", modalUnit: "Tablets/Units" };
+    const initUnitTag = initUnitLbl.singular === "btl" ? "Bottle" : (initUnitLbl.singular === "cap" ? "Capsule" : "Tablet");
+    const initCalc = this.computeStockPacksAndUnits(initSplit.packs, initSplit.tablets, `${stripVal}x${unitVal}`);
 
     modalWrap.innerHTML = `
       <div class="modal-overlay">
@@ -1262,8 +1282,18 @@ MedHub.inventory = {
                   ${MedHub.renderMonthYearPicker("edit-m-exp", initExpiry)}
                 </div>
                 <div class="form-group">
-                  <label class="form-label">Stock Quantity (Packs)</label>
-                  <input type="number" id="edit-m-qty" class="input-field" min="0" step="any" value="${initQty}" placeholder="e.g. 5" />
+                  <label class="form-label">Stock Quantity (Pack &amp; ${initUnitTag})</label>
+                  <div class="stock-pack-tab-grid">
+                    <div class="stock-unit-box">
+                      <input type="number" id="edit-m-qty" class="input-field" min="0" step="1" value="${initSplit.packs}" placeholder="0" />
+                      <span class="stock-unit-tag">Pack</span>
+                    </div>
+                    <div class="stock-unit-box">
+                      <input type="number" id="edit-m-qty-tabs" class="input-field" min="0" step="1" value="${initSplit.tablets}" placeholder="0" />
+                      <span class="stock-unit-tag" id="edit-m-stock-unit-tag">${initUnitTag}</span>
+                    </div>
+                  </div>
+                  <div id="edit-m-stock-total-hint" class="stock-total-hint">${initCalc.totalPacks} pack${initCalc.totalPacks === 1 ? "" : "s"} = ${initCalc.totalTablets} ${initCalc.totalTablets === 1 ? initUnitLbl.singular : initUnitLbl.plural}</div>
                 </div>
               </div>
             </div>
@@ -1315,15 +1345,41 @@ MedHub.inventory = {
       labelName: "Drug Schedule"
     });
 
+    const updateEditStockHint = () => {
+      const sVal = document.getElementById("edit-m-pack-strip")?.value.trim() || "1";
+      const uVal = document.getElementById("edit-m-pack-unit")?.value.trim() || "10";
+      const catVal = document.getElementById("edit-m-category")?.value || med.category || "";
+      const nameVal = document.getElementById("edit-m-name")?.value || med.name || "";
+      const pVal = document.getElementById("edit-m-qty")?.value;
+      const tVal = document.getElementById("edit-m-qty-tabs")?.value;
+      const calc = this.computeStockPacksAndUnits(pVal, tVal, `${sVal}x${uVal}`);
+      const lbl = MedHub.getUnitLabels ? MedHub.getUnitLabels(catVal, nameVal) : { singular: "tab", plural: "tabs" };
+      const unitWord = lbl.singular === "btl" ? "Bottle" : (lbl.singular === "cap" ? "Capsule" : "Tablet");
+      const tagEl = document.getElementById("edit-m-stock-unit-tag");
+      if (tagEl) tagEl.innerText = unitWord;
+      const hintEl = document.getElementById("edit-m-stock-total-hint");
+      if (hintEl) {
+        hintEl.innerText = `${calc.totalPacks} pack${calc.totalPacks === 1 ? "" : "s"} = ${calc.totalTablets} ${calc.totalTablets === 1 ? lbl.singular : lbl.plural}`;
+      }
+    };
+
     const updateEditPackHint = () => {
       const sVal = document.getElementById("edit-m-pack-strip")?.value.trim() || "1";
       const uVal = document.getElementById("edit-m-pack-unit")?.value.trim() || "10";
+      const catVal = document.getElementById("edit-m-category")?.value || med.category || "";
+      const nameVal = document.getElementById("edit-m-name")?.value || med.name || "";
       const info = MedHub.parsePackSize ? MedHub.parsePackSize(`${sVal}x${uVal}`) : { unitsPerPack: 10 };
+      const lbl = MedHub.getUnitLabels ? MedHub.getUnitLabels(catVal, nameVal) : { modalUnit: "Tablets/Units" };
       const el = document.getElementById("edit-m-pack-units-hint");
-      if (el) el.innerText = `1 Pack = ${info.unitsPerPack} Tablets/Units`;
+      if (el) el.innerText = `1 Pack = ${info.unitsPerPack} ${lbl.modalUnit}`;
+      updateEditStockHint();
     };
     document.getElementById("edit-m-pack-strip")?.addEventListener("input", updateEditPackHint);
     document.getElementById("edit-m-pack-unit")?.addEventListener("input", updateEditPackHint);
+    document.getElementById("edit-m-category")?.addEventListener("change", updateEditPackHint);
+    document.getElementById("edit-m-name")?.addEventListener("input", updateEditPackHint);
+    document.getElementById("edit-m-qty")?.addEventListener("input", updateEditStockHint);
+    document.getElementById("edit-m-qty-tabs")?.addEventListener("input", updateEditStockHint);
 
     const form = document.getElementById("edit-medicine-form");
     if (form && MedHub.enableEnterNavigation) {
@@ -1370,13 +1426,15 @@ MedHub.inventory = {
 
       const editBatchNo = document.getElementById("edit-m-batch-no")?.value.trim();
       const editExpiry = MedHub.readMonthYearValue("edit-m-exp");
-      const editQtyRaw = document.getElementById("edit-m-qty")?.value;
-      const hasQty = editQtyRaw !== undefined && editQtyRaw !== "";
+      const editQtyPackRaw = document.getElementById("edit-m-qty")?.value;
+      const editQtyTabsRaw = document.getElementById("edit-m-qty-tabs")?.value;
+      const hasQty = (editQtyPackRaw !== undefined && editQtyPackRaw !== "") || (editQtyTabsRaw !== undefined && editQtyTabsRaw !== "");
+      const editStockCalc = this.computeStockPacksAndUnits(editQtyPackRaw, editQtyTabsRaw, pack_size);
       if (MedHub.api.updateMedicineBatch && (editExpiry || hasQty || (editBatchNo && primaryBatch))) {
         await MedHub.api.updateMedicineBatch(primaryBatch ? primaryBatch.id : null, med.id, {
           batch_no: editBatchNo || initBatchNo || "BT-01",
           expiry_date: editExpiry || initExpiry || undefined,
-          quantity: hasQty ? Math.max(0, Number(editQtyRaw) || 0) : undefined,
+          quantity: hasQty ? editStockCalc.totalPacks : undefined,
           purchase_price,
           selling_price: mrp || med.selling_rate || med.mrp || purchase_price
         });
