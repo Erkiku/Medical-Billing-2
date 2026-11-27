@@ -827,37 +827,82 @@ MedHub.exportToPdf = function (elementId, fileName) {
   MedHub.toast("PDF generate ho raha hai...", "info");
 
   if (window.html2pdf) {
-    // Clone element to offscreen unconstrained container so no modal scroll clips the footer!
     const clone = el.cloneNode(true);
     clone.id = elementId + "-pdf-render-clone";
-    clone.style.width = "680px";
-    clone.style.maxWidth = "680px";
+
+    const isReceipt = elementId === "printable-invoice";
+    const thCount = clone.querySelectorAll("thead th").length;
+    const isWideReport = !isReceipt && (
+      elementId === "formal-inventory-report-sheet" ||
+      elementId === "printable-bills-table" ||
+      thCount >= 7
+    );
+
+    // Strip any scrollbars/hidden wrappers inside clone
+    clone.querySelectorAll(".table-wrap, .modal-body-scroll, [style*='overflow']").forEach(node => {
+      node.style.overflow = "visible";
+      node.style.maxHeight = "none";
+      node.style.height = "auto";
+    });
+
+    // Omit interactive UI Action columns when exporting list tables (e.g. Bills table)
+    if (elementId === "printable-bills-table") {
+      clone.querySelectorAll("tr").forEach(tr => {
+        const lastCell = tr.lastElementChild;
+        if (lastCell && (lastCell.classList?.contains("table-actions-cell") || /action/i.test(lastCell.textContent || ""))) {
+          lastCell.remove();
+        }
+      });
+    }
+
+    const renderWidthPx = isWideReport ? 1040 : (isReceipt ? 760 : 720);
+
+    // IMPORTANT: Keep position static without negative offsets so html2canvas never captures a blank offscreen box
+    clone.style.position = "static";
+    clone.style.left = "auto";
+    clone.style.top = "auto";
+    clone.style.transform = "none";
+    clone.style.width = `${renderWidthPx}px`;
+    clone.style.maxWidth = `${renderWidthPx}px`;
     clone.style.height = "auto";
     clone.style.maxHeight = "none";
     clone.style.overflow = "visible";
-    clone.style.position = "fixed";
-    clone.style.left = "-9999px";
-    clone.style.top = "0";
     clone.style.background = "#ffffff";
-    clone.style.zIndex = "99999";
-    clone.style.margin = "0";
-    clone.style.padding = "20px 24px";
+    clone.style.boxShadow = "none";
+    clone.style.margin = "0 auto";
+    clone.style.padding = isReceipt ? "6px" : "18px 20px";
     clone.style.boxSizing = "border-box";
-    document.body.appendChild(clone);
 
+    if (isWideReport) {
+      const styleFix = document.createElement("style");
+      styleFix.textContent = `
+        #${clone.id} table { width: 100% !important; table-layout: auto !important; border-collapse: collapse !important; font-size: 11px !important; }
+        #${clone.id} th, #${clone.id} td { white-space: normal !important; word-break: break-word !important; padding: 6px 6px !important; }
+        #${clone.id} tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+      `;
+      clone.prepend(styleFix);
+    }
+
+    const rowCount = clone.querySelectorAll("tbody tr").length;
+    const safeScale = rowCount > 50 ? 1.15 : (rowCount > 20 ? 1.4 : 1.75);
     const opt = {
-      margin: [4, 4, 6, 4],
+      margin: isReceipt ? [5, 5, 5, 5] : [6, 6, 8, 6],
       filename: `${fileName}.pdf`,
-      image: { type: "jpeg", quality: 0.98 },
-      html2canvas: { 
-        scale: 2, 
-        useCORS: true, 
-        allowTaint: true,
+      image: { type: "jpeg", quality: 0.96 },
+      pagebreak: { mode: ["css", "legacy"], avoid: ["tr", ".classic-total-row", ".invoice-summary"] },
+      html2canvas: {
+        scale: safeScale,
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: "#ffffff",
         logging: false,
         scrollY: 0,
-        scrollX: 0
+        scrollX: 0,
+        windowWidth: renderWidthPx + 40
       },
-      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" }
+      jsPDF: isReceipt
+        ? { unit: "mm", format: "a5", orientation: "landscape" }
+        : { unit: "mm", format: "a4", orientation: isWideReport ? "landscape" : "portrait" }
     };
 
     let finished = false;
@@ -871,7 +916,7 @@ MedHub.exportToPdf = function (elementId, fileName) {
         console.warn("PDF generation timeout, opening print preview");
         window.print();
       }
-    }, 4500);
+    }, 20000);
 
     html2pdf().set(opt).from(clone).save().then(() => {
       finished = true;

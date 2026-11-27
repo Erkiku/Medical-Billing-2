@@ -458,6 +458,7 @@ MedHub.inventory = {
     if (!reportWrap) {
       reportWrap = document.createElement("div");
       reportWrap.id = "temp-inventory-pdf-wrap";
+      reportWrap.style.cssText = "position: absolute; left: 0; top: 0; width: 1040px; pointer-events: none; z-index: -1;";
       document.body.appendChild(reportWrap);
     }
 
@@ -558,6 +559,7 @@ MedHub.inventory = {
     `;
 
     MedHub.exportToPdf("formal-inventory-report-sheet", `${(store.store_name || "Pharmacy").replace(/[^a-zA-Z0-9]/g, '_')}_Stock_Report`);
+    try { reportWrap.remove(); } catch (e) {}
   },
 
   // Reusable helper to bind inline quick-add (+ Add) controls for Company, Category, Drug Schedule
