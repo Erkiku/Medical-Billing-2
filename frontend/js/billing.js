@@ -1128,9 +1128,11 @@ MedHub.billing = {
                   <div class="classic-header-info">
                     <h2 class="classic-store-title">${store.store_name || "MEDICAL STORE"}</h2>
                     ${fullAddressLine ? `<p class="classic-store-address">${fullAddressLine}</p>` : ""}
-                    ${store.phone ? `<p class="classic-store-reg">Ph : ${store.phone}</p>` : ""}
-                    ${lic.gstin ? `<p class="classic-store-reg">GSTIN : ${lic.gstin}</p>` : ""}
-                    ${lic.dlDisplay ? `<p class="classic-store-reg">D.L. No : ${lic.dlDisplay}</p>` : ""}
+                    <div class="classic-store-reg-row">
+                      ${store.phone ? `<span class="classic-store-reg">Ph: ${store.phone}</span>` : ""}
+                      ${lic.gstin ? `<span class="classic-store-reg">GSTIN: ${lic.gstin}</span>` : ""}
+                      ${lic.dlDisplay ? `<span class="classic-store-reg">D.L.: ${lic.dlDisplay}</span>` : ""}
+                    </div>
                   </div>
                   <div class="classic-top-qr-card">
                     <div class="classic-qr-box">
@@ -1138,28 +1140,30 @@ MedHub.billing = {
                     </div>
                     <div class="classic-top-qr-meta">
                       <strong>SCAN & PAY</strong>
-                      <span>UPI ID: ${upiId}</span>
+                      <span class="classic-upi-label">UPI ID:</span>
+                      <span class="classic-upi-val">${upiId}</span>
                     </div>
                   </div>
                 </div>
 
-                <!-- PATIENT & DOCTOR TWO-COLUMN METADATA -->
+                <!-- PATIENT & DOCTOR TWO-COLUMN METADATA (WITH INNER ZERO-SPACE STAMP) -->
                 <div class="classic-meta-grid">
                   <div>
                     <p><strong>Patient Name :</strong> ${(bill.customer_name || "Walk-in Customer").toUpperCase()}</p>
                     <p><strong>Doctor Name :</strong> ${(bill.doctor_name || "Self").toUpperCase()}</p>
                   </div>
-                  <div style="text-align: right;">
-                    <div style="margin-bottom: 4px;">
-                      ${isPaid ? `<span class="classic-stamp-paid">PAID</span>` : `<span class="classic-stamp-due">DUE</span>`}
-                    </div>
+                  <div class="classic-meta-stamp-inner" aria-hidden="true">
+                    ${isPaid ? `<span class="classic-stamp-paid">PAID</span>` : `<span class="classic-stamp-due">DUE</span>`}
+                  </div>
+                  <div class="classic-meta-right">
                     <p><strong>Invoice No :</strong> A01${String(bill.bill_no).padStart(4, "0")}</p>
                     <p><strong>Date :</strong> ${invoiceDateStr}</p>
                   </div>
                 </div>
 
-                <!-- EXACT TABLE STRUCTURE (Sn., Product, OLD MRP, Batch, QTY, PACK, EXP, MRP, Amount) -->
-                <table class="classic-receipt-table">
+                <!-- MAXIMIZED MEDICINE ENTRY SECTION (Sn., Product, OLD MRP, Batch, QTY, PACK, EXP, MRP, Amount) -->
+                <div class="classic-medicine-area">
+                  <table class="classic-receipt-table">
                   <thead>
                     <tr>
                       <th style="width: 28px; text-align: center;">Sn.</th>
@@ -1198,7 +1202,8 @@ MedHub.billing = {
                       `;
                     }).join("")}
                   </tbody>
-                </table>
+                  </table>
+                </div>
 
                 <!-- TOTAL & AMOUNT IN WORDS -->
                 ${(Number(bill.discount) > 0 || Number(bill.gst_amount) > 0 || !isPaid) ? `
