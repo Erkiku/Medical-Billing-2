@@ -1153,6 +1153,93 @@ MedHub.alert = function (message, options = {}) {
   });
 };
 
+MedHub.LOW_STOCK_THRESHOLD_PACKS = 1;
+
+MedHub.computeStockStatus = function (availableQty) {
+  const qty = Number(availableQty) || 0;
+  if (qty <= 0) return "out";
+  if (qty <= MedHub.LOW_STOCK_THRESHOLD_PACKS) return "low";
+  return "in";
+};
+
+MedHub.inferMedicineCategory = function (name, availableCategories = []) {
+  const raw = String(name || "").trim();
+  if (!raw) return "";
+
+  let canonical = "";
+  if (/\b(drop|drops|drp|eye\s*drop|ear\s*drop|nasal\s*drop)\b/i.test(raw)) {
+    canonical = "Drops";
+  } else if (/\b(syp|syrup|susp|suspension|elixir|tonic|oral\s*sol|solution|liq|liquid)\b/i.test(raw) || /\b\d+\s*ml\b/i.test(raw)) {
+    if (/\b(inj|injection|iv|infusion|vial|amp)\b/i.test(raw)) canonical = "Injection";
+    else canonical = "Syrup";
+  } else if (/\b(cap|caps|capsule|capsules|softgel)\b/i.test(raw)) {
+    canonical = "Capsule";
+  } else if (/\b(inj|injection|iv|infusion|vial|amp|ampoule)\b/i.test(raw)) {
+    canonical = "Injection";
+  } else if (/\b(oint|ointment|cream|crm|gel|lotion|balm|paste|liniment)\b/i.test(raw)) {
+    canonical = "Ointment / Cream";
+  } else if (/\b(powder|pwd|sachet|granules|ors)\b/i.test(raw)) {
+    canonical = "Powder / Sachet";
+  } else if (/\b(spray|inhaler|rotacap|resp|respule|nasal)\b/i.test(raw)) {
+    canonical = "Inhaler / Spray";
+  } else if (/\b(soap|wash|shampoo|bandage|gauze|syringe|mask|gloves|surgical)\b/i.test(raw)) {
+    canonical = "Surgical / Care";
+  } else if (/\b(tab|tabs|tablet|tablets|dt|md|sr|er|cr|xl|pr)\b/i.test(raw)) {
+    canonical = "Tablet";
+  } else {
+    return "";
+  }
+
+  const list = Array.isArray(availableCategories) && availableCategories.length
+    ? availableCategories
+    : (MedHub.state?.categories || []);
+  const names = list.map(c => (typeof c === "string" ? c : c?.name)).filter(Boolean);
+  const lowerCan = canonical.toLowerCase();
+  const exact = names.find(n => n.toLowerCase() === lowerCan);
+  if (exact) return exact;
+  const fuzzy = names.find(n =>
+    n.toLowerCase().includes(lowerCan.split("/")[0].trim()) ||
+    lowerCan.includes(n.toLowerCase())
+  );
+  return fuzzy || canonical;
+};
+
+MedHub.getUnitLabels = function (medOrCategory, maybeName = "") {
+  const catRaw = (medOrCategory && typeof medOrCategory === "object")
+    ? String(medOrCategory.category || "")
+    : String(medOrCategory || "");
+  const nameRaw = (medOrCategory && typeof medOrCategory === "object")
+    ? String(medOrCategory.name || "")
+    : String(maybeName || "");
+  const inferred = (!catRaw || catRaw.toLowerCase() === "tablet")
+    ? (MedHub.inferMedicineCategory(nameRaw) || catRaw)
+    : catRaw;
+  const key = `${inferred} ${catRaw}`.toLowerCase();
+
+  if (key.includes("drop") || key.includes("syrup") || key.includes("susp") || key.includes("liquid") || key.includes("tonic")) {
+    return { singular: "btl", plural: "btls", packUnit: "btl/pk", modalUnit: "Bottles/Units" };
+  }
+  if (key.includes("capsul")) {
+    return { singular: "cap", plural: "caps", packUnit: "caps/pk", modalUnit: "Capsules/Units" };
+  }
+  if (key.includes("oint") || key.includes("cream") || key.includes("gel") || key.includes("lotion") || key.includes("tube")) {
+    return { singular: "tube", plural: "tubes", packUnit: "tube/pk", modalUnit: "Tubes/Units" };
+  }
+  if (key.includes("inj") || key.includes("vial")) {
+    return { singular: "vial", plural: "vials", packUnit: "vial/pk", modalUnit: "Vials/Units" };
+  }
+  if (key.includes("powder") || key.includes("sachet")) {
+    return { singular: "sach", plural: "sach", packUnit: "sach/pk", modalUnit: "Sachets/Units" };
+  }
+  if (key.includes("spray") || key.includes("inhaler")) {
+    return { singular: "pc", plural: "pcs", packUnit: "pcs/pk", modalUnit: "Units/Pack" };
+  }
+  if (key.includes("surg") || key.includes("soap") || key.includes("wash")) {
+    return { singular: "pc", plural: "pcs", packUnit: "pcs/pk", modalUnit: "Pieces/Units" };
+  }
+  return { singular: "tab", plural: "tabs", packUnit: "tabs/pk", modalUnit: "Tablets/Units" };
+};
+
 MedHub.renderSecurityLockedPanel = function ({
   title = "Details Locked by Security PIN",
   message = "Full medicine, pricing, invoice, and financial details are hidden while Security Lock is active. Enter your Security PIN once to unlock full details.",

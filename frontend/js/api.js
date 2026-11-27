@@ -2143,12 +2143,19 @@ MedHub.api = {
         if (!error && Array.isArray(data)) {
           list = data.map(m => {
             const qty = Number(m.available_qty) || 0;
-            const reorder = Number(m.reorder_level) || 10;
+            const normMrp = Number(m.mrp) > 0 ? Number(m.mrp) : (Number(m.selling_rate) || 0);
+            const inferredCat = typeof MedHub.inferMedicineCategory === "function" ? MedHub.inferMedicineCategory(m.name) : "";
+            const normCat = (!m.category || (m.category === "Tablet" && inferredCat && inferredCat !== "Tablet"))
+              ? (inferredCat || "Tablet")
+              : m.category;
             return {
               ...m,
+              mrp: normMrp,
+              selling_rate: Number(m.selling_rate) > 0 ? Number(m.selling_rate) : normMrp,
+              category: normCat,
               available_qty: qty,
               nearest_expiry: m.nearest_expiry || "—",
-              status: qty <= 0 ? "out" : (qty <= reorder ? "low" : "in")
+              status: MedHub.computeStockStatus ? MedHub.computeStockStatus(qty) : (qty <= 0 ? "out" : (qty <= 1 ? "low" : "in"))
             };
           });
         } else {
@@ -2165,12 +2172,19 @@ MedHub.api = {
           if (!medErr && Array.isArray(rawMeds)) {
             list = rawMeds.map(m => {
               const qty = Number(m.available_qty) || 0;
-              const reorder = Number(m.reorder_level) || 10;
+              const normMrp = Number(m.mrp) > 0 ? Number(m.mrp) : (Number(m.selling_rate) || 0);
+              const inferredCat = typeof MedHub.inferMedicineCategory === "function" ? MedHub.inferMedicineCategory(m.name) : "";
+              const normCat = (!m.category || (m.category === "Tablet" && inferredCat && inferredCat !== "Tablet"))
+                ? (inferredCat || "Tablet")
+                : m.category;
               return {
                 ...m,
+                mrp: normMrp,
+                selling_rate: Number(m.selling_rate) > 0 ? Number(m.selling_rate) : normMrp,
+                category: normCat,
                 available_qty: qty,
                 nearest_expiry: m.nearest_expiry || "—",
-                status: qty <= 0 ? "out" : (qty <= reorder ? "low" : "in")
+                status: MedHub.computeStockStatus ? MedHub.computeStockStatus(qty) : (qty <= 0 ? "out" : (qty <= 1 ? "low" : "in"))
               };
             });
           }
@@ -2343,14 +2357,22 @@ MedHub.api = {
 
     const newId = createdMed ? createdMed.id : "med-" + Date.now();
     const qty = (initialBatch && Number(initialBatch.quantity)) || 0;
+    const normMrp = Number(medData.mrp) > 0 ? Number(medData.mrp) : (Number(medData.selling_rate) || 0);
+    const inferredCat = typeof MedHub.inferMedicineCategory === "function" ? MedHub.inferMedicineCategory(medData.name) : "";
+    const normCat = (!medData.category || (medData.category === "Tablet" && inferredCat && inferredCat !== "Tablet"))
+      ? (inferredCat || "Tablet")
+      : medData.category;
     const finalMed = {
       id: newId,
       store_id: storeId || undefined,
       ...medData,
-      mrp: Number(medData.mrp) || 0,
+      category: normCat,
+      mrp: normMrp,
+      selling_rate: Number(medData.selling_rate) > 0 ? Number(medData.selling_rate) : normMrp,
+      reorder_level: 1,
       available_qty: qty,
       nearest_expiry: (initialBatch && initialBatch.expiry_date) || "—",
-      status: qty <= 0 ? "out" : (qty <= (Number(medData.reorder_level) || 10) ? "low" : "in"),
+      status: MedHub.computeStockStatus ? MedHub.computeStockStatus(qty) : (qty <= 0 ? "out" : (qty <= 1 ? "low" : "in")),
       is_active: true
     };
 
@@ -2517,11 +2539,26 @@ MedHub.api = {
     if (med) {
       med.available_qty = (Number(med.available_qty) || 0) + qty;
       med.nearest_expiry = expiry;
-      const reorder = Number(med.reorder_level) || 10;
-      med.status = med.available_qty <= 0 ? "out" : (med.available_qty <= reorder ? "low" : "in");
+      med.status = MedHub.computeStockStatus ? MedHub.computeStockStatus(med.available_qty) : (med.available_qty <= 0 ? "out" : (med.available_qty <= 1 ? "low" : "in"));
       if (purRate > 0) med.purchase_price = purRate;
-      if (selRate > 0) med.selling_rate = selRate;
+      if (selRate > 0) {
+        med.selling_rate = selRate;
+        med.mrp = Number(batchData.mrp) > 0 ? Number(batchData.mrp) : selRate;
+      }
       this._saveLocalMedicines(localMeds);
+      if (MedHub.supabaseClient && medicineId && this._isUuid(String(medicineId))) {
+        try {
+          const medUpd = {};
+          if (purRate > 0) medUpd.purchase_price = purRate;
+          if (selRate > 0) {
+            medUpd.selling_rate = selRate;
+            medUpd.mrp = Number(batchData.mrp) > 0 ? Number(batchData.mrp) : selRate;
+          }
+          if (Object.keys(medUpd).length) {
+            await MedHub.supabaseClient.from("medicines").update(medUpd).eq("id", medicineId);
+          }
+        } catch (e) {}
+      }
     }
     return true;
   },
@@ -3007,7 +3044,7 @@ MedHub.api = {
       const med = localMeds.find(m => String(m.id) === String(it.medicine_id));
       if (med) {
         med.available_qty = Math.max(0, (Number(med.available_qty) || 0) - Number(it.quantity));
-        med.status = med.available_qty === 0 ? "out" : (med.available_qty <= (Number(med.reorder_level) || 10) ? "low" : "in");
+        med.status = MedHub.computeStockStatus ? MedHub.computeStockStatus(med.available_qty) : (med.available_qty <= 0 ? "out" : (med.available_qty <= 1 ? "low" : "in"));
       }
       const b = localBatches.find(bat => String(bat.id) === String(it.batch_id));
       if (b) {
@@ -3223,7 +3260,7 @@ MedHub.api = {
         const med = localMeds.find(m => String(m.id) === String(ni.medicine_id));
         if (med) {
           med.available_qty = Math.max(0, (Number(med.available_qty) || 0) - (Number(ni.quantity) || 0));
-          med.status = med.available_qty === 0 ? "out" : (med.available_qty <= (Number(med.reorder_level) || 10) ? "low" : "in");
+          med.status = MedHub.computeStockStatus ? MedHub.computeStockStatus(med.available_qty) : (med.available_qty <= 0 ? "out" : (med.available_qty <= 1 ? "low" : "in"));
         }
         const bat = localBatches.find(b => String(b.id) === String(ni.batch_id));
         if (bat) bat.quantity = Math.max(0, (Number(bat.quantity) || 0) - (Number(ni.quantity) || 0));
@@ -3499,9 +3536,12 @@ MedHub.api = {
 
       if (existingMed) {
         existingMed.available_qty = (Number(existingMed.available_qty) || 0) + qty;
-        existingMed.status = existingMed.available_qty <= 0 ? "out" : (existingMed.available_qty <= (existingMed.reorder_level || 10) ? "low" : "in");
+        existingMed.status = MedHub.computeStockStatus ? MedHub.computeStockStatus(existingMed.available_qty) : (existingMed.available_qty <= 0 ? "out" : (existingMed.available_qty <= 1 ? "low" : "in"));
         if (rate > 0) existingMed.purchase_price = rate;
-        if (mrp > 0) existingMed.mrp = mrp;
+        if (mrp > 0) {
+          existingMed.mrp = mrp;
+          existingMed.selling_rate = mrp;
+        }
         if (item.gst_percent !== undefined) existingMed.gst_percent = gstPct;
 
         const existingBatch = localBatches.find(b => String(b.medicine_id) === String(existingMed.id) && b.batch_no === batchNo);
@@ -3527,23 +3567,24 @@ MedHub.api = {
       } else {
         // Create new medicine and batch
         const newMedId = "med-" + Date.now() + "-" + Math.floor(Math.random() * 100);
+        const inferredCat = typeof MedHub.inferMedicineCategory === "function" ? MedHub.inferMedicineCategory(medName) : "";
         const newMed = {
           id: newMedId,
           store_id: storeId || undefined,
           name: medName,
           generic_name: medName,
           company: item.company || "Pharma Distributor",
-          category: "Tablet",
+          category: item.category || inferredCat || "Tablet",
           pack_size: item.pack_size || "1x10",
           purchase_price: rate,
           selling_rate: mrp,
           mrp: mrp,
           gst_percent: gstPct,
-          reorder_level: 10,
+          reorder_level: 1,
           rack_location: "General",
           available_qty: qty,
           nearest_expiry: normExp,
-          status: "in"
+          status: MedHub.computeStockStatus ? MedHub.computeStockStatus(qty) : (qty <= 0 ? "out" : (qty <= 1 ? "low" : "in"))
         };
 
         if (MedHub.supabaseClient) {

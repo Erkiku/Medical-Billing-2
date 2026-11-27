@@ -205,9 +205,20 @@ MedHub.inventory = {
 
     return list.map((m, idx) => {
       const isScheduleH = m.drug_schedule && m.drug_schedule.includes("H");
-      const statusBadge = m.status === "out" ? 
+      const qtyNum = Number(m.available_qty) || 0;
+      const computedStatus = MedHub.computeStockStatus ? MedHub.computeStockStatus(qtyNum) : (qtyNum <= 0 ? "out" : (qtyNum <= 1 ? "low" : "in"));
+      const inferredCat = MedHub.inferMedicineCategory ? MedHub.inferMedicineCategory(m.name) : "";
+      const displayCat = (!m.category || (m.category === "Tablet" && inferredCat && inferredCat !== "Tablet"))
+        ? (inferredCat || "Tablet")
+        : m.category;
+      const unitLbl = MedHub.getUnitLabels ? MedHub.getUnitLabels(displayCat, m.name) : { singular: "tab", plural: "tabs", packUnit: "tabs/pk" };
+      const packCountUnits = MedHub.parsePackSize ? MedHub.parsePackSize(m.pack_size || "1 × 10").unitsPerPack : 10;
+      const totalInnerUnits = Number((qtyNum * packCountUnits).toFixed(2));
+      const mrpNum = Number(m.mrp) > 0 ? Number(m.mrp) : (Number(m.selling_rate) || 0);
+      const sellNum = Number(m.selling_rate) > 0 ? Number(m.selling_rate) : mrpNum;
+      const statusBadge = computedStatus === "out" ? 
         `<span class="badge-status status-out">Out of Stock</span>` : 
-        (m.status === "low" ? `<span class="badge-status status-low">Low Stock</span>` : `<span class="badge-status status-in">In Stock</span>`);
+        (computedStatus === "low" ? `<span class="badge-status status-low">Low Stock</span>` : `<span class="badge-status status-in">In Stock</span>`);
 
       return `
         <tr>
@@ -217,7 +228,7 @@ MedHub.inventory = {
             ${m.salt_composition ? `<div class="sub-text">${m.salt_composition}</div>` : (m.generic_name ? `<div class="sub-text">${m.generic_name}</div>` : "")}
           </td>
           <td class="cell-nowrap">${m.company || "—"}</td>
-          <td class="cell-nowrap"><span class="badge-cat">${m.category || "Tablet"}</span></td>
+          <td class="cell-nowrap"><span class="badge-cat">${displayCat}</span></td>
           <td class="cell-nowrap">
             <span class="badge-schedule ${isScheduleH ? 'schedule-h' : 'schedule-gen'}">
               ${m.drug_schedule || "General"}
@@ -225,13 +236,13 @@ MedHub.inventory = {
           </td>
           <td class="cell-nowrap">
             ${m.pack_size || "1 × 10"}
-            <div style="font-size:10px;color:#64748b;">${(MedHub.parsePackSize ? MedHub.parsePackSize(m.pack_size || "1 × 10").unitsPerPack : 10)} tabs/pk</div>
+            <div style="font-size:10px;color:#64748b;">${packCountUnits} ${unitLbl.packUnit}</div>
           </td>
-          <td class="cell-nowrap">₹${Number(m.mrp).toFixed(2)}</td>
-          <td class="cell-nowrap"><strong>₹${Number(m.selling_rate || m.mrp).toFixed(2)}</strong></td>
+          <td class="cell-nowrap">₹${mrpNum.toFixed(2)}</td>
+          <td class="cell-nowrap"><strong>₹${sellNum.toFixed(2)}</strong></td>
           <td class="cell-nowrap">
-            <strong style="font-size:14px;">${m.available_qty || 0}</strong>
-            <div style="font-size:10px;color:#64748b;">${(Number(m.available_qty || 0) * (MedHub.parsePackSize ? MedHub.parsePackSize(m.pack_size || "1 × 10").unitsPerPack : 10))} tabs</div>
+            <strong style="font-size:14px;">${qtyNum}</strong>
+            <div style="font-size:10px;color:#64748b;">${totalInnerUnits} ${totalInnerUnits === 1 ? unitLbl.singular : unitLbl.plural}</div>
           </td>
           <td class="cell-nowrap">${MedHub.formatExpiry ? MedHub.formatExpiry(m.nearest_expiry) : MedHub.formatDate(m.nearest_expiry)}</td>
           <td class="cell-nowrap">${statusBadge}</td>
@@ -375,11 +386,10 @@ MedHub.inventory = {
   },
 
   updateStatsAndTable() {
-    // 1. Dynamic recalculation of status for all items
+    // 1. Dynamic recalculation of status for all items (Low Stock when <= 1 pack)
     this.medicinesList.forEach(m => {
       const qty = Number(m.available_qty) || 0;
-      const reorder = Number(m.reorder_level) || 10;
-      m.status = qty <= 0 ? "out" : (qty <= reorder ? "low" : "in");
+      m.status = MedHub.computeStockStatus ? MedHub.computeStockStatus(qty) : (qty <= 0 ? "out" : (qty <= 1 ? "low" : "in"));
     });
 
     const totalSkus = this.medicinesList.length;
@@ -730,17 +740,43 @@ MedHub.inventory = {
               </div>
             </div>
 
-            <!-- SUB-CARD: OPTIONAL INITIAL BATCH DETAILS -->
-            <div class="modal-subcard-batch" style="margin-top: 18px;">
-              <h4 class="subcard-title">Optional: Initial Batch & Expiry</h4>
-              <div class="form-row-2" style="margin-top: 10px;">
+            <!-- ROW 3B: Purchase Price, MRP & GST Rate -->
+            <div class="form-row-3" style="margin-top: 14px;">
+              <div class="form-group">
+                <label class="form-label">Purchase Price (₹)</label>
+                <input type="number" step="0.01" min="0" id="m-purchase-price" class="input-field" placeholder="e.g. 24.50" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">MRP (₹) <span class="req">*</span></label>
+                <input type="number" step="0.01" min="0" id="m-mrp" class="input-field" placeholder="e.g. 35.00" required />
+              </div>
+              <div class="form-group">
+                <label class="form-label">GST Rate (%)</label>
+                <select id="m-gst" class="input-field select-field">
+                  <option value="12" selected>12%</option>
+                  <option value="0">0%</option>
+                  <option value="5">5%</option>
+                  <option value="18">18%</option>
+                  <option value="28">28%</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- SUB-CARD: OPTIONAL INITIAL BATCH & STOCK (1 PACK BOX) -->
+            <div class="modal-subcard-batch" style="margin-top: 16px;">
+              <h4 class="subcard-title">Initial Batch, Expiry &amp; Add Stock</h4>
+              <div class="form-row-3" style="margin-top: 10px;">
                 <div class="form-group">
                   <label class="form-label">Batch Number</label>
                   <input type="text" id="m-batch-no" class="input-field" placeholder="e.g. B-998" />
                 </div>
                 <div class="form-group">
-                  <label class="form-label">Expiry (Month & Year only)</label>
+                  <label class="form-label">Expiry (Month &amp; Year only)</label>
                   ${MedHub.renderMonthYearPicker("m-exp", "")}
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Add Stock (Packs)</label>
+                  <input type="number" id="m-quantity" class="input-field" min="0" step="1" placeholder="e.g. 1 pack" />
                 </div>
               </div>
             </div>
@@ -797,12 +833,38 @@ MedHub.inventory = {
     const updateAddPackHint = () => {
       const sVal = document.getElementById("m-pack-strip")?.value.trim() || "1";
       const uVal = document.getElementById("m-pack-unit")?.value.trim() || "10";
+      const catVal = document.getElementById("m-category")?.value || "";
+      const nameVal = document.getElementById("m-name")?.value || "";
       const info = MedHub.parsePackSize ? MedHub.parsePackSize(`${sVal}x${uVal}`) : { unitsPerPack: 10 };
+      const lbl = MedHub.getUnitLabels ? MedHub.getUnitLabels(catVal, nameVal) : { modalUnit: "Tablets/Units" };
       const el = document.getElementById("m-pack-units-hint");
-      if (el) el.innerText = `1 Pack = ${info.unitsPerPack} Tablets/Units`;
+      if (el) el.innerText = `1 Pack = ${info.unitsPerPack} ${lbl.modalUnit}`;
     };
     document.getElementById("m-pack-strip")?.addEventListener("input", updateAddPackHint);
     document.getElementById("m-pack-unit")?.addEventListener("input", updateAddPackHint);
+
+    let categoryManualOverride = false;
+    const catSelectEl = document.getElementById("m-category");
+    catSelectEl?.addEventListener("change", () => {
+      categoryManualOverride = Boolean(catSelectEl.value);
+      updateAddPackHint();
+    });
+
+    document.getElementById("m-name")?.addEventListener("input", (e) => {
+      if (categoryManualOverride || !MedHub.inferMedicineCategory) return;
+      const inferred = MedHub.inferMedicineCategory(e.target.value, categoriesList);
+      if (inferred && catSelectEl) {
+        let opt = Array.from(catSelectEl.options).find(o => o.value.toLowerCase() === inferred.toLowerCase());
+        if (!opt) {
+          opt = document.createElement("option");
+          opt.value = inferred;
+          opt.textContent = inferred;
+          catSelectEl.appendChild(opt);
+        }
+        catSelectEl.value = opt.value;
+      }
+      updateAddPackHint();
+    });
 
     // Form Submit: Save Medicine
     const form = document.getElementById("add-medicine-form");
@@ -816,7 +878,7 @@ MedHub.inventory = {
       const company = document.getElementById("m-company").value.trim();
       const generic_name = document.getElementById("m-generic").value.trim();
       const salt_composition = document.getElementById("m-salt").value.trim();
-      const category = document.getElementById("m-category").value;
+      const category = document.getElementById("m-category").value || (MedHub.inferMedicineCategory ? MedHub.inferMedicineCategory(name, categoriesList) : "") || "Tablet";
       const drug_schedule = document.getElementById("m-schedule").value;
       const stripVal = document.getElementById("m-pack-strip")?.value.trim() || "1";
       const unitVal = document.getElementById("m-pack-unit")?.value.trim() || "10";
@@ -830,17 +892,17 @@ MedHub.inventory = {
       const selling_rate = sellingRateInput ? (Number(sellingRateInput.value) || mrp) : mrp;
       const gst_percent = document.getElementById("m-gst")?.value;
 
-      // Initial batch fields (Purchase Price, GST Rate & Quantity removed from Add Medicine modal)
+      // Initial batch & single stock pack box
       const batch_no = document.getElementById("m-batch-no")?.value.trim() || "";
       const expiry_date = MedHub.readMonthYearValue("m-exp");
       const qtyInputVal = document.getElementById("m-quantity")?.value;
-      const quantityNum = qtyInputVal ? Number(qtyInputVal) : 0;
+      const quantityNum = Math.max(0, qtyInputVal ? Number(qtyInputVal) : 0);
 
       let initialBatch = null;
-      if (batch_no) {
+      if (batch_no || quantityNum > 0) {
         initialBatch = {
-          batch_no: batch_no,
-          expiry_date: expiry_date || new Date(Date.now() + 365*86400000).toISOString().slice(0, 10),
+          batch_no: batch_no || ("BT-" + Date.now().toString().slice(-4)),
+          expiry_date: expiry_date || new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10),
           quantity: quantityNum
         };
       }
@@ -916,14 +978,18 @@ MedHub.inventory = {
               ${MedHub.renderMonthYearPicker("stock-exp", "2027-11", { required: true })}
             </div>
 
-            <div class="form-row-2" style="margin-bottom: 16px;">
+            <div class="form-row-3" style="margin-bottom: 16px;">
               <div class="form-group">
-                <label class="form-label">Quantity (Units) <span class="req">*</span></label>
-                <input type="number" id="stock-qty" class="input-field" min="1" placeholder="e.g. 50" required />
+                <label class="form-label">Add Stock (Packs) <span class="req">*</span></label>
+                <input type="number" id="stock-qty" class="input-field" min="1" step="1" placeholder="e.g. 1 pack" required />
               </div>
               <div class="form-group">
                 <label class="form-label">Purchase Rate (₹)</label>
-                <input type="number" step="0.01" id="stock-pur-rate" class="input-field" placeholder="25.00" value="${med.purchase_price || ''}" />
+                <input type="number" step="0.01" min="0" id="stock-pur-rate" class="input-field" placeholder="25.00" value="${med.purchase_price || ''}" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">MRP (₹)</label>
+                <input type="number" step="0.01" min="0" id="stock-mrp" class="input-field" placeholder="35.00" value="${Number(med.mrp) > 0 ? Number(med.mrp) : (med.selling_rate || '')}" />
               </div>
             </div>
 
@@ -950,9 +1016,10 @@ MedHub.inventory = {
       const expiry_date = MedHub.readMonthYearValue("stock-exp");
       const qty = parseInt(document.getElementById("stock-qty").value, 10);
       const pur_rate = parseFloat(document.getElementById("stock-pur-rate").value) || med.purchase_price || 0;
+      const mrpVal = parseFloat(document.getElementById("stock-mrp")?.value) || Number(med.mrp) || Number(med.selling_rate) || 0;
 
       if (!batch_no || !expiry_date || isNaN(qty) || qty <= 0) {
-        MedHub.toast("Kripya Batch Number, Expiry (Month/Year) aur valid Quantity darj karein", "warning");
+        MedHub.toast("Please enter Batch Number, Expiry, and valid Stock Packs", "warning");
         return;
       }
 
@@ -967,11 +1034,12 @@ MedHub.inventory = {
         expiry_date,
         quantity: qty,
         purchase_price: pur_rate,
-        selling_price: med.selling_rate || med.mrp || 0
+        mrp: mrpVal,
+        selling_price: mrpVal
       });
 
       if (ok) {
-        MedHub.toast(`New stock (${qty} units) successfully added to ${med.name}!`, "success");
+        MedHub.toast(`Added ${qty} pack(s) to ${med.name}!`, "success");
         closeStockModal();
         this.medicinesList = await MedHub.api.getMedicines();
         this.updateStatsAndTable();
@@ -1108,10 +1176,14 @@ MedHub.inventory = {
               </div>
             </div>
 
-            <div class="form-row-2" style="margin-top: 14px;">
+            <div class="form-row-3" style="margin-top: 14px;">
               <div class="form-group">
                 <label class="form-label">Purchase Price (₹)</label>
-                <input type="number" step="0.01" id="edit-m-purchase-price" class="input-field" value="${med.purchase_price || ''}" />
+                <input type="number" step="0.01" min="0" id="edit-m-purchase-price" class="input-field" value="${med.purchase_price || ''}" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">MRP (₹) <span class="req">*</span></label>
+                <input type="number" step="0.01" min="0" id="edit-m-mrp" class="input-field" value="${Number(med.mrp) > 0 ? Number(med.mrp) : (med.selling_rate || '')}" required />
               </div>
               <div class="form-group">
                 <label class="form-label">GST Rate (%)</label>
@@ -1223,6 +1295,7 @@ MedHub.inventory = {
       const pack_size = `${stripV} × ${unitV}`;
       const barcode = document.getElementById("edit-m-barcode").value.trim();
       const purchase_price = parseFloat(document.getElementById("edit-m-purchase-price").value) || 0;
+      const mrp = parseFloat(document.getElementById("edit-m-mrp")?.value) || Number(med.mrp) || Number(med.selling_rate) || purchase_price;
       const gst_percent = parseInt(document.getElementById("edit-m-gst").value, 10) || 12;
       const rack_location = document.getElementById("edit-m-rack").value.trim();
 
@@ -1242,6 +1315,8 @@ MedHub.inventory = {
         pack_size,
         barcode,
         purchase_price,
+        mrp,
+        selling_rate: mrp,
         gst_percent,
         rack_location
       });
@@ -1256,7 +1331,7 @@ MedHub.inventory = {
           expiry_date: editExpiry || initExpiry || undefined,
           quantity: hasQty ? Math.max(0, parseInt(editQtyRaw, 10) || 0) : undefined,
           purchase_price,
-          selling_price: med.selling_rate || med.mrp || purchase_price
+          selling_price: mrp || med.selling_rate || med.mrp || purchase_price
         });
       }
 

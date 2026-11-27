@@ -253,22 +253,29 @@ MedHub.billing = {
     const unitsPerPack = Math.max(1, Number(item.units_per_pack || packInfo.unitsPerPack || 10));
 
     const hasExplicitPerTab = item.per_tab_mrp !== undefined;
-    const stripMrp = Number(
-      item.strip_mrp ?? (hasExplicitPerTab ? (Number(item.per_tab_mrp) * unitsPerPack) : (item.mrp ?? item.selling_rate ?? item.rate ?? 0))
-    );
+    const rawFallbackMrp = Number(item.mrp) > 0
+      ? Number(item.mrp)
+      : (Number(item.selling_rate) > 0 ? Number(item.selling_rate) : (Number(item.rate) || Number(item.chosenBatch?.selling_price) || 0));
+    const stripMrp = Number(item.strip_mrp) > 0
+      ? Number(item.strip_mrp)
+      : (hasExplicitPerTab ? (Number(item.per_tab_mrp) * unitsPerPack) : rawFallbackMrp);
     const perTabPrice = hasExplicitPerTab
       ? Number(item.per_tab_mrp)
       : (unitsPerPack > 0 ? stripMrp / unitsPerPack : stripMrp);
 
-    const stockDisplay = (stockRaw !== undefined && stockRaw !== null && stockRaw !== "" && !isNaN(Number(stockRaw)))
-      ? `${Number(stockRaw)} pk (${Number((Number(stockRaw) * unitsPerPack).toFixed(0))} tabs)`
+    const unitLbl = MedHub.getUnitLabels ? MedHub.getUnitLabels(item) : { singular: "tab", plural: "tabs", packUnit: "tabs/pk" };
+    const totalStockInner = (stockRaw !== undefined && stockRaw !== null && stockRaw !== "" && !isNaN(Number(stockRaw)))
+      ? Number((Number(stockRaw) * unitsPerPack).toFixed(0))
+      : null;
+    const stockDisplay = totalStockInner !== null
+      ? `${Number(stockRaw)} pk (${totalStockInner} ${totalStockInner === 1 ? unitLbl.singular : unitLbl.plural})`
       : "—";
 
     return `
       <div class="marg-inspector-grid">
-        <div class="marg-insp-row"><span>Item :</span><strong>${item.name || "—"} (${item.pack_size || "1x10"} • ${unitsPerPack} tabs/pk)</strong></div>
+        <div class="marg-insp-row"><span>Item :</span><strong>${item.name || "—"} (${item.pack_size || "1x10"} • ${unitsPerPack} ${unitLbl.packUnit})</strong></div>
         <div class="marg-insp-row"><span>Batch :</span><strong>${batch}</strong><span>Stock :</span><strong style="color:#1d4ed8;">${stockDisplay}</strong></div>
-        <div class="marg-insp-row"><span>Expiry :</span><strong>${exp || "—"}</strong><span>MRP/Tab :</span><strong>₹${perTabPrice.toFixed(2)}${unitsPerPack > 1 ? ` (Pack: ₹${stripMrp.toFixed(2)})` : ""}</strong></div>
+        <div class="marg-insp-row"><span>Expiry :</span><strong>${exp || "—"}</strong><span>MRP/${unitLbl.singular} :</span><strong>₹${perTabPrice.toFixed(2)}${unitsPerPack > 1 ? ` (Pack: ₹${stripMrp.toFixed(2)})` : ""}</strong></div>
         <div class="marg-insp-row"><span>Company :</span><strong>${item.company || "—"}</strong><span>Schedule :</span><strong>${sch}</strong></div>
       </div>
     `;
@@ -307,7 +314,7 @@ MedHub.billing = {
           </td>
           <td class="text-center">
             ${it.pack_size || "1x10"}
-            <div style="font-size:9.5px;color:#64748b;white-space:nowrap;">${(MedHub.parsePackSize ? MedHub.parsePackSize(it.pack_size || "1x10").unitsPerPack : (it.units_per_pack || 10))} tabs/pk</div>
+            <div style="font-size:9.5px;color:#64748b;white-space:nowrap;">${(MedHub.parsePackSize ? MedHub.parsePackSize(it.pack_size || "1x10").unitsPerPack : (it.units_per_pack || 10))} ${(MedHub.getUnitLabels ? MedHub.getUnitLabels(it).packUnit : "tabs/pk")}</div>
           </td>
           <td class="text-center"><span class="badge-code">${it.batch_no || "BT-DEFAULT"}</span></td>
           <td class="text-center"><span class="badge-exp-month">${MedHub.formatExpiry(it.expiry_date)}</span></td>
@@ -497,7 +504,9 @@ MedHub.billing = {
       }
       const packStr = packInput?.value?.trim() || medObj.pack_size || "1x10";
       const parsedPack = MedHub.parsePackSize ? MedHub.parsePackSize(packStr) : { unitsPerPack: 10 };
-      const catalogStripMrp = Number(medObj.strip_mrp ?? medObj.mrp ?? medObj.selling_rate ?? baseCatalogMrp ?? 0);
+      const catalogStripMrp = Number(medObj.strip_mrp) > 0
+        ? Number(medObj.strip_mrp)
+        : (Number(medObj.mrp) > 0 ? Number(medObj.mrp) : (Number(medObj.selling_rate) > 0 ? Number(medObj.selling_rate) : (Number(medObj.chosenBatch?.selling_price) || Number(baseCatalogMrp) || 0)));
       const livePerTab = rateInput && rateInput.value !== "" && !isNaN(parseFloat(rateInput.value))
         ? parseFloat(rateInput.value)
         : (parsedPack.unitsPerPack > 0 ? catalogStripMrp / parsedPack.unitsPerPack : catalogStripMrp);
@@ -606,8 +615,10 @@ MedHub.billing = {
       if (!prodDropdown) return;
       prodDropdown.innerHTML = currentSearchResults.map((m, idx) => {
         const pInfo = MedHub.parsePackSize ? MedHub.parsePackSize(m.pack_size || "1x10") : { unitsPerPack: 10 };
-        const stripM = Number(m.mrp || m.selling_rate || 0);
+        const stripM = Number(m.mrp) > 0 ? Number(m.mrp) : (Number(m.selling_rate) || 0);
         const tabM = pInfo.unitsPerPack > 0 ? (stripM / pInfo.unitsPerPack) : stripM;
+        const uLbl = MedHub.getUnitLabels ? MedHub.getUnitLabels(m) : { singular: "tab" };
+        const stStatus = MedHub.computeStockStatus ? MedHub.computeStockStatus(m.available_qty) : (m.available_qty <= 0 ? "out" : (m.available_qty <= 1 ? "low" : "in"));
         return `
         <div class="search-item ${idx === highlightedIndex ? 'highlighted' : ''}" data-id="${m.id}" data-idx="${idx}">
           <div class="search-item-left">
@@ -618,10 +629,10 @@ MedHub.billing = {
             <span class="badge-schedule ${m.drug_schedule && m.drug_schedule.includes('H') ? 'schedule-h' : 'schedule-gen'}">
               ${m.drug_schedule || 'General'}
             </span>
-            <span class="search-item-stock ${m.available_qty <= 0 ? 'stock-out' : (m.available_qty <= (m.reorder_level || 10) ? 'stock-low' : 'stock-in')}">
+            <span class="search-item-stock ${stStatus === 'out' ? 'stock-out' : (stStatus === 'low' ? 'stock-low' : 'stock-in')}">
               Stock: ${m.available_qty || 0}
             </span>
-            <span class="search-item-mrp">₹${tabM.toFixed(2)}/tab</span>
+            <span class="search-item-mrp">₹${tabM.toFixed(2)}/${uLbl.singular}</span>
           </div>
         </div>
       `;
