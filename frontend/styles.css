@@ -3988,7 +3988,7 @@ button {
 }
 .pur-items-table {
   width: 100%;
-  min-width: 1180px;
+  min-width: 1360px;
   border-collapse: collapse;
   margin-top: 8px;
   background: #ffffff;
@@ -4021,31 +4021,35 @@ button {
   box-sizing: border-box;
 }
 .pur-items-table .pur-item-name {
-  min-width: 210px;
+  min-width: 185px;
 }
 .pur-items-table .pur-item-batch {
-  min-width: 108px;
+  min-width: 100px;
+}
+.pur-items-table .pur-item-hsn {
+  min-width: 68px;
+  padding: 6px 5px !important;
 }
 .pur-items-table .pur-item-qty,
 .pur-items-table .pur-item-free {
-  min-width: 66px;
-  padding: 6px 6px !important;
+  min-width: 64px;
+  padding: 6px 5px !important;
 }
 .pur-items-table .pur-item-rate,
 .pur-items-table .pur-item-mrp {
-  min-width: 90px;
-  padding: 6px 8px !important;
-}
-.pur-items-table .pur-item-disc {
-  min-width: 74px;
+  min-width: 82px;
   padding: 6px 6px !important;
 }
-.pur-items-table .pur-item-gst {
-  min-width: 82px !important;
-  width: 100% !important;
+.pur-items-table .pur-item-disc,
+.pur-items-table .pur-item-sgst,
+.pur-items-table .pur-item-cgst {
+  min-width: 64px;
+  padding: 6px 5px !important;
 }
+.pur-items-table .pur-item-amount,
+.pur-items-table .pur-item-nrate,
 .pur-items-table .pur-item-total {
-  min-width: 98px;
+  min-width: 88px;
 }
 .pur-items-table input:focus {
   border-color: #2563eb;

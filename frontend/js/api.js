@@ -3601,7 +3601,7 @@ MedHub.api = {
       if (!medName) continue;
       const paidQty = Math.max(0, Number(item.quantity) || 0);
       const freeQty = Math.max(0, Number(item.free_qty) || 0);
-      const qty = paidQty + freeQty;
+      const qty = item.total_stock_packs !== undefined ? Math.max(0, Number(item.total_stock_packs) || 0) : (paidQty + freeQty);
       if (qty <= 0) continue;
       const rate = Number(item.purchase_rate) || 0;
       const mrp = Number(item.mrp) || rate || 0;
@@ -3638,6 +3638,7 @@ MedHub.api = {
           existingMed.selling_rate = mrp;
         }
         if (item.gst_percent !== undefined) existingMed.gst_percent = gstPct;
+        if (item.hsn_code) existingMed.hsn_code = item.hsn_code;
 
         const existingBatch = localBatches.find(b => String(b.medicine_id) === String(existingMed.id) && b.batch_no === batchNo);
         if (existingBatch) {
@@ -3671,6 +3672,7 @@ MedHub.api = {
           company: item.company || "Pharma Distributor",
           category: item.category || inferredCat || "Tablet",
           pack_size: item.pack_size || "1x10",
+          hsn_code: item.hsn_code || "",
           purchase_price: rate,
           selling_rate: mrp,
           mrp: mrp,
@@ -3690,6 +3692,7 @@ MedHub.api = {
               company: newMed.company,
               category: newMed.category,
               pack_size: newMed.pack_size,
+              hsn_code: newMed.hsn_code || null,
               purchase_price: rate,
               selling_rate: mrp,
               mrp: newMed.mrp,
