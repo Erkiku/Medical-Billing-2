@@ -176,6 +176,10 @@ MedHub.billing = {
                   placeholder="Enter amount received"
                   value="${MedHub.state.amountReceived !== undefined && MedHub.state.amountReceived !== null ? MedHub.state.amountReceived : ''}" />
               </div>
+              <div id="pos-due-preview-row" style="margin-top: 6px; padding: 5px 10px; border-radius: 6px; background: var(--cream-hover); border: 1px solid var(--cream-border); display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
+                <span style="font-weight: 700; color: var(--black-soft);">Balance Due (Udhaar):</span>
+                <strong id="pos-due-amount" style="color: ${this.calculatePaymentBreakdown().dueAmount > 0 ? '#dc2626' : '#16a34a'};">${MedHub.rupee(this.calculatePaymentBreakdown().dueAmount)}</strong>
+              </div>
               <div id="pos-counter-qr" style="margin-top: 8px; padding: 8px 10px; background: var(--cream-hover); border-radius: 6px; border: 1px dashed var(--cream-border-dark); display: ${MedHub.state.paymentMode === 'UPI' ? 'flex' : 'none'}; align-items: center; gap: 10px;">
                 <img src="${(store.custom_qr_image && store.custom_qr_image.trim()) ? store.custom_qr_image : `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(`upi://pay?pa=${encodeURIComponent(store.upi_id || "sagarstore@upi")}&pn=${encodeURIComponent(store.payee_name || store.store_name || "Pharmacy")}&am=${this.calculateGrandTotal()}&cu=INR`)}`}" alt="Shop QR" style="width: 48px; height: 48px; object-fit: contain; background: #ffffff; padding: 2px; border-radius: 4px; border: 1px solid var(--cream-border); flex-shrink: 0;" />
                 <div style="font-size: 11px;">
@@ -463,6 +467,7 @@ MedHub.billing = {
 
     amtReceivedInput?.addEventListener("input", (e) => {
       MedHub.state.amountReceived = e.target.value;
+      self.updateTotals();
     });
 
     // Enter Key Navigation: Discount -> Received -> Complete & Print
@@ -480,6 +485,7 @@ MedHub.billing = {
         const nextVal = Math.max(0, Number((cur + delta).toFixed(2)));
         amtReceivedInput.value = String(nextVal);
         MedHub.state.amountReceived = String(nextVal);
+        self.updateTotals();
         return;
       }
       if (e.key === "Enter" && !e.shiftKey) {
@@ -498,6 +504,7 @@ MedHub.billing = {
         if (upiCard) {
           upiCard.style.display = btn.dataset.mode === "UPI" ? "flex" : "none";
         }
+        self.updateTotals();
       });
     });
 
@@ -1082,17 +1089,32 @@ MedHub.billing = {
     this.updateTotals();
   },
 
+  calculatePaymentBreakdown(grandTotalVal = this.calculateGrandTotal()) {
+    const grandTotal = Math.max(0, Number(grandTotalVal) || 0);
+    const amtStr = String(MedHub.state.amountReceived ?? "").trim();
+    const paidAmount = amtStr !== ""
+      ? Math.max(0, Number(amtStr) || 0)
+      : (MedHub.state.paymentMode === "CREDIT" ? 0 : grandTotal);
+    const dueAmount = Math.max(0, Number((grandTotal - paidAmount).toFixed(2)));
+    return {
+      grandTotal: Number(grandTotal.toFixed(2)),
+      paidAmount: Number(paidAmount.toFixed(2)),
+      dueAmount
+    };
+  },
+
   updateTotals() {
     const subtotalEl = document.getElementById("summary-subtotal");
     const discRowEl = document.getElementById("summary-discount-preview-row");
     const discLabelEl = document.getElementById("summary-discount-label");
     const discAppliedEl = document.getElementById("summary-discount-applied");
     const grandTotalEl = document.getElementById("summary-grand-total");
-    const amtReceivedInput = document.getElementById("amt-received");
+    const dueAmountEl = document.getElementById("pos-due-amount");
 
     const sub = this.calculateSubtotal();
     const discAmt = this.calculateDiscountAmount();
     const grand = this.calculateGrandTotal();
+    const payBreak = this.calculatePaymentBreakdown(grand);
 
     if (subtotalEl) subtotalEl.innerText = MedHub.rupee(sub);
     if (discRowEl) discRowEl.style.display = discAmt > 0 ? "flex" : "none";
@@ -1103,6 +1125,10 @@ MedHub.billing = {
     }
     if (discAppliedEl) discAppliedEl.innerText = `-${MedHub.rupee(discAmt)}`;
     if (grandTotalEl) grandTotalEl.innerText = MedHub.rupee(grand);
+    if (dueAmountEl) {
+      dueAmountEl.innerText = MedHub.rupee(payBreak.dueAmount);
+      dueAmountEl.style.color = payBreak.dueAmount > 0 ? "#dc2626" : "#16a34a";
+    }
   },
 
   async submitBill() {
@@ -1118,10 +1144,7 @@ MedHub.billing = {
       ? Math.min(100, Math.max(0, Number(MedHub.state.discount || 0)))
       : 0;
     const grandTotal = this.calculateGrandTotal();
-    const amtStr = String(MedHub.state.amountReceived ?? "").trim();
-    const paidAmount = MedHub.state.paymentMode === "CREDIT"
-      ? 0
-      : (amtStr === "" ? grandTotal : Math.max(0, Number(amtStr) || 0));
+    const { paidAmount } = this.calculatePaymentBreakdown(grandTotal);
 
     const itemsSnapshot = MedHub.state.cart.map(it => ({ ...it }));
     const billPayload = {
@@ -1477,6 +1500,18 @@ MedHub.billing = {
                   <div class="total-txt">Grand Total:</div>
                   <div class="total-num">₹${Number(bill.grand_total).toFixed(2)}</div>
                 </div>
+                ${!isPaid ? `
+                  <div class="digital-summary-box" style="margin-top: 8px; border-color: #fecaca; background: #fef2f2;">
+                    <div class="digital-summary-row">
+                      <span>Amount Received:</span>
+                      <strong>₹${Number(bill.paid_amount || 0).toFixed(2)}</strong>
+                    </div>
+                    <div class="digital-summary-row" style="color: #dc2626; font-weight: 800;">
+                      <span>Balance Due (Udhaar):</span>
+                      <span>₹${dueAmt.toFixed(2)}</span>
+                    </div>
+                  </div>
+                ` : ""}
 
                 <!-- Digital UPI Payment QR -->
                 <div class="digital-qr-banner" style="margin-top: 14px; padding: 12px 14px; background: var(--cream-hover); border: 1.5px dashed var(--cream-border-dark); border-radius: 8px; display: flex; align-items: center; gap: 14px;">
