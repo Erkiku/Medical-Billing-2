@@ -11,9 +11,14 @@ MedHub.purchases = {
   suppliersList: [],
 
   async render(container) {
-    this.purchasesList = await MedHub.api.getPurchases();
-    this.suppliersList = await MedHub.api.getSuppliers();
-    this.medicinesList = await MedHub.api.getMedicines();
+    const [purchases, suppliers, medicines] = await Promise.all([
+      MedHub.api.getPurchases(),
+      MedHub.api.getSuppliers(),
+      MedHub.api.getMedicines()
+    ]);
+    this.purchasesList = purchases;
+    this.suppliersList = suppliers;
+    this.medicinesList = medicines;
 
     const totalPurchases = this.purchasesList.length;
     const totalAmount = this.purchasesList.reduce((sum, p) => sum + (Number(p.total_amount) || 0), 0);

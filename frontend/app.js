@@ -190,7 +190,7 @@ MedHub.router = {
     const contentContainer = document.getElementById("page-content");
     if (!contentContainer) return;
 
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo(0, 0);
 
     switch (pageId) {
       case "admin":
@@ -305,7 +305,12 @@ MedHub.router = {
     return true;
   },
 
+  _lastUpdateCheckAt: 0,
+
   async checkForUpdates() {
+    const now = Date.now();
+    if (this._lastUpdateCheckAt && (now - this._lastUpdateCheckAt) < 20000) return false;
+    this._lastUpdateCheckAt = now;
     const currentVer = this.getLoadedBuildVersion();
     if (!currentVer || typeof fetch !== "function") return false;
     try {
@@ -387,7 +392,7 @@ MedHub.router = {
   }
 };
 
-// Application entrypoint on DOM load
+// Application entrypoint on DOM load (render immediately, hydrate cloud in background)
 document.addEventListener("DOMContentLoaded", async () => {
   if (MedHub.router && typeof MedHub.router.initAutoUpdater === "function") {
     MedHub.router.initAutoUpdater();
@@ -399,29 +404,35 @@ document.addEventListener("DOMContentLoaded", async () => {
   } else {
     MedHub.initSupabaseClient();
   }
+
+  MedHub.router.init();
+
   if (MedHub.state.isAuthenticated && !MedHub.state.isSuperAdmin && MedHub.state.user?.role !== "superadmin") {
-    try {
-      if (MedHub.api?.syncUnsyncedLocalDataToCloud) {
-        await MedHub.api.syncUnsyncedLocalDataToCloud();
-      }
-      if (MedHub.api?.getStoreSettings) {
-        const freshStore = await MedHub.api.getStoreSettings(MedHub.state.user);
-        if (freshStore) {
-          MedHub.state.store = freshStore;
-          if (MedHub.state.user) {
-            if (freshStore.id) MedHub.state.user.store_id = freshStore.id;
-            if (freshStore.pharmacist_name) {
-              MedHub.state.user.name = freshStore.pharmacist_name;
-              try { localStorage.setItem("medhub_user_name", freshStore.pharmacist_name); } catch (e) {}
+    Promise.resolve().then(async () => {
+      try {
+        if (MedHub.api?.syncUnsyncedLocalDataToCloud) {
+          await MedHub.api.syncUnsyncedLocalDataToCloud();
+        }
+        if (MedHub.api?.getStoreSettings) {
+          const freshStore = await MedHub.api.getStoreSettings(MedHub.state.user);
+          if (freshStore) {
+            MedHub.state.store = freshStore;
+            if (MedHub.state.user) {
+              if (freshStore.id) MedHub.state.user.store_id = freshStore.id;
+              if (freshStore.pharmacist_name) {
+                MedHub.state.user.name = freshStore.pharmacist_name;
+                try { localStorage.setItem("medhub_user_name", freshStore.pharmacist_name); } catch (e) {}
+              }
+              if (freshStore.user_email && (!MedHub.state.user.email || MedHub.state.user.email === "admin@mededuhub.com")) {
+                MedHub.state.user.email = freshStore.user_email;
+                try { localStorage.setItem("medhub_current_user", freshStore.user_email); } catch (e) {}
+              }
             }
-            if (freshStore.user_email && (!MedHub.state.user.email || MedHub.state.user.email === "admin@mededuhub.com")) {
-              MedHub.state.user.email = freshStore.user_email;
-              try { localStorage.setItem("medhub_current_user", freshStore.user_email); } catch (e) {}
-            }
+            if (typeof MedHub.updateStoreHeader === "function") MedHub.updateStoreHeader();
+            if (typeof MedHub.updateUserBadge === "function") MedHub.updateUserBadge();
           }
         }
-      }
-    } catch (e) {}
+      } catch (e) {}
+    });
   }
-  MedHub.router.init();
 });

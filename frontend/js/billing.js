@@ -14,6 +14,9 @@ MedHub.billing = {
   _lastBillAt: 0,
 
   render(container) {
+    if ((!MedHub.state.medicines || MedHub.state.medicines.length === 0) && MedHub.api?.getMedicines) {
+      MedHub.api.getMedicines().catch(() => {});
+    }
     const store = { ...MedHub.defaultStore, ...MedHub.state.store };
     const todayStr = new Date().toLocaleDateString("en-IN", {
       day: "2-digit",
@@ -577,6 +580,7 @@ MedHub.billing = {
     });
     itemDisInput?.addEventListener("input", recalcMargAmount);
 
+    let inspectorBatchTimer = null;
     const previewMatchedMedicine = (val) => {
       const q = String(val || "").trim().toLowerCase();
       if (!q) {
@@ -594,19 +598,19 @@ MedHub.billing = {
       if (!prefix) return;
 
       const token = ++inspectorLookupToken;
-      if (prefix.chosenBatch || !MedHub.api?.getBatches) {
-        self.inspectedItem = prefix;
-        if (inspectorEl) inspectorEl.innerHTML = self.renderItemInspector(prefix);
-        return;
-      }
       self.inspectedItem = prefix;
       if (inspectorEl) inspectorEl.innerHTML = self.renderItemInspector(prefix);
-      Promise.resolve(MedHub.api.getBatches(prefix.id)).then((batches) => {
-        if (token !== inspectorLookupToken) return;
-        const chosenBatch = (batches && batches.length) ? batches[0] : null;
-        prefix.chosenBatch = chosenBatch;
-        if (inspectorEl) inspectorEl.innerHTML = self.renderItemInspector(prefix);
-      }).catch(() => {});
+      if (prefix.chosenBatch || !MedHub.api?.getBatches) return;
+
+      clearTimeout(inspectorBatchTimer);
+      inspectorBatchTimer = setTimeout(() => {
+        Promise.resolve(MedHub.api.getBatches(prefix.id)).then((batches) => {
+          if (token !== inspectorLookupToken) return;
+          const chosenBatch = (batches && batches.length) ? batches[0] : null;
+          prefix.chosenBatch = chosenBatch;
+          if (inspectorEl) inspectorEl.innerHTML = self.renderItemInspector(prefix);
+        }).catch(() => {});
+      }, 90);
     };
 
     // Live Search for Marg Product
@@ -661,8 +665,10 @@ MedHub.billing = {
       prodDropdown.style.display = "block";
 
       const highlightedEl = prodDropdown.querySelector(`.search-item[data-idx="${highlightedIndex}"]`);
-      if (highlightedEl) {
-        highlightedEl.scrollIntoView({ block: "nearest" });
+      if (highlightedEl && highlightedIndex > 0 && prodDropdown.scrollHeight > prodDropdown.clientHeight) {
+        const scrollTask = () => highlightedEl.scrollIntoView({ block: "nearest" });
+        if (typeof requestAnimationFrame === "function") requestAnimationFrame(scrollTask);
+        else scrollTask();
       }
       if (currentSearchResults[highlightedIndex]) {
         previewMatchedMedicine(currentSearchResults[highlightedIndex].name);

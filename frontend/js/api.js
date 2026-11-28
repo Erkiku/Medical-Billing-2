@@ -67,23 +67,77 @@ let mockPurchases = [
 ];
 
 MedHub.api = {
+  _memCache: new Map(),
+  _inflightCache: new Map(),
+  _noStoreScopeSet: new Set(),
+  _lastClientRef: null,
+
+  _ensureCacheContext() {
+    if (this._lastClientRef !== MedHub.supabaseClient) {
+      this._lastClientRef = MedHub.supabaseClient;
+      this._memCache.clear();
+      this._inflightCache.clear();
+      this._noStoreScopeSet.clear();
+    }
+  },
+
+  invalidateCache(...prefixes) {
+    this._ensureCacheContext();
+    if (!prefixes.length) {
+      this._memCache.clear();
+      this._inflightCache.clear();
+      return;
+    }
+    for (const k of Array.from(this._memCache.keys())) {
+      if (prefixes.some(p => k.startsWith(p))) this._memCache.delete(k);
+    }
+    for (const k of Array.from(this._inflightCache.keys())) {
+      if (prefixes.some(p => k.startsWith(p))) this._inflightCache.delete(k);
+    }
+  },
+
+  async _cachedFetch(cacheKey, ttlMs, loaderFn) {
+    this._ensureCacheContext();
+    const now = Date.now();
+    const cached = this._memCache.get(cacheKey);
+    if (cached && (now - cached.ts) < ttlMs) {
+      return cached.data;
+    }
+    if (this._inflightCache.has(cacheKey)) {
+      return await this._inflightCache.get(cacheKey);
+    }
+    const p = (async () => {
+      try {
+        const data = await loaderFn();
+        this._memCache.set(cacheKey, { ts: Date.now(), data });
+        return data;
+      } finally {
+        this._inflightCache.delete(cacheKey);
+      }
+    })();
+    this._inflightCache.set(cacheKey, p);
+    return await p;
+  },
+
   getActiveStoreId() {
     const raw = MedHub.state.store?.id || MedHub.state.user?.store_id || localStorage.getItem("medhub_store_id");
     const n = Number(raw);
     return Number.isInteger(n) && n > 0 ? n : null;
   },
 
-  async _queryByStoreScope(buildQueryFn, storeId) {
+  async _queryByStoreScope(buildQueryFn, storeId, scopeKey = "") {
+    this._ensureCacheContext();
     if (!MedHub.supabaseClient) return { data: null, error: new Error("Offline") };
-    if (storeId) {
+    if (storeId && (!scopeKey || !this._noStoreScopeSet.has(scopeKey))) {
       try {
         const res = await buildQueryFn(true);
         if (!res.error) return res;
         const msg = String(res.error.message || "").toLowerCase();
-        // If store_id column is not yet added in Supabase schema, retry unfiltered safely
+        // If store_id column is not yet added in Supabase schema, remember and retry unfiltered safely
         if (!msg.includes("store_id") && !msg.includes("column")) {
           return res;
         }
+        if (scopeKey) this._noStoreScopeSet.add(scopeKey);
       } catch (e) {}
     }
     return await buildQueryFn(false);
@@ -1934,41 +1988,43 @@ MedHub.api = {
   },
 
   async getCompanies() {
-    let cloudList = [];
-    if (MedHub.supabaseClient) {
-      try {
-        const { data, error } = await MedHub.supabaseClient
-          .from("companies")
-          .select("*")
-          .order("name", { ascending: true });
-        if (!error && data && data.length > 0) {
-          cloudList = data;
-        }
-      } catch (e) {}
-    }
-
-    const baseList = this._getLocalCompanies();
-    const merged = [];
-    const seen = new Set();
-    const addUnique = (item) => {
-      const name = (typeof item === "string" ? item : item?.name || "").trim();
-      if (!name) return;
-      const key = name.toLowerCase();
-      if (!seen.has(key)) {
-        seen.add(key);
-        merged.push(typeof item === "string" ? { id: "co-" + key, name } : { ...item, name });
+    return await this._cachedFetch("companies", 60000, async () => {
+      let cloudList = [];
+      if (MedHub.supabaseClient) {
+        try {
+          const { data, error } = await MedHub.supabaseClient
+            .from("companies")
+            .select("*")
+            .order("name", { ascending: true });
+          if (!error && data && data.length > 0) {
+            cloudList = data;
+          }
+        } catch (e) {}
       }
-    };
 
-    cloudList.forEach(addUnique);
-    baseList.forEach(addUnique);
-    (this._getLocalMedicines() || []).forEach(m => {
-      if (m.company) addUnique(m.company);
+      const baseList = this._getLocalCompanies();
+      const merged = [];
+      const seen = new Set();
+      const addUnique = (item) => {
+        const name = (typeof item === "string" ? item : item?.name || "").trim();
+        if (!name) return;
+        const key = name.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          merged.push(typeof item === "string" ? { id: "co-" + key, name } : { ...item, name });
+        }
+      };
+
+      cloudList.forEach(addUnique);
+      baseList.forEach(addUnique);
+      (this._getLocalMedicines() || []).forEach(m => {
+        if (m.company) addUnique(m.company);
+      });
+
+      merged.sort((a, b) => a.name.localeCompare(b.name));
+      this._saveLocalCompanies(merged);
+      return merged;
     });
-
-    merged.sort((a, b) => a.name.localeCompare(b.name));
-    this._saveLocalCompanies(merged);
-    return merged;
   },
 
   async createCompany(name) {
@@ -1994,6 +2050,7 @@ MedHub.api = {
     list.push(newCompany);
     list.sort((a, b) => a.name.localeCompare(b.name));
     this._saveLocalCompanies(list);
+    this.invalidateCache("companies");
     return newCompany;
   },
 
@@ -2016,40 +2073,42 @@ MedHub.api = {
   },
 
   async getDrugSchedules() {
-    let cloudList = [];
-    if (MedHub.supabaseClient) {
-      try {
-        const { data, error } = await MedHub.supabaseClient
-          .from("drug_schedules")
-          .select("*")
-          .order("name", { ascending: true });
-        if (!error && data && data.length > 0) {
-          cloudList = data;
-        }
-      } catch (e) {}
-    }
-
-    const baseList = this._getLocalDrugSchedules();
-    const merged = [];
-    const seen = new Set();
-    const addUnique = (item) => {
-      const name = (typeof item === "string" ? item : item?.name || "").trim();
-      if (!name) return;
-      const key = name.toLowerCase();
-      if (!seen.has(key)) {
-        seen.add(key);
-        merged.push(typeof item === "string" ? { id: "ds-" + key, name } : { ...item, name });
+    return await this._cachedFetch("schedules", 60000, async () => {
+      let cloudList = [];
+      if (MedHub.supabaseClient) {
+        try {
+          const { data, error } = await MedHub.supabaseClient
+            .from("drug_schedules")
+            .select("*")
+            .order("name", { ascending: true });
+          if (!error && data && data.length > 0) {
+            cloudList = data;
+          }
+        } catch (e) {}
       }
-    };
 
-    cloudList.forEach(addUnique);
-    baseList.forEach(addUnique);
-    (this._getLocalMedicines() || []).forEach(m => {
-      if (m.drug_schedule) addUnique(m.drug_schedule);
+      const baseList = this._getLocalDrugSchedules();
+      const merged = [];
+      const seen = new Set();
+      const addUnique = (item) => {
+        const name = (typeof item === "string" ? item : item?.name || "").trim();
+        if (!name) return;
+        const key = name.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          merged.push(typeof item === "string" ? { id: "ds-" + key, name } : { ...item, name });
+        }
+      };
+
+      cloudList.forEach(addUnique);
+      baseList.forEach(addUnique);
+      (this._getLocalMedicines() || []).forEach(m => {
+        if (m.drug_schedule) addUnique(m.drug_schedule);
+      });
+
+      this._saveLocalDrugSchedules(merged);
+      return merged;
     });
-
-    this._saveLocalDrugSchedules(merged);
-    return merged;
   },
 
   async createDrugSchedule(name, description = "") {
@@ -2074,6 +2133,7 @@ MedHub.api = {
     const list = this._getLocalDrugSchedules();
     list.push(newSchedule);
     this._saveLocalDrugSchedules(list);
+    this.invalidateCache("schedules");
     return newSchedule;
   },
 
@@ -2121,56 +2181,28 @@ MedHub.api = {
   },
 
   async getMedicines() {
-    let list = null;
     const storeId = this.getActiveStoreId();
-    if (MedHub.supabaseClient) {
-      try {
-        const applyStore = (q) => {
-          if (!storeId) return q;
-          return storeId === 1 ? q.or("store_id.eq.1,store_id.is.null") : q.eq("store_id", storeId);
-        };
+    return await this._cachedFetch(`medicines:${storeId || "default"}`, 15000, async () => {
+      let list = null;
+      if (MedHub.supabaseClient) {
+        try {
+          const applyStore = (q) => {
+            if (!storeId) return q;
+            return storeId === 1 ? q.or("store_id.eq.1,store_id.is.null") : q.eq("store_id", storeId);
+          };
 
-        // First try medicine_stock view
-        const { data, error } = await this._queryByStoreScope((withStore) => {
-          let q = MedHub.supabaseClient
-            .from("medicine_stock")
-            .select("*")
-            .neq("is_active", false)
-            .order("name", { ascending: true });
-          return withStore ? applyStore(q) : q;
-        }, storeId);
-
-        if (!error && Array.isArray(data)) {
-          list = data.map(m => {
-            const qty = Number(m.available_qty) || 0;
-            const normMrp = Number(m.mrp) > 0 ? Number(m.mrp) : (Number(m.selling_rate) || 0);
-            const inferredCat = typeof MedHub.inferMedicineCategory === "function" ? MedHub.inferMedicineCategory(m.name) : "";
-            const normCat = (!m.category || (m.category === "Tablet" && inferredCat && inferredCat !== "Tablet"))
-              ? (inferredCat || "Tablet")
-              : m.category;
-            return {
-              ...m,
-              mrp: normMrp,
-              selling_rate: Number(m.selling_rate) > 0 ? Number(m.selling_rate) : normMrp,
-              category: normCat,
-              available_qty: qty,
-              nearest_expiry: m.nearest_expiry || "—",
-              status: MedHub.computeStockStatus ? MedHub.computeStockStatus(qty) : (qty <= 0 ? "out" : (qty <= 1 ? "low" : "in"))
-            };
-          });
-        } else {
-          // Fallback: fetch from medicines directly
-          const { data: rawMeds, error: medErr } = await this._queryByStoreScope((withStore) => {
+          // First try medicine_stock view
+          const { data, error } = await this._queryByStoreScope((withStore) => {
             let q = MedHub.supabaseClient
-              .from("medicines")
+              .from("medicine_stock")
               .select("*")
               .neq("is_active", false)
               .order("name", { ascending: true });
             return withStore ? applyStore(q) : q;
-          }, storeId);
+          }, storeId, "medicine_stock");
 
-          if (!medErr && Array.isArray(rawMeds)) {
-            list = rawMeds.map(m => {
+          if (!error && Array.isArray(data)) {
+            list = data.map(m => {
               const qty = Number(m.available_qty) || 0;
               const normMrp = Number(m.mrp) > 0 ? Number(m.mrp) : (Number(m.selling_rate) || 0);
               const inferredCat = typeof MedHub.inferMedicineCategory === "function" ? MedHub.inferMedicineCategory(m.name) : "";
@@ -2187,18 +2219,48 @@ MedHub.api = {
                 status: MedHub.computeStockStatus ? MedHub.computeStockStatus(qty) : (qty <= 0 ? "out" : (qty <= 1 ? "low" : "in"))
               };
             });
-          }
-        }
-      } catch (e) {
-        console.warn("Medicines fetch fallback:", e);
-      }
-    }
+          } else {
+            // Fallback: fetch from medicines directly
+            const { data: rawMeds, error: medErr } = await this._queryByStoreScope((withStore) => {
+              let q = MedHub.supabaseClient
+                .from("medicines")
+                .select("*")
+                .neq("is_active", false)
+                .order("name", { ascending: true });
+              return withStore ? applyStore(q) : q;
+            }, storeId, "medicines");
 
-    if (Array.isArray(list)) {
-      this._saveLocalMedicines(list);
-      return list;
-    }
-    return this._getLocalMedicines();
+            if (!medErr && Array.isArray(rawMeds)) {
+              list = rawMeds.map(m => {
+                const qty = Number(m.available_qty) || 0;
+                const normMrp = Number(m.mrp) > 0 ? Number(m.mrp) : (Number(m.selling_rate) || 0);
+                const inferredCat = typeof MedHub.inferMedicineCategory === "function" ? MedHub.inferMedicineCategory(m.name) : "";
+                const normCat = (!m.category || (m.category === "Tablet" && inferredCat && inferredCat !== "Tablet"))
+                  ? (inferredCat || "Tablet")
+                  : m.category;
+                return {
+                  ...m,
+                  mrp: normMrp,
+                  selling_rate: Number(m.selling_rate) > 0 ? Number(m.selling_rate) : normMrp,
+                  category: normCat,
+                  available_qty: qty,
+                  nearest_expiry: m.nearest_expiry || "—",
+                  status: MedHub.computeStockStatus ? MedHub.computeStockStatus(qty) : (qty <= 0 ? "out" : (qty <= 1 ? "low" : "in"))
+                };
+              });
+            }
+          }
+        } catch (e) {
+          console.warn("Medicines fetch fallback:", e);
+        }
+      }
+
+      if (Array.isArray(list)) {
+        this._saveLocalMedicines(list);
+        return list;
+      }
+      return this._getLocalMedicines();
+    });
   },
 
   async searchMedicines(query) {
@@ -2206,9 +2268,17 @@ MedHub.api = {
     const q = query.trim().toLowerCase();
     const tokens = q.split(/\s+/).filter(Boolean);
 
-    let results = [];
+    // Fast path: search hydrated in-memory/local catalog instantly with zero keystroke network lag
+    const localStoreMeds = (MedHub.state?.medicines && MedHub.state.medicines.length)
+      ? MedHub.state.medicines
+      : this._getLocalMedicines();
+    const hasLiveCache = Boolean(
+      (MedHub.state?.medicines && MedHub.state.medicines.length) ||
+      Array.from(this._memCache.keys()).some(k => k.startsWith("medicines:"))
+    );
 
-    if (MedHub.supabaseClient) {
+    let results = [];
+    if (!hasLiveCache && MedHub.supabaseClient) {
       try {
         const { data, error } = await MedHub.supabaseClient
           .from("medicine_stock")
@@ -2219,7 +2289,6 @@ MedHub.api = {
         if (!error && data && data.length) {
           results = data;
         } else {
-          // Fallback to medicines table directly
           const { data: rawMeds, error: medErr } = await MedHub.supabaseClient
             .from("medicines")
             .select("*")
@@ -2230,27 +2299,25 @@ MedHub.api = {
             results = rawMeds;
           }
         }
-      } catch (e) {
-        // Fall back to local search
-      }
+      } catch (e) {}
     }
 
-    // Filter local mock medicines with all search tokens across all fields
-    const localStoreMeds = this._getLocalMedicines();
     const localMatches = localStoreMeds.filter(m => {
       if (m.is_active === false) return false;
       const fullText = `${m.name || ""} ${m.generic_name || ""} ${m.salt_composition || ""} ${m.company || ""} ${m.category || ""} ${m.barcode || ""}`.toLowerCase();
       return tokens.every(token => fullText.includes(token));
     });
 
-    // Merge Supabase results with local matches without duplicates
-    localMatches.forEach(lm => {
-      if (!results.some(r => String(r.id) === String(lm.id) || (r.name && r.name.toLowerCase() === lm.name.toLowerCase()))) {
-        results.push(lm);
-      }
-    });
+    if (!results.length) {
+      results = localMatches;
+    } else {
+      localMatches.forEach(lm => {
+        if (!results.some(r => String(r.id) === String(lm.id) || (r.name && r.name.toLowerCase() === lm.name.toLowerCase()))) {
+          results.push(lm);
+        }
+      });
+    }
 
-    // Filter results so all tokens in query match
     if (tokens.length > 1) {
       results = results.filter(m => {
         const fullText = `${m.name || ""} ${m.generic_name || ""} ${m.salt_composition || ""} ${m.company || ""} ${m.category || ""} ${m.barcode || ""}`.toLowerCase();
@@ -2258,7 +2325,6 @@ MedHub.api = {
       });
     }
 
-    // Sort by best match (name starting with search query ranks first)
     results.sort((a, b) => {
       const aStarts = (a.name || "").toLowerCase().startsWith(q);
       const bStarts = (b.name || "").toLowerCase().startsWith(q);
@@ -2271,22 +2337,24 @@ MedHub.api = {
   },
 
   async getBatches(medicineId) {
-    if (MedHub.supabaseClient) {
-      try {
-        const { data, error } = await MedHub.supabaseClient
-          .from("medicine_batches")
-          .select("*")
-          .eq("medicine_id", medicineId)
-          .gt("quantity", 0)
-          .gte("expiry_date", new Date().toISOString().slice(0, 10))
-          .order("expiry_date", { ascending: true });
-        if (!error && data && data.length) return data;
-      } catch (e) {
-        console.warn("Batches query err:", e);
+    return await this._cachedFetch(`batches:${medicineId}`, 10000, async () => {
+      if (MedHub.supabaseClient) {
+        try {
+          const { data, error } = await MedHub.supabaseClient
+            .from("medicine_batches")
+            .select("*")
+            .eq("medicine_id", medicineId)
+            .gt("quantity", 0)
+            .gte("expiry_date", new Date().toISOString().slice(0, 10))
+            .order("expiry_date", { ascending: true });
+          if (!error && data && data.length) return data;
+        } catch (e) {
+          console.warn("Batches query err:", e);
+        }
       }
-    }
-    const localBatches = this._getLocalBatches();
-    return localBatches.filter(b => String(b.medicine_id) === String(medicineId) && b.quantity > 0);
+      const localBatches = this._getLocalBatches();
+      return localBatches.filter(b => String(b.medicine_id) === String(medicineId) && b.quantity > 0);
+    });
   },
 
   async createMedicine(medData, initialBatch = null) {
@@ -2398,6 +2466,7 @@ MedHub.api = {
       this._saveLocalBatches(localBatches);
     }
 
+    this.invalidateCache("medicines:", "batches:");
     return finalMed;
   },
 
@@ -2445,8 +2514,10 @@ MedHub.api = {
         ...(updatedMed || {})
       };
       this._saveLocalMedicines(localMeds);
+      this.invalidateCache("medicines:");
       return localMeds[localIdx];
     }
+    this.invalidateCache("medicines:");
     return updatedMed || medData;
   },
 
@@ -2475,6 +2546,7 @@ MedHub.api = {
     localBatches = localBatches.filter(b => String(b.medicine_id) !== String(id));
     this._saveLocalBatches(localBatches);
 
+    this.invalidateCache("medicines:", `batches:${id}`);
     return true;
   },
 
@@ -2573,6 +2645,7 @@ MedHub.api = {
         } catch (e) {}
       }
     }
+    this.invalidateCache("medicines:", `batches:${medicineId}`);
     return true;
   },
 
@@ -2595,6 +2668,7 @@ MedHub.api = {
       b.quantity = qty;
       this._saveLocalBatches(localBatches);
     }
+    this.invalidateCache("medicines:", "batches:");
     return true;
   },
 
@@ -2679,6 +2753,7 @@ MedHub.api = {
         this._saveLocalMedicines(localMeds);
       }
     }
+    this.invalidateCache("medicines:", "batches:");
     return true;
   },
 
@@ -2803,31 +2878,33 @@ MedHub.api = {
 
   async getBills() {
     const storeId = this.getActiveStoreId();
-    if (MedHub.supabaseClient) {
-      try {
-        const applyStore = (q) => {
-          if (!storeId) return q;
-          return storeId === 1 ? q.or("store_id.eq.1,store_id.is.null") : q.eq("store_id", storeId);
-        };
-        const { data, error } = await this._queryByStoreScope((withStore) => {
-          let q = MedHub.supabaseClient
-            .from("bills")
-            .select("*, bill_items(*), customers(name, mobile, address)")
-            .order("bill_no", { ascending: false })
-            .limit(100);
-          return withStore ? applyStore(q) : q;
-        }, storeId);
+    return await this._cachedFetch(`bills:${storeId || "default"}`, 12000, async () => {
+      if (MedHub.supabaseClient) {
+        try {
+          const applyStore = (q) => {
+            if (!storeId) return q;
+            return storeId === 1 ? q.or("store_id.eq.1,store_id.is.null") : q.eq("store_id", storeId);
+          };
+          const { data, error } = await this._queryByStoreScope((withStore) => {
+            let q = MedHub.supabaseClient
+              .from("bills")
+              .select("*, bill_items(*), customers(name, mobile, address)")
+              .order("bill_no", { ascending: false })
+              .limit(100);
+            return withStore ? applyStore(q) : q;
+          }, storeId, "bills");
 
-        if (!error && Array.isArray(data)) {
-          const mapped = data.map(b => this._unpackBillMeta(b));
-          this._saveLocalBills(mapped);
-          return mapped;
+          if (!error && Array.isArray(data)) {
+            const mapped = data.map(b => this._unpackBillMeta(b));
+            this._saveLocalBills(mapped);
+            return mapped;
+          }
+        } catch (e) {
+          console.warn("Bills query fallback:", e);
         }
-      } catch (e) {
-        console.warn("Bills query fallback:", e);
       }
-    }
-    return this._getLocalBills().map(b => this._unpackBillMeta(b));
+      return this._getLocalBills().map(b => this._unpackBillMeta(b));
+    });
   },
 
   async _upsertCustomerForBill(billData) {
@@ -3028,6 +3105,7 @@ MedHub.api = {
           const localList = this._getLocalBills();
           localList.unshift(savedBill);
           this._saveLocalBills(localList);
+          this.invalidateCache("bills:", "medicines:", "batches:");
           return savedBill;
         }
       } catch (e) {
@@ -3078,6 +3156,7 @@ MedHub.api = {
 
     localList.unshift(savedBill);
     this._saveLocalBills(localList);
+    this.invalidateCache("bills:", "medicines:", "batches:");
     return savedBill;
   },
 
@@ -3316,6 +3395,7 @@ MedHub.api = {
       localList.unshift(mergedLocal);
     }
     this._saveLocalBills(localList);
+    this.invalidateCache("bills:", "medicines:", "batches:");
     return mergedLocal;
   },
 
@@ -3389,6 +3469,7 @@ MedHub.api = {
 
     const filtered = localList.filter(b => String(b.id) !== String(billIdOrNo) && String(b.bill_no) !== String(billIdOrNo));
     this._saveLocalBills(filtered);
+    this.invalidateCache("bills:", "medicines:", "batches:");
     return true;
   },
 
@@ -3416,30 +3497,32 @@ MedHub.api = {
 
   async getSuppliers() {
     const storeId = this.getActiveStoreId();
-    if (MedHub.supabaseClient) {
-      try {
-        const applyStore = (q) => {
-          if (!storeId) return q;
-          return storeId === 1 ? q.or("store_id.eq.1,store_id.is.null") : q.eq("store_id", storeId);
-        };
-        const { data, error } = await this._queryByStoreScope((withStore) => {
-          let q = MedHub.supabaseClient
-            .from("suppliers")
-            .select("*")
-            .order("name", { ascending: true });
-          return withStore ? applyStore(q) : q;
-        }, storeId);
-        if (!error && Array.isArray(data) && data.length > 0) {
-          this._saveLocalSuppliers(data);
-          return data;
-        }
-        if (!error && Array.isArray(data) && storeId && storeId !== 1) {
-          this._saveLocalSuppliers([]);
-          return [];
-        }
-      } catch (e) {}
-    }
-    return this._getLocalSuppliers();
+    return await this._cachedFetch(`suppliers:${storeId || "default"}`, 20000, async () => {
+      if (MedHub.supabaseClient) {
+        try {
+          const applyStore = (q) => {
+            if (!storeId) return q;
+            return storeId === 1 ? q.or("store_id.eq.1,store_id.is.null") : q.eq("store_id", storeId);
+          };
+          const { data, error } = await this._queryByStoreScope((withStore) => {
+            let q = MedHub.supabaseClient
+              .from("suppliers")
+              .select("*")
+              .order("name", { ascending: true });
+            return withStore ? applyStore(q) : q;
+          }, storeId, "suppliers");
+          if (!error && Array.isArray(data) && data.length > 0) {
+            this._saveLocalSuppliers(data);
+            return data;
+          }
+          if (!error && Array.isArray(data) && storeId && storeId !== 1) {
+            this._saveLocalSuppliers([]);
+            return [];
+          }
+        } catch (e) {}
+      }
+      return this._getLocalSuppliers();
+    });
   },
 
   async createSupplier(sup) {
@@ -3470,6 +3553,7 @@ MedHub.api = {
     const list = this._getLocalSuppliers();
     list.push(newSup);
     this._saveLocalSuppliers(list);
+    this.invalidateCache("suppliers:");
     return newSup;
   },
 
@@ -3513,8 +3597,10 @@ MedHub.api = {
     if (idx >= 0) {
       list[idx] = { ...list[idx], ...supData, ...(updated || {}) };
       this._saveLocalSuppliers(list);
+      this.invalidateCache("suppliers:");
       return list[idx];
     }
+    this.invalidateCache("suppliers:");
     return updated || supData;
   },
 
@@ -3529,6 +3615,7 @@ MedHub.api = {
     let list = this._getLocalSuppliers();
     list = list.filter(s => String(s.id) !== String(id));
     this._saveLocalSuppliers(list);
+    this.invalidateCache("suppliers:");
     return true;
   },
 
@@ -3728,6 +3815,7 @@ MedHub.api = {
     this._saveLocalMedicines(localMeds);
     this._saveLocalBatches(localBatches);
     if (MedHub.state) MedHub.state.medicines = localMeds;
+    this.invalidateCache("medicines:", "batches:");
   },
 
   _unpackPurchaseMeta(p) {
@@ -3801,54 +3889,55 @@ MedHub.api = {
   },
 
   async getPurchases() {
-    let cloudData = null;
     const storeId = this.getActiveStoreId();
-    if (MedHub.supabaseClient) {
-      try {
-        const applyStore = (q) => {
-          if (!storeId) return q;
-          return storeId === 1 ? q.or("store_id.eq.1,store_id.is.null") : q.eq("store_id", storeId);
-        };
-        let res = await this._queryByStoreScope((withStore) => {
-          let q = MedHub.supabaseClient
-            .from("purchases")
-            .select("*, purchase_items(*)")
-            .order("created_at", { ascending: false });
-          return withStore ? applyStore(q) : q;
-        }, storeId);
-        if (res.error) {
-          res = await this._queryByStoreScope((withStore) => {
+    return await this._cachedFetch(`purchases:${storeId || "default"}`, 15000, async () => {
+      let cloudData = null;
+      if (MedHub.supabaseClient) {
+        try {
+          const applyStore = (q) => {
+            if (!storeId) return q;
+            return storeId === 1 ? q.or("store_id.eq.1,store_id.is.null") : q.eq("store_id", storeId);
+          };
+          let res = await this._queryByStoreScope((withStore) => {
             let q = MedHub.supabaseClient
               .from("purchases")
-              .select("*")
+              .select("*, purchase_items(*)")
               .order("created_at", { ascending: false });
             return withStore ? applyStore(q) : q;
-          }, storeId);
-        }
-        if (!res.error && Array.isArray(res.data)) {
-          cloudData = res.data.map(p => this._unpackPurchaseMeta(p));
-        }
-      } catch (e) {}
-    }
-
-    if (Array.isArray(cloudData)) {
-      // Keep only local-only records (non-UUID) not yet synced to cloud, preferring cloud rows
-      const local = this._getLocalPurchases();
-      const cloudMap = new Map();
-      cloudData.forEach(p => cloudMap.set(String(p.id || p.invoice_no), p));
-      const merged = [...cloudData];
-      local.forEach(lp => {
-        if (!this._isUuid(String(lp.id)) && lp.id !== "pur-1" && !cloudMap.has(String(lp.invoice_no))) {
-          merged.push(lp);
-        }
-      });
-      if (merged.length > 0 || (storeId && storeId !== 1)) {
-        this._saveLocalPurchases(merged);
-        mockPurchases = merged;
-        return merged;
+          }, storeId, "purchases_rel");
+          if (res.error) {
+            res = await this._queryByStoreScope((withStore) => {
+              let q = MedHub.supabaseClient
+                .from("purchases")
+                .select("*")
+                .order("created_at", { ascending: false });
+              return withStore ? applyStore(q) : q;
+            }, storeId, "purchases");
+          }
+          if (!res.error && Array.isArray(res.data)) {
+            cloudData = res.data.map(p => this._unpackPurchaseMeta(p));
+          }
+        } catch (e) {}
       }
-    }
-    return this._getLocalPurchases();
+
+      if (Array.isArray(cloudData)) {
+        const local = this._getLocalPurchases();
+        const cloudMap = new Map();
+        cloudData.forEach(p => cloudMap.set(String(p.id || p.invoice_no), p));
+        const merged = [...cloudData];
+        local.forEach(lp => {
+          if (!this._isUuid(String(lp.id)) && lp.id !== "pur-1" && !cloudMap.has(String(lp.invoice_no))) {
+            merged.push(lp);
+          }
+        });
+        if (merged.length > 0 || (storeId && storeId !== 1)) {
+          this._saveLocalPurchases(merged);
+          mockPurchases = merged;
+          return merged;
+        }
+      }
+      return this._getLocalPurchases();
+    });
   },
 
   async createPurchase(purchaseData) {
@@ -3927,6 +4016,7 @@ MedHub.api = {
       await this.inwardStockFromPurchase(purchaseData.items);
     }
 
+    this.invalidateCache("purchases:");
     return newPur;
   },
 
@@ -4025,6 +4115,7 @@ MedHub.api = {
       }
     }
 
+    this.invalidateCache("purchases:");
     return updatedRecord;
   },
 
@@ -4045,6 +4136,7 @@ MedHub.api = {
     current = current.filter(p => String(p.id) !== String(id) && String(p.invoice_no) !== String(id));
     this._saveLocalPurchases(current);
     mockPurchases = current;
+    this.invalidateCache("purchases:");
     return true;
   }
 };

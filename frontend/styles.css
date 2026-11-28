@@ -93,7 +93,15 @@ button {
   cursor: pointer;
   border: none;
   background: none;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease, box-shadow 0.14s ease, opacity 0.14s ease;
+}
+
+/* Isolate heavy cards/tables so typing or hovering inside one section avoids full-page reflows */
+.stat-card,
+.table-card,
+.marg-erp-shell,
+.modal-box {
+  contain: layout style;
 }
 
 /* Remove browser up/down number spinner arrows cleanly across all inputs */
@@ -2315,8 +2323,7 @@ input[type="number"] {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(9, 9, 11, 0.65);
-  backdrop-filter: blur(4px);
+  background: rgba(9, 9, 11, 0.58);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4776,8 +4783,7 @@ input[type="number"] {
 .medhub-dialog-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.56);
-  backdrop-filter: blur(3px);
+  background: rgba(15, 23, 42, 0.52);
   display: flex;
   align-items: center;
   justify-content: center;

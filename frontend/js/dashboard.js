@@ -6,8 +6,10 @@ window.MedHub = window.MedHub || {};
 
 MedHub.dashboard = {
   async render(container) {
-    const medicines = await MedHub.api.getMedicines();
-    const bills = await MedHub.api.getBills();
+    const [medicines, bills] = await Promise.all([
+      MedHub.api.getMedicines(),
+      MedHub.api.getBills()
+    ]);
 
     const totalSales = bills.reduce((sum, b) => sum + (Number(b.grand_total) || 0), 0);
     const totalDue = bills.reduce((sum, b) => sum + (Number(b.due_amount) || 0), 0);
