@@ -172,7 +172,7 @@ MedHub.billing = {
               </div>
               <div class="marg-received-row">
                 <label class="marg-pf-lbl" for="amt-received">Amount Received (₹):</label>
-                <input type="number" step="0.01" min="0" id="amt-received" class="marg-erp-input text-right"
+                <input type="number" step="1" min="0" id="amt-received" class="marg-erp-input text-right"
                   placeholder="Enter amount received"
                   value="${MedHub.state.amountReceived !== undefined && MedHub.state.amountReceived !== null ? MedHub.state.amountReceived : ''}" />
               </div>
@@ -473,6 +473,15 @@ MedHub.billing = {
       }
     });
     amtReceivedInput?.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        e.preventDefault();
+        const cur = Number(amtReceivedInput.value) || 0;
+        const delta = e.key === "ArrowUp" ? 1 : -1;
+        const nextVal = Math.max(0, Number((cur + delta).toFixed(2)));
+        amtReceivedInput.value = String(nextVal);
+        MedHub.state.amountReceived = String(nextVal);
+        return;
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         self.submitBill();
